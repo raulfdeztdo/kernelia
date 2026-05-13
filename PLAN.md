@@ -17,7 +17,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 0 | Limpieza y rebranding del repo | **done** | 2026-05-13 | Eliminados 5 agentes y 16 skills. Docs reescritas para Kernelia. |
 | 1 | Bootstrap del proyecto Next.js | **done** | 2026-05-13 | Next 15 + TS estricto + Tailwind v4 + next-intl ES/EN + Drizzle + Vitest + Playwright + CI. Build, lint, typecheck y tests verdes. |
 | 2 | Modelo de datos e ingesta RSS | **done** | 2026-05-14 | Schema sources/categories/articles aplicado en Supabase. 10 fuentes seeded. Endpoint `/api/cron/ingest` con auth, 975 articulos pending tras smoke real. Dedupe verificado (segunda corrida = 0 inserts). |
-| 3 | Agente IA (clasificacion + resumen) | pending | — | — |
+| 3 | Agente IA (clasificacion + resumen) | **done** | 2026-05-14 | Cliente Cerebras (openai SDK) + Zod + prompt cerrado a 10 slugs. Endpoint `/api/cron/classify` con auth y param `limit`. Smoke real: 23/23 articulos clasificados, 0 failed, ~280ms latencia media, ~720 tokens/articulo. |
 | 4 | Web: listado, filtros, busqueda, i18n | pending | — | — |
 | 5 | Pulido, SEO, accesibilidad | pending | — | — |
 | 6 | Release v0.1.0 a produccion | pending | — | — |
@@ -124,21 +124,42 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 
 ---
 
-## Fase 3 — Agente IA (clasificacion + resumen) · `pending`
+## Fase 3 — Agente IA (clasificacion + resumen) · `done`
 
 **Objetivo:** procesar articulos `pending` y producir categoria + resumen validados.
 
-- [ ] Cliente Cerebras en `lib/ai/client.ts` (SDK `openai` con `baseURL`).
-- [ ] Schema Zod de salida del LLM en `lib/ai/schemas.ts`: `{ category_slug, summary, language, relevance_score }`.
-- [ ] Prompt en `lib/ai/prompts/classify-article.ts` con few-shot e instrucciones de categorias permitidas.
-- [ ] Funcion `classifyArticle(article)` con structured output (`response_format: json_schema` o equivalente) y validacion Zod.
-- [ ] Manejo de fallos: marcar `failed` con razon; reintento configurable.
-- [ ] Fallback opcional a Groq/Gemini si Cerebras rate-limitea.
-- [ ] Route handler `app/api/cron/classify/route.ts` procesa lotes (e.g. 10 articulos por tick).
-- [ ] Logs de tokens consumidos y latencia por articulo.
-- [ ] Tests Vitest del schema y de manejo de respuesta invalida (mock del cliente).
+### Completado (2026-05-14)
 
-**Criterio de cierre:** correr `classify` tras `ingest` deja todos los articulos en `classified` con `category_id` y `summary` poblados.
+- [x] Cliente Cerebras en `lib/ai/client.ts` (SDK `openai@4.77` con `baseURL`, defaults `llama3.1-8b` y `https://api.cerebras.ai/v1`).
+- [x] Schema Zod en `lib/ai/schemas.ts`: `{ category_slug, summary, language, relevance_score }` + lista cerrada de 10 slugs canonicos + JSON Schema espejo para fallback futuro.
+- [x] Prompt cerrado en `lib/ai/prompts/classify-article.ts`: glosario por slug, JSON shape literal en el system prompt, reglas anti-marketing/anti-invento.
+- [x] `classifyArticle()` con `response_format: { type: "json_object" }`, parse JSON + validacion Zod estricta.
+- [x] Manejo de fallos: try/catch por articulo, `markArticleFailed(id, reason)` graba motivo (truncado 500 chars); el query `listPendingArticles` excluye los `failed` para no reintento automatico.
+- [x] Route handler `app/api/cron/classify/route.ts` con `runtime nodejs`, `maxDuration 60`, query `?limit=N` (cap 50), header `Authorization: Bearer ${CRON_SECRET}`.
+- [x] `lib/ai/run.ts`: orquesta batch con DI de cliente/fetcher/writers para tests; loguea por articulo (slug, latencia, tokens) y summary final con totales.
+- [x] Tests Vitest (`tests/classify.test.ts`): 12 tests — schema (4), classifyArticle con cliente mock (4 happy/error paths), runClassify (3 escenarios: batch ok, JSON invalido, slug desconocido).
+
+### Verificacion contra Cerebras + Supabase real
+
+- Modelos disponibles en el tier del usuario: `llama3.1-8b`, `gpt-oss-120b`, `qwen-3-235b-a22b-instruct-2507`, `zai-glm-4.7`. El default `llama-3.3-70b` devolvia 404 — cambiado a `llama3.1-8b`.
+- Smoke 1 (limit=3): 3 ok, latencia media 310ms, ~740 tokens/articulo.
+- Smoke 2 (limit=20): 20 ok / 0 failed, 8.8s total, ~280ms/articulo, 14.4k tokens totales.
+- Estado DB final: 23 classified, 0 failed, 952 pending.
+
+### Verificacion local
+
+- `pnpm lint` ✔
+- `pnpm typecheck` ✔
+- `pnpm test` ✔ (29 tests: 3 smoke + 14 ingest + 12 classify)
+- `pnpm build` ✔ (rutas: `/[locale]`, `/api/cron/ingest`, `/api/cron/classify`)
+
+### Notas operativas
+
+- `CEREBRAS_MODEL` en `.env.example` ahora es `llama3.1-8b`. Para subir calidad: `gpt-oss-120b` o `qwen-3-235b-a22b-instruct-2507` (mismos endpoints).
+- `response_format: json_schema` (strict) no esta soportado en este tier — usado `json_object` y dependencia en el prompt + Zod.
+- Articulos `failed` NO se reintentan automaticamente. Script ad-hoc `db/reset-failed.ts` los vuelve a `pending` si fueron fallos de config.
+- Smoke runner manual: `pnpm tsx db/smoke-classify.ts <limit>`.
+- Fallback (Groq/Gemini) no implementado: pospuesto a si aparece rate-limit en produccion.
 
 ---
 
