@@ -1,0 +1,47 @@
+# Artefactos operativos - NO versionar
+.agents/improvements/
+.agents/logs/
+.agents/runs/
+.agents/tmp/
+.agents/cache/
+.agents/artifacts/
+.agents/metrics/
+
+# Tickets y outputs de ejecución
+*.ticket.md
+*.output.md
+
+# Caché y temporales
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+.vercel/
+
+# Env
+.env
+.env.local
+.env.*.local
+opencode.jsonc
+
+# Tooling local
+.claude/
+.idea/
+.vscode/
+
+# TypeScript / Next.js caches
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Test artifacts
+playwright-report/
+test-results/

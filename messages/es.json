@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "title": "Kernelia — Noticias de IA, filtradas para ti",
+    "description": "Agregador de noticias sobre Inteligencia Artificial, clasificadas y resumidas automáticamente. Filtra por categoría o busca por palabras clave."
+  },
+  "header": {
+    "tagline": "Noticias de IA, filtradas para ti",
+    "languageLabel": "Idioma",
+    "languages": {
+      "es": "Español",
+      "en": "English"
+    }
+  },
+  "home": {
+    "heading": "Últimas noticias",
+    "subheading": "Las publicaciones más recientes del mundo de la IA, ordenadas por fecha.",
+    "comingSoon": "Las noticias aparecerán aquí en cuanto el agente de ingesta esté en marcha."
+  },
+  "footer": {
+    "builtWith": "Construido con Next.js, Supabase y Cerebras",
+    "source": "Código fuente"
+  }
+}

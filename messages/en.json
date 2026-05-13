@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "title": "Kernelia — AI news, filtered for you",
+    "description": "Aggregator of Artificial Intelligence news, automatically classified and summarized. Filter by category or search by keywords."
+  },
+  "header": {
+    "tagline": "AI news, filtered for you",
+    "languageLabel": "Language",
+    "languages": {
+      "es": "Español",
+      "en": "English"
+    }
+  },
+  "home": {
+    "heading": "Latest news",
+    "subheading": "The most recent publications from the AI world, sorted by date.",
+    "comingSoon": "News will appear here as soon as the ingest agent is running."
+  },
+  "footer": {
+    "builtWith": "Built with Next.js, Supabase and Cerebras",
+    "source": "Source code"
+  }
+}

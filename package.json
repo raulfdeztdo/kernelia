@@ -1,0 +1,72 @@
+{
+  "name": "kernelia",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx db/seed.ts"
+  },
+  "dependencies": {
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "drizzle-orm": "0.38.4",
+    "lucide-react": "0.474.0",
+    "next": "15.1.6",
+    "next-intl": "3.26.3",
+    "postgres": "3.4.5",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "rss-parser": "^3.13.0",
+    "tailwind-merge": "2.6.0",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "3.2.0",
+    "@playwright/test": "1.49.1",
+    "@tailwindcss/postcss": "4.3.0",
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.1.0",
+    "@types/node": "22.10.7",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "@vitejs/plugin-react": "4.3.4",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "0.30.2",
+    "eslint": "9.18.0",
+    "eslint-config-next": "15.1.6",
+    "jsdom": "26.0.0",
+    "postcss": "8.5.1",
+    "prettier": "3.4.2",
+    "prettier-plugin-tailwindcss": "0.6.10",
+    "tailwindcss": "4.3.0",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3",
+    "vitest": "2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.1.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}
