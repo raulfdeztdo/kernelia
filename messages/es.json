@@ -4,7 +4,9 @@
     "description": "Agregador de noticias sobre Inteligencia Artificial, clasificadas y resumidas automáticamente. Filtra por categoría o busca por palabras clave."
   },
   "header": {
-    "tagline": "Noticias de IA, filtradas para ti",
+    "tagline": "Señal IA, sin ruido.",
+    "searchPlaceholder": "Buscar en titulares y resúmenes…",
+    "searchAria": "Buscar noticias",
     "languageLabel": "Idioma",
     "languages": {
       "es": "Español",
@@ -13,11 +15,41 @@
   },
   "home": {
     "heading": "Últimas noticias",
-    "subheading": "Las publicaciones más recientes del mundo de la IA, ordenadas por fecha.",
-    "comingSoon": "Las noticias aparecerán aquí en cuanto el agente de ingesta esté en marcha."
+    "subheading": "Las publicaciones más recientes del mundo de la IA, clasificadas y resumidas por nuestro agente.",
+    "allCategories": "Todas",
+    "filteringBy": "Filtrando por",
+    "clearFilters": "Quitar filtros",
+    "resultsCount": "{count, plural, =0 {Sin resultados} one {# noticia} other {# noticias}}",
+    "loadMore": "Cargar más",
+    "noResults": {
+      "title": "Nada por aquí",
+      "body": "No encontramos noticias con esos filtros. Prueba con menos restricciones."
+    },
+    "error": {
+      "title": "Algo se torció",
+      "body": "No pudimos cargar las noticias. Inténtalo de nuevo en un momento."
+    }
+  },
+  "card": {
+    "readOriginal": "Leer en {source}",
+    "openInNewTab": "Se abre en una pestaña nueva",
+    "noImage": "Sin imagen"
+  },
+  "categories": {
+    "llm": "Modelos de lenguaje",
+    "agents": "Agentes",
+    "research": "Investigación",
+    "products": "Productos",
+    "robotics": "Robótica",
+    "policy": "Regulación",
+    "safety": "Seguridad",
+    "multimodal": "Multimodal",
+    "coding": "Coding",
+    "other": "Otros"
   },
   "footer": {
-    "builtWith": "Construido con Next.js, Supabase y Cerebras",
-    "source": "Código fuente"
+    "tagline": "Construido con Next.js, Supabase y Cerebras.",
+    "source": "Código fuente",
+    "rights": "© {year} Kernelia"
   }
 }

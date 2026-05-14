@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/auth/cron";
 import { runClassify, DEFAULT_BATCH_SIZE } from "@/lib/ai/run";
 
+// Cerebras free tier ~30 RPM on llama3.1-8b but TPM cap kicks in earlier;
+// 3s gap (~20 RPM) holds steady even when several batches run within a minute.
+const DEFAULT_DELAY_BETWEEN_MS = 3000;
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -23,7 +27,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const summary = await runClassify({ limit: parseLimit(request) });
+    const summary = await runClassify({
+      limit: parseLimit(request),
+      delayBetweenMs: DEFAULT_DELAY_BETWEEN_MS,
+    });
     return NextResponse.json(summary);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

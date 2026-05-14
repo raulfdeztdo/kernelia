@@ -28,6 +28,8 @@ export interface ClassifySummary {
 
 export interface RunClassifyOptions extends ClassifyOptions {
   limit?: number;
+  /** Sleep this many ms between articles. Use to stay within LLM rate limits. */
+  delayBetweenMs?: number;
   fetchPending?: (limit: number) => Promise<PendingArticle[]>;
   onClassified?: (id: string, update: {
     categoryId: string;
@@ -36,6 +38,10 @@ export interface RunClassifyOptions extends ClassifyOptions {
   }) => Promise<void>;
   onFailed?: (id: string, reason: string) => Promise<void>;
   resolveCategoryId?: (slug: string) => Promise<string | undefined>;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function runClassify(options: RunClassifyOptions = {}): Promise<ClassifySummary> {
@@ -53,13 +59,15 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
     });
 
   const pending = await fetchPending(limit);
-  log.info("batch_start", { count: pending.length, limit });
+  const delayBetweenMs = options.delayBetweenMs ?? 0;
+  log.info("batch_start", { count: pending.length, limit, delayBetweenMs });
 
   let classified = 0;
   let failed = 0;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
-  for (const article of pending) {
+  for (const [index, article] of pending.entries()) {
+    if (index > 0 && delayBetweenMs > 0) await sleep(delayBetweenMs);
     try {
       const result = await classifyArticle(
         {
