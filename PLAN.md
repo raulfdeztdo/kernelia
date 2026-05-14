@@ -20,7 +20,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 3 | Agente IA (clasificacion + resumen) | **done** | 2026-05-14 | Cliente Cerebras (openai SDK) + Zod + prompt cerrado a 10 slugs. Endpoint `/api/cron/classify` con auth y param `limit`. Smoke real: 23/23 articulos clasificados, 0 failed, ~280ms latencia media, ~720 tokens/articulo. |
 | 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
 | 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. Cron via GitHub Actions (Vercel Hobby restringe a 1/dia). Skip-link, focus-visible global y `prefers-reduced-motion`. |
-| 6 | Release v0.1.0 a produccion | **in-progress** | — | Tres ajustes post primer deploy: fix Tailwind purge de category colors, cap por fuente (max 5/source), SourceCover en cards sin imagen. |
+| 6 | Release v0.1.0 a produccion | **done** | 2026-05-14 | Dominio kernelia.dev con SSL, brand logo, paginacion append-style, cap por fuente=10, cola de clasificacion round-robin, cron en GHA verde, SEO consistente en produccion (canonical/og/robots/sitemap/RSS apuntan a kernelia.dev). `v0.1.0` taggeado y publicado. |
 
 ---
 
@@ -253,7 +253,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 
 ---
 
-## Fase 6 — Release v0.1.0 a produccion · `in-progress`
+## Fase 6 — Release v0.1.0 a produccion · `done`
 
 **Objetivo:** publicar version inicial estable.
 
@@ -313,16 +313,20 @@ VentureBeat AI                   7          0
 - [x] Drizzle gotcha: al pedir tanto `articles.language` como `sources.language` en el inner select de un `$with(...)` CTE, Drizzle no aliasa (emite ambos como `"X"."language"`) y Postgres devuelve "column reference ambiguous". Fix: envolver en `sql<T>...as("article_language" | "source_language")` para forzar nombres distintos. Documentado con comentario en el codigo.
 - [x] `db/inspect-sources.ts` y `db/inspect-pending-order.ts` como scripts de diagnostico vivos (no parte del runtime).
 
-### Pendiente
+### Sub-fase: cierre v0.1.0 (2026-05-14)
 
-- [ ] Reclasificar el backlog de ~880 articulos pending. Con la cola justa, ahora se reparte entre 8 fuentes: la home se llenara visiblemente mas rapido aunque el throughput total (8/tick) no cambie.
-- [ ] Smoke test en produccion con datos reales durante 48h.
-- [ ] Verificar que el cron en GHA ejecuta y la DB se mantiene saludable (job de `ingest` cada 3h tambien debe correr al menos una vez).
-- [ ] Tag `v0.1.0` y release notes en GitHub.
-- [ ] Comprobar metadata, robots, sitemap en produccion (`kernelia.dev`).
-- [ ] Anuncio (opcional).
+- [x] **`NEXT_PUBLIC_SITE_URL` poblado en Vercel Production**. Detectado al smoke-testear: `robots.txt`, `sitemap.xml`, `rss.xml`, `<link rel=canonical>` y `<meta property=og:url>` servian `kernelia.vercel.app` (fallback de `VERCEL_URL`). Causa: `NEXT_PUBLIC_*` se inlinea en el bundle al hacer `next build`, asi que la env var solo aplica a deployments nuevos. Fix: setear `NEXT_PUBLIC_SITE_URL=https://kernelia.dev` y redeploy sin cache. Verificado contra los 5 producers post-redeploy.
+- [x] **Cron de clasificacion validado en produccion**. Run manual sobre `main`: `processed=8 classified=8 failed=0 duration=24.6s`. Round-robin observado en la DB: el tick anadio 1 articulo a 8 fuentes distintas (Google DeepMind, Ars Technica, Genbeta, Xataka, Wired, VentureBeat estrenaron clasificacion).
+- [x] **`v0.1.0` taggeado y publicado**. Release notes con narrativa de las 6 fases y stack tecnico.
 
-**Criterio de cierre:** dominio publico sirviendo articulos clasificados al dia, en ES y EN.
+### Pendiente post-release (no bloqueante)
+
+- [ ] Reclasificar el backlog completo de ~870 articulos pending (el cron lo drena en ~2.5 dias automaticamente).
+- [ ] Smoke test en produccion con datos reales durante 48h (monitorear `/api/health` y que `classified` siga creciendo).
+- [ ] Verificar que el job de `ingest` cada 3h tambien corre al menos una vez (la primera ventana cae aprox a las :00 mas cercanas a un multiplo de 3h UTC).
+- [ ] Anuncio publico (opcional).
+
+**Criterio de cierre:** dominio publico sirviendo articulos clasificados al dia, en ES y EN, con SEO consistente y cron auto-sostenido. **Cumplido.**
 
 ---
 
