@@ -69,9 +69,9 @@ export async function generateMetadata({
         "max-snippet": -1,
       },
     },
-    icons: {
-      icon: [{ url: "/favicon.ico" }],
-    },
+    // Icons are auto-discovered by Next.js from `app/icon.svg` and
+    // `app/apple-icon.png` — no manual `icons` field required, and a
+    // hand-rolled one would override that discovery.
   };
 }
 

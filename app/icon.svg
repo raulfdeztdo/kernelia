@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 470">
+  <!--
+    Favicon. The mark is the same as the header LogoMark. Uses Kernelia's
+    accent teal so it stays legible on both light and dark tab bars
+    (white-on-transparent would disappear on light Chrome / Safari tabs).
+  -->
+  <g fill="#2dd4bf">
+    <polygon points="377,74 316,74 167,240 167,178 125,178 125,351" />
+    <polygon points="210,291 311,390 372,390 240,259" />
+  </g>
+</svg>

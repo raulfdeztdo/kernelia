@@ -246,7 +246,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 - Las URLs canonicas de la home difieren entre locales: `/` para `es`, `/en` para `en`. Cada par incluye `hreflang` reciproco + `x-default`.
 - Lighthouse en preview queda como tarea de Fase 6 una vez el dominio este en Vercel (necesita HTTPS real para medir).
 - El crawler ve solo los items `classified` via RSS / sitemap (la home ya filtra por status). Los `pending` siguen invisibles.
-- Cron operado desde GitHub Actions: hace falta crear dos secrets en el repo (Settings -> Secrets and variables -> Actions): `KERNELIA_PROD_URL` (p.ej. `https://kernelia.vercel.app`, sin slash) y `CRON_SECRET` (el mismo string que en Vercel).
+- Cron operado desde GitHub Actions: hace falta crear dos secrets en el repo (Settings -> Secrets and variables -> Actions): `KERNELIA_PROD_URL` (p.ej. `https://kernelia.dev`, sin slash) y `CRON_SECRET` (el mismo string que en Vercel).
 - En repos publicos, los workflows de tipo `schedule` se desactivan automaticamente tras **60 dias sin actividad**. Cualquier push o PR resetea el contador.
 
 **Criterio de cierre:** auditoria pasada y crons configurados en Vercel preview.
@@ -259,7 +259,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 
 ### Sub-fase: ajustes post primer deploy (2026-05-14)
 
-Tres bugs/limitaciones detectados al ver el sitio en produccion (https://kernelia.vercel.app):
+Tres bugs/limitaciones detectados al ver el sitio en produccion (https://kernelia.dev):
 
 - [x] **Tailwind v4 purgaba 9 de 10 variables `--color-cat-*`**. Tailwind v4 tree-shake las variables de `@theme` cuyo uso no detecta estaticamente. Como accedemos via `categoryColorVar(slug)` que construye `var(--color-cat-${slug})` dinamicamente, el scanner no las veia y las eliminaba. Solo `--color-cat-other` sobrevivia (por el fallback literal en `news-card.tsx`). Resultado: las cards de cualquier categoria distinta de `other` no mostraban color de filo ni de badge. Fix: mover las 10 vars de `@theme` a un bloque `:root` regular, que siempre se emite.
 
@@ -267,13 +267,21 @@ Tres bugs/limitaciones detectados al ver el sitio en produccion (https://kerneli
 
 - [x] **Muchos articulos sin imagen quedaban con placeholder generico** (gradiente + icono sparkles, leia "missing asset"). Sustituido por `SourceCover`: gradiente con el color de la categoria + nombre de la fuente en tipografia grande + label de categoria. Cada card sin RSS-image ahora se ve intencional, no como un fallo. La extension futura (anyadir `sources.image_url` con OG curado) queda como mejora aditiva no bloqueante.
 
+### Sub-fase: dominio, paginacion append y branding (2026-05-14)
+
+- [x] **Dominio `kernelia.dev`**. Registrado y apuntando a Vercel con SSL emitido. Referencias en `PLAN.md` y `README.md` actualizadas; el origin sigue resolviendose por env (`NEXT_PUBLIC_SITE_URL` -> `VERCEL_URL` -> fallback) sin hardcodearlo en codigo.
+- [x] **Logo de marca**. Sustituida la estrella generica del header por el wordmark "K" provisto en `media/logo-kernelia.svg`. Mismos paths inlineados en `components/header.tsx` (con `currentColor` para que herede el acento) y en `app/icon.svg` (color teal `#2dd4bf` para que sea visible en tabs tanto claras como oscuras). `app/apple-icon.png` renderizado a 180x180 desde el SVG con fondo `#0f172a` (no del PNG suelto, que tiene padding y queda pequenyo). README usa una version base64 con el mismo color para consistencia visual en GitHub.
+- [x] **Paginacion append-style**. "Cargar mas" ya no navega: nuevo endpoint `GET /api/articles` (locale + cursor + q + category + limit) que sirve JSON, mas `components/article-list.tsx` (client) que mantiene los items ya cargados y anyade 6 mas por click. SSR sigue renderizando los 18 primeros para SEO y first paint. Dedupe por `id` defensivo. Cancelacion via `requestIdRef` para que una respuesta vieja no pise una nueva si el usuario cambia de filtro mid-fetch. Sin auto-scroll: el boton es opt-in (mejor para teclado y para llegar al footer).
+- [x] **`PER_SOURCE_CAP` 5 -> 10**. 5 dejaba la home demasiado dispersa cuando habia pocos articulos clasificados; 10 mantiene la diversidad sin ahogar a las fuentes activas.
+- [x] **NewsCard como client component**. Necesario para que el grid append pueda re-renderizarse. `getTranslations` -> `useTranslations`. Hidratacion del `<time>` relativo: `suppressHydrationWarning` (deriva inocua de segundos entre SSR y client; alternativa "congelar el valor SSR" envejeceria mal en sesiones largas). El payload se serializa via `ArticleCardView` con `publishedAt: string` para que la misma forma sirva al SSR y al fetch JSON.
+
 ### Pendiente
 
 - [ ] Reclasificar el backlog de ~945 articulos pending (cron de GHA cada 30min).
 - [ ] Smoke test en preview con datos reales durante 48h.
 - [ ] Verificar que el cron en GHA ejecuta y la DB se mantiene saludable.
 - [ ] Tag `v0.1.0` y release notes en GitHub.
-- [ ] Comprobar metadata, robots, sitemap en produccion.
+- [ ] Comprobar metadata, robots, sitemap en produccion (incluido `kernelia.dev`).
 - [ ] Anuncio (opcional).
 
 **Criterio de cierre:** dominio publico sirviendo articulos clasificados al dia, en ES y EN.
