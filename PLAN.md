@@ -20,7 +20,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 3 | Agente IA (clasificacion + resumen) | **done** | 2026-05-14 | Cliente Cerebras (openai SDK) + Zod + prompt cerrado a 10 slugs. Endpoint `/api/cron/classify` con auth y param `limit`. Smoke real: 23/23 articulos clasificados, 0 failed, ~280ms latencia media, ~720 tokens/articulo. |
 | 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
 | 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. Cron via GitHub Actions (Vercel Hobby restringe a 1/dia). Skip-link, focus-visible global y `prefers-reduced-motion`. |
-| 6 | Release v0.1.0 a produccion | pending | — | — |
+| 6 | Release v0.1.0 a produccion | **in-progress** | — | Tres ajustes post primer deploy: fix Tailwind purge de category colors, cap por fuente (max 5/source), SourceCover en cards sin imagen. |
 
 ---
 
@@ -253,14 +253,26 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 
 ---
 
-## Fase 6 — Release v0.1.0 a produccion · `pending`
+## Fase 6 — Release v0.1.0 a produccion · `in-progress`
 
 **Objetivo:** publicar version inicial estable.
 
+### Sub-fase: ajustes post primer deploy (2026-05-14)
+
+Tres bugs/limitaciones detectados al ver el sitio en produccion (https://kernelia.vercel.app):
+
+- [x] **Tailwind v4 purgaba 9 de 10 variables `--color-cat-*`**. Tailwind v4 tree-shake las variables de `@theme` cuyo uso no detecta estaticamente. Como accedemos via `categoryColorVar(slug)` que construye `var(--color-cat-${slug})` dinamicamente, el scanner no las veia y las eliminaba. Solo `--color-cat-other` sobrevivia (por el fallback literal en `news-card.tsx`). Resultado: las cards de cualquier categoria distinta de `other` no mostraban color de filo ni de badge. Fix: mover las 10 vars de `@theme` a un bloque `:root` regular, que siempre se emite.
+
+- [x] **Una fuente (Hugging Face Blog, 777 articulos) monopolizaria el feed** una vez clasificados todos. Cap implementado en `listClassifiedArticles` via CTE con `row_number() over (partition by source_id order by published_at desc)` y `where rn <= 5`. Cada fuente aporta como mucho sus 5 articulos mas recientes al pool global. Aplicado siempre (incluso con filtros/busqueda) para mantener diversidad. Constante `PER_SOURCE_CAP = 5` documentada arriba del archivo.
+
+- [x] **Muchos articulos sin imagen quedaban con placeholder generico** (gradiente + icono sparkles, leia "missing asset"). Sustituido por `SourceCover`: gradiente con el color de la categoria + nombre de la fuente en tipografia grande + label de categoria. Cada card sin RSS-image ahora se ve intencional, no como un fallo. La extension futura (anyadir `sources.image_url` con OG curado) queda como mejora aditiva no bloqueante.
+
+### Pendiente
+
+- [ ] Reclasificar el backlog de ~945 articulos pending (cron de GHA cada 30min).
 - [ ] Smoke test en preview con datos reales durante 48h.
-- [ ] Verificar que el cron en Vercel ejecuta y la DB se mantiene saludable.
+- [ ] Verificar que el cron en GHA ejecuta y la DB se mantiene saludable.
 - [ ] Tag `v0.1.0` y release notes en GitHub.
-- [ ] Merge a `main` -> deploy en dominio de produccion (Vercel free).
 - [ ] Comprobar metadata, robots, sitemap en produccion.
 - [ ] Anuncio (opcional).
 

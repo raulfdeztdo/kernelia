@@ -40,7 +40,11 @@ export async function NewsCard({ article, locale }: NewsCardProps) {
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
           />
         ) : (
-          <PlaceholderImage accent={accent} label={tCard("noImage")} />
+          <SourceCover
+            accent={accent}
+            sourceName={article.sourceName}
+            categoryLabel={categoryLabel}
+          />
         )}
       </div>
 
@@ -86,28 +90,59 @@ export async function NewsCard({ article, locale }: NewsCardProps) {
   );
 }
 
-function PlaceholderImage({ accent, label }: { accent: string; label: string }) {
+/**
+ * Designed cover for articles that ship without an image. Instead of looking
+ * like a missing-asset placeholder (the old radial-gradient + sparkles), it
+ * shows the publication name in large typography over the category accent,
+ * so every card reads as intentional.
+ */
+function SourceCover({
+  accent,
+  sourceName,
+  categoryLabel,
+}: {
+  accent: string;
+  sourceName: string;
+  categoryLabel: string | null;
+}) {
   return (
     <div
-      aria-label={label}
-      className="flex h-full w-full items-center justify-center"
+      aria-hidden
+      className="relative flex h-full w-full flex-col justify-between p-5"
       style={{
-        background: `radial-gradient(circle at 30% 20%, ${accent} 0%, transparent 55%), linear-gradient(135deg, var(--color-surface-2), var(--color-surface))`,
+        background: [
+          // Top-left accent wash.
+          `radial-gradient(circle at 15% 0%, color-mix(in oklch, ${accent} 55%, transparent) 0%, transparent 60%)`,
+          // Bottom-right depth.
+          `radial-gradient(circle at 100% 100%, color-mix(in oklch, ${accent} 22%, transparent) 0%, transparent 50%)`,
+          // Base.
+          `linear-gradient(135deg, var(--color-surface-2), var(--color-surface))`,
+        ].join(", "),
       }}
     >
-      <svg
-        viewBox="0 0 24 24"
-        className="h-10 w-10 text-[color:var(--color-muted-foreground)] opacity-50"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+      {/* Subtle inner border so the card edge stays crisp. */}
+      <span
         aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-none ring-1 ring-inset ring-white/5"
+      />
+
+      {categoryLabel && (
+        <span
+          className="z-10 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-foreground)]/70"
+          style={{ color: accent }}
+        >
+          {categoryLabel}
+        </span>
+      )}
+
+      <span
+        className="z-10 mt-auto text-2xl font-bold leading-tight tracking-tight text-[color:var(--color-foreground)]/90 sm:text-[1.7rem]"
+        style={{
+          fontFeatureSettings: '"ss01"',
+        }}
       >
-        <path d="m12 3 1.9 4 4.1.4-3 2.9.9 4.7L12 12.7l-3.9 2.3.9-4.7-3-2.9 4.1-.4Z" />
-        <path d="M5 19c2-1 5-1 7-1s5 0 7 1" />
-      </svg>
+        {sourceName}
+      </span>
     </div>
   );
 }
