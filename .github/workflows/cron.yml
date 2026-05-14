@@ -35,6 +35,10 @@ jobs:
     if: github.event.schedule == '0 */3 * * *' || inputs.job == 'ingest'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # `KERNELIA_PROD_URL` y `CRON_SECRET` viven como secrets del environment
+    # "Production" (no como repo secrets). Sin esta linea `${{ secrets.* }}`
+    # los sustituye por "" y `curl` se queja con "No host part in the URL".
+    environment: Production
     steps:
       - name: Hit /api/cron/ingest
         env:
@@ -61,6 +65,7 @@ jobs:
     if: github.event.schedule == '*/30 * * * *' || inputs.job == 'classify'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: Production
     steps:
       - name: Hit /api/cron/classify?limit=20
         env:
