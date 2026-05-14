@@ -42,6 +42,12 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
+          # Fail loud if the secrets are missing. Without this guard GitHub
+          # silently substitutes "" and curl reports the unhelpful
+          # "URL rejected: No host part in the URL" — costing one cron tick
+          # to figure out the real cause.
+          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
+          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
             --retry 2 --retry-delay 10 --retry-connrefused \
@@ -62,6 +68,8 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
+          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
+          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
             --retry 2 --retry-delay 10 --retry-connrefused \
