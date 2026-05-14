@@ -52,6 +52,16 @@ jobs:
           # to figure out the real cause.
           : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
           : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
+          # Trim leading/trailing whitespace (incl. the trailing \n that
+          # commonly sneaks in via copy-paste from Vercel) and a trailing
+          # slash. Then sanity-check the result.
+          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
+          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
+          BASE_URL="${BASE_URL%/}"
+          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
+            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL}). Expected something like https://kernelia.dev — no trailing slash, no quotes, no whitespace." >&2
+            exit 1
+          fi
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
             --retry 2 --retry-delay 10 --retry-connrefused \
@@ -75,6 +85,16 @@ jobs:
           set -euo pipefail
           : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
           : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
+          # Trim leading/trailing whitespace (incl. the trailing \n that
+          # commonly sneaks in via copy-paste from Vercel) and a trailing
+          # slash. Then sanity-check the result.
+          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
+          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
+          BASE_URL="${BASE_URL%/}"
+          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
+            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL}). Expected something like https://kernelia.dev — no trailing slash, no quotes, no whitespace." >&2
+            exit 1
+          fi
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
             --retry 2 --retry-delay 10 --retry-connrefused \
