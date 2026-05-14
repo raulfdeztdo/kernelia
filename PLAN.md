@@ -275,13 +275,51 @@ Tres bugs/limitaciones detectados al ver el sitio en produccion (https://kerneli
 - [x] **`PER_SOURCE_CAP` 5 -> 10**. 5 dejaba la home demasiado dispersa cuando habia pocos articulos clasificados; 10 mantiene la diversidad sin ahogar a las fuentes activas.
 - [x] **NewsCard como client component**. Necesario para que el grid append pueda re-renderizarse. `getTranslations` -> `useTranslations`. Hidratacion del `<time>` relativo: `suppressHydrationWarning` (deriva inocua de segundos entre SSR y client; alternativa "congelar el valor SSR" envejeceria mal en sesiones largas). El payload se serializa via `ArticleCardView` con `publishedAt: string` para que la misma forma sirva al SSR y al fetch JSON.
 
+### Sub-fase: cron en produccion + cola justa (2026-05-14)
+
+Tras mergear PR #6 a main, la cadena de fallos del cron en GHA se resolvio en cinco pasos sucesivos, todos documentados con commits y test contra el endpoint real:
+
+1. **`No host part in the URL`** — Los secretos `KERNELIA_PROD_URL` y `CRON_SECRET` no existian. GitHub sustituye los secrets ausentes por string vacio en silencio. Fix: anyadir `: "${VAR:?msg}"` guards para fallar con mensaje accionable.
+2. **Aun vacios con guards** — Los secretos estaban creados pero en el **environment** `Production`, no a nivel repo. `${{ secrets.* }}` solo lee repo/org-level por defecto. Fix: `environment: Production` declarado en cada job.
+3. **`Malformed input to a URL function`** — Posible whitespace o falta de scheme en el valor pegado. Fix: trim + regex `^https?://[^/]+$` con `::error::` explicito si no encaja.
+4. **`HTTP 307 Redirecting...`** — Vercel tenia `www.kernelia.dev` como canonico y `kernelia.dev` redirigia. Toda la app (canonical, OG, sitemap, README) apuntaba a apex. Fix de config: invertir en Vercel para que apex sea canonico. Estado consistente con lo que el resto del proyecto declara.
+5. **`HTTP 504` timeout** — `/api/cron/classify?limit=20` no cabe en los 60s de Vercel Hobby porque el handler espera `DEFAULT_DELAY_BETWEEN_MS=3000` entre articulos (TPM cap de Cerebras free tier). 19 huecos x 3s = 57s solo de delays, antes de las llamadas LLM. Fix: bajar `limit` a 8 (~45-55s end-to-end). Throughput: 8 art/tick x 48 ticks/dia = 384/dia, drena un backlog de ~900 en ~2.5 dias.
+
+Run manual posterior: `processed=8 classified=8 failed=0 duration=24.2s tokens=7266 HTTP 200 in 24.9s`.
+
+- [x] Cron de clasificacion verde en `main`, schedule cada 30min activo, secretos correctos en environment `Production`.
+
+#### Cola de clasificacion justa (post-mortem post-merge)
+
+Tras el primer tick verde la home seguia mostrando "40 noticias y ya". No era bug visual sino el cap por fuente haciendo su trabajo: 4 fuentes con clasificadas x cap=10 = 40 cards. Diagnostico via `db/inspect-sources.ts`:
+
+```
+                            pending   classified
+Hugging Face Blog              725         52      <- 42 ocultas por el cap
+Google DeepMind Blog           100          0      <- nunca clasificada
+Ars Technica - AI               20          0
+TechCrunch AI                    0         20      <- 10 ocultas por el cap
+The Verge - AI                   1         10
+MIT Technology Review            0         10
+Genbeta - IA                    10          0
+Xataka                          10          0
+Wired - AI                      10          0
+VentureBeat AI                   7          0
+```
+
+`listPendingArticles` ordenaba `ORDER BY ingested_at ASC` puro (FIFO). Hugging Face Blog con 725 pendientes monopolizaba el cron: a ritmo de 8/tick x 48 ticks/dia, el resto de fuentes no se tocarian en ~2 dias. El cap por fuente del lado *display* nunca iba a llenarse mas alla de 4-5 fuentes.
+
+- [x] **Round-robin en `listPendingArticles`**. CTE con `row_number() over (partition by source_id order by ingested_at asc, id asc)`, ordenando el outer por `rn asc, ingested_at asc`. Con limit=N, primero la mas vieja de cada una de N fuentes distintas, luego la segunda de cada una, etc. Verificado contra DB real: en los primeros 16 pendientes ahora aparecen las 8 fuentes con pending (spread 3/2/2/2/2/2/2/1 vs el viejo 16/0/0/0/0/0/0/0 dominado por Hugging Face).
+- [x] Drizzle gotcha: al pedir tanto `articles.language` como `sources.language` en el inner select de un `$with(...)` CTE, Drizzle no aliasa (emite ambos como `"X"."language"`) y Postgres devuelve "column reference ambiguous". Fix: envolver en `sql<T>...as("article_language" | "source_language")` para forzar nombres distintos. Documentado con comentario en el codigo.
+- [x] `db/inspect-sources.ts` y `db/inspect-pending-order.ts` como scripts de diagnostico vivos (no parte del runtime).
+
 ### Pendiente
 
-- [ ] Reclasificar el backlog de ~945 articulos pending (cron de GHA cada 30min).
-- [ ] Smoke test en preview con datos reales durante 48h.
-- [ ] Verificar que el cron en GHA ejecuta y la DB se mantiene saludable.
+- [ ] Reclasificar el backlog de ~880 articulos pending. Con la cola justa, ahora se reparte entre 8 fuentes: la home se llenara visiblemente mas rapido aunque el throughput total (8/tick) no cambie.
+- [ ] Smoke test en produccion con datos reales durante 48h.
+- [ ] Verificar que el cron en GHA ejecuta y la DB se mantiene saludable (job de `ingest` cada 3h tambien debe correr al menos una vez).
 - [ ] Tag `v0.1.0` y release notes en GitHub.
-- [ ] Comprobar metadata, robots, sitemap en produccion (incluido `kernelia.dev`).
+- [ ] Comprobar metadata, robots, sitemap en produccion (`kernelia.dev`).
 - [ ] Anuncio (opcional).
 
 **Criterio de cierre:** dominio publico sirviendo articulos clasificados al dia, en ES y EN.

@@ -36,21 +36,68 @@ export interface PendingArticle {
   sourceLanguage: Article["language"];
 }
 
+/**
+ * Round-robin pull from the pending queue.
+ *
+ * A pure `ORDER BY ingested_at ASC` (the old behaviour) drains one source
+ * at a time: whichever source happens to have the oldest pending articles
+ * monopolises the cron until its backlog is empty. After seeding with a
+ * high-volume feed (Hugging Face: 725 pending vs. ~10–100 for the rest),
+ * that meant the public home page sat at "4 sources visible" for days.
+ *
+ * Fix: rank each pending article *within* its source by ingestion order,
+ * then sort the outer query by that rank first. With limit N, the first
+ * N sources contribute one article each before we ever take a second from
+ * the same source. The per-source cap on the *display* side already handled
+ * monopolisation at read time; this is its mirror on the *classify* side
+ * so the cap can ever fill up across more than a handful of sources.
+ *
+ * Trade-off: a freshly-ingested article from a quiet source can leapfrog
+ * older pending articles from a noisy source. That's intentional — better
+ * for the feed to look alive than to drain strictly FIFO.
+ */
 export async function listPendingArticles(limit: number): Promise<PendingArticle[]> {
+  const ranked = db.$with("pending_ranked").as(
+    db
+      .select({
+        id: articles.id,
+        title: articles.title,
+        url: articles.url,
+        rawExcerpt: articles.rawExcerpt,
+        // Both `articles.language` and `sources.language` exist; without
+        // explicit `.as(...)` aliases Drizzle emits two bare
+        // `"X"."language"` columns and Postgres rejects the CTE with
+        // "column reference 'language' is ambiguous". Force distinct
+        // names in the CTE projection.
+        language: sql<Article["language"]>`${articles.language}`.as("article_language"),
+        sourceName: sources.name,
+        sourceLanguage: sql<Article["language"]>`${sources.language}`.as("source_language"),
+        ingestedAt: articles.ingestedAt,
+        // Rank 1 = oldest pending in its source. Tie-break on id so the
+        // order is fully deterministic between calls.
+        rn: sql<number>`row_number() over (
+          partition by ${articles.sourceId}
+          order by ${articles.ingestedAt} asc, ${articles.id} asc
+        )`.as("rn"),
+      })
+      .from(articles)
+      .innerJoin(sources, eq(sources.id, articles.sourceId))
+      .where(and(eq(articles.status, "pending"), isNull(articles.classificationError))),
+  );
+
   const rows = await db
+    .with(ranked)
     .select({
-      id: articles.id,
-      title: articles.title,
-      url: articles.url,
-      rawExcerpt: articles.rawExcerpt,
-      language: articles.language,
-      sourceName: sources.name,
-      sourceLanguage: sources.language,
+      id: ranked.id,
+      title: ranked.title,
+      url: ranked.url,
+      rawExcerpt: ranked.rawExcerpt,
+      language: ranked.language,
+      sourceName: ranked.sourceName,
+      sourceLanguage: ranked.sourceLanguage,
     })
-    .from(articles)
-    .innerJoin(sources, eq(sources.id, articles.sourceId))
-    .where(and(eq(articles.status, "pending"), isNull(articles.classificationError)))
-    .orderBy(asc(articles.ingestedAt))
+    .from(ranked)
+    .orderBy(asc(ranked.rn), asc(ranked.ingestedAt))
     .limit(limit);
   return rows;
 }
