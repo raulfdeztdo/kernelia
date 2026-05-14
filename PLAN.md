@@ -18,7 +18,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 1 | Bootstrap del proyecto Next.js | **done** | 2026-05-13 | Next 15 + TS estricto + Tailwind v4 + next-intl ES/EN + Drizzle + Vitest + Playwright + CI. Build, lint, typecheck y tests verdes. |
 | 2 | Modelo de datos e ingesta RSS | **done** | 2026-05-14 | Schema sources/categories/articles aplicado en Supabase. 10 fuentes seeded. Endpoint `/api/cron/ingest` con auth, 975 articulos pending tras smoke real. Dedupe verificado (segunda corrida = 0 inserts). |
 | 3 | Agente IA (clasificacion + resumen) | **done** | 2026-05-14 | Cliente Cerebras (openai SDK) + Zod + prompt cerrado a 10 slugs. Endpoint `/api/cron/classify` con auth y param `limit`. Smoke real: 23/23 articulos clasificados, 0 failed, ~280ms latencia media, ~720 tokens/articulo. |
-| 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue completa: grid responsive con NewsCards (imagen + categoria + resumen), filtros por categoria con facets, busqueda con debounce, paginacion cursor. Imagenes extraidas del RSS (media:content, enclosure, content:encoded) + backfill. Dark theme con acentos por categoria. |
+| 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
 | 5 | Pulido, SEO, accesibilidad | pending | — | — |
 | 6 | Release v0.1.0 a produccion | pending | — | — |
 
@@ -182,7 +182,10 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 - [x] `lib/categories.ts` (parse + helpers) y `lib/format.ts` (relative time bilingue con `Intl.RelativeTimeFormat`).
 - [x] `messages/{es,en}.json` con keys completas: metadata, header (tagline, search, language), home (heading, subheading, allCategories, resultsCount con plural ICU, loadMore, noResults, error), card, categories (10 slugs), footer (tagline, source, rights).
 - [x] `tests/e2e/home.spec.ts`: home ES, home EN, switch locale, click chip "Agentes" -> URL contiene `category=agents`, escribir en search -> URL contiene `q=`.
-- [x] Rate-limit hook en `lib/ai/run.ts`: opcion `delayBetweenMs` (default 0); el cron de classify usa **2000ms** para encajar en el free tier de Cerebras (~30 RPM en `llama3.1-8b`).
+- [x] Rate-limit hook en `lib/ai/run.ts`: opcion `delayBetweenMs` (default 0); el cron de classify usa **3000ms** (~20 RPM) tras observar 429s a 2s en el free tier de Cerebras.
+- [x] Bilingue real: nuevas columnas `title_es`, `title_en`, `summary_es`, `summary_en` (migracion `0002`). El LLM devuelve los 4 campos en cada llamada; `listClassifiedArticles(locale)` selecciona el titulo/resumen del idioma activo via `coalesce(title_<loc>, title)`. La cuasi totalidad de articulos sale en EN del feed; el agente traduce el titulo y genera el resumen fresco en cada idioma.
+- [x] Diseno final de tarjeta: filo de 3px en el lateral izquierdo con color de categoria (en vez de franja superior y badge sobre la imagen). Imagen 16:9 limpia, fila inicial con dot+nombre de categoria en minimalismo, titulo, resumen, y al pie fuente + fecha relativa. Sobrio.
+- [x] `relevance_score` con `z.coerce.number()` para aguantar respuestas LLM que lo devuelven como string.
 
 ### Verificacion contra Supabase real
 

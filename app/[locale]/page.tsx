@@ -68,6 +68,7 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
   try {
     const [list, facetRows] = await Promise.all([
       listClassifiedArticles({
+        locale: locale as "es" | "en",
         categorySlugs: selectedCategories,
         q,
         limit: PAGE_SIZE + 1,

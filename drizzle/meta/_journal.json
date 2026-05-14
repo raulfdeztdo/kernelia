@@ -15,6 +15,13 @@
       "when": 1778715540802,
       "tag": "0001_normal_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778717529782,
+      "tag": "0002_tranquil_shard",
+      "breakpoints": true
     }
   ]
 }

@@ -50,8 +50,10 @@ export async function listPendingArticles(limit: number): Promise<PendingArticle
 export interface ClassifiedUpdate {
   id: string;
   categoryId: string;
-  summary: string;
-  language: Article["language"];
+  titleEs: string;
+  titleEn: string;
+  summaryEs: string;
+  summaryEn: string;
 }
 
 export async function markArticleClassified(update: ClassifiedUpdate): Promise<void> {
@@ -60,8 +62,10 @@ export async function markArticleClassified(update: ClassifiedUpdate): Promise<v
     .set({
       status: "classified",
       categoryId: update.categoryId,
-      summary: update.summary,
-      language: update.language,
+      titleEs: update.titleEs,
+      titleEn: update.titleEn,
+      summaryEs: update.summaryEs,
+      summaryEn: update.summaryEn,
       classificationError: null,
     })
     .where(eq(articles.id, update.id));
@@ -83,16 +87,18 @@ export interface ListedArticle {
   url: string;
   summary: string | null;
   imageUrl: string | null;
-  language: Article["language"];
+  sourceLanguage: Article["language"];
   publishedAt: Date;
   sourceName: string;
   categorySlug: string | null;
 }
 
 export interface ListArticlesParams {
+  /** Locale to resolve title/summary to. */
+  locale: "es" | "en";
   /** Category slugs to include. Empty/undefined = no filter. */
   categorySlugs?: string[];
-  /** Free-text search on title + summary. */
+  /** Free-text search on title + summary (locale-aware). */
   q?: string;
   /** Page size. */
   limit: number;
@@ -103,6 +109,9 @@ export interface ListArticlesParams {
 export async function listClassifiedArticles(
   params: ListArticlesParams,
 ): Promise<ListedArticle[]> {
+  const titleCol = params.locale === "es" ? articles.titleEs : articles.titleEn;
+  const summaryCol = params.locale === "es" ? articles.summaryEs : articles.summaryEn;
+
   const conds = [eq(articles.status, "classified")];
 
   if (params.categorySlugs && params.categorySlugs.length > 0) {
@@ -110,8 +119,10 @@ export async function listClassifiedArticles(
   }
   if (params.q && params.q.trim().length > 0) {
     const needle = `%${params.q.trim()}%`;
-    const titleMatch = ilike(articles.title, needle);
-    const summaryMatch = ilike(articles.summary, needle);
+    // Search the locale-resolved title (falling back to the original feed title)
+    // and the locale-resolved summary.
+    const titleMatch = or(ilike(titleCol, needle), ilike(articles.title, needle));
+    const summaryMatch = ilike(summaryCol, needle);
     const combined = or(titleMatch, summaryMatch);
     if (combined) conds.push(combined);
   }
@@ -129,11 +140,11 @@ export async function listClassifiedArticles(
   const rows = await db
     .select({
       id: articles.id,
-      title: articles.title,
+      title: sql<string>`coalesce(${titleCol}, ${articles.title})`,
       url: articles.url,
-      summary: articles.summary,
+      summary: summaryCol,
       imageUrl: articles.imageUrl,
-      language: articles.language,
+      sourceLanguage: articles.language,
       publishedAt: articles.publishedAt,
       sourceName: sources.name,
       categorySlug: categories.slug,

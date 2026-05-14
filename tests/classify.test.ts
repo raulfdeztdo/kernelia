@@ -25,6 +25,15 @@ function makeClient(
   } as never;
 }
 
+const validPayload = {
+  category_slug: "llm",
+  title_es: "OpenAI lanza GPT-5 con uso agentico de herramientas",
+  title_en: "OpenAI releases GPT-5 with agentic tool use",
+  summary_es: "OpenAI presenta un modelo capaz de encadenar herramientas de forma nativa.",
+  summary_en: "OpenAI ships a model that can chain browser and file tools natively.",
+  relevance_score: 0.95,
+};
+
 const sampleArticle = {
   title: "OpenAI releases GPT-5 with agentic tool use",
   excerpt: "The new model can chain browser and file tools natively.",
@@ -34,43 +43,30 @@ const sampleArticle = {
 };
 
 describe("classificationSchema", () => {
-  it("accepts a well-formed payload", () => {
-    const result = classificationSchema.safeParse({
-      category_slug: "llm",
-      summary: "A solid 2-3 sentence summary with enough length.",
-      language: "en",
-      relevance_score: 0.9,
-    });
+  it("accepts a well-formed bilingual payload", () => {
+    const result = classificationSchema.safeParse(validPayload);
     expect(result.success).toBe(true);
   });
 
   it("rejects unknown category slugs", () => {
-    const result = classificationSchema.safeParse({
-      category_slug: "crypto",
-      summary: "A solid 2-3 sentence summary with enough length.",
-      language: "en",
-      relevance_score: 0.9,
-    });
+    const result = classificationSchema.safeParse({ ...validPayload, category_slug: "crypto" });
     expect(result.success).toBe(false);
   });
 
   it("rejects relevance scores out of [0,1]", () => {
-    const result = classificationSchema.safeParse({
-      category_slug: "llm",
-      summary: "A solid 2-3 sentence summary with enough length.",
-      language: "en",
-      relevance_score: 1.5,
-    });
+    const result = classificationSchema.safeParse({ ...validPayload, relevance_score: 1.5 });
     expect(result.success).toBe(false);
   });
 
   it("rejects too-short summaries", () => {
-    const result = classificationSchema.safeParse({
-      category_slug: "llm",
-      summary: "tiny",
-      language: "en",
-      relevance_score: 0.5,
-    });
+    const result = classificationSchema.safeParse({ ...validPayload, summary_es: "tiny" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing language-specific field", () => {
+    const { title_en, ...rest } = validPayload;
+    void title_en;
+    const result = classificationSchema.safeParse(rest);
     expect(result.success).toBe(false);
   });
 
@@ -83,16 +79,13 @@ describe("classificationSchema", () => {
 
 describe("classifyArticle", () => {
   it("returns parsed classification and usage on valid response", async () => {
-    const client = makeClient({
-      category_slug: "agents",
-      summary: "OpenAI ships a new model with agentic capabilities and tool integration.",
-      language: "en",
-      relevance_score: 0.95,
-    });
+    const client = makeClient(validPayload);
 
     const result = await classifyArticle(sampleArticle, { client, model: "test-model" });
 
-    expect(result.classification.category_slug).toBe("agents");
+    expect(result.classification.category_slug).toBe("llm");
+    expect(result.classification.title_es).toMatch(/GPT-5/);
+    expect(result.classification.title_en).toMatch(/GPT-5/);
     expect(result.usage.totalTokens).toBe(140);
     expect(result.model).toBe("test-model");
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
@@ -115,18 +108,13 @@ describe("classifyArticle", () => {
   });
 
   it("throws when the schema validation fails", async () => {
-    const client = makeClient({
-      category_slug: "not-a-slug",
-      summary: "ok summary long enough to pass length check.",
-      language: "en",
-      relevance_score: 0.5,
-    });
+    const client = makeClient({ ...validPayload, category_slug: "not-a-slug" });
     await expect(classifyArticle(sampleArticle, { client })).rejects.toThrow(/Schema validation/i);
   });
 });
 
 describe("runClassify", () => {
-  it("classifies a batch and writes results", async () => {
+  it("classifies a batch and writes bilingual results", async () => {
     const pending = [
       {
         id: "a1",
@@ -148,12 +136,7 @@ describe("runClassify", () => {
       },
     ];
 
-    const client = makeClient({
-      category_slug: "llm",
-      summary: "Two solid sentences worth of summary content for testing purposes.",
-      language: "en",
-      relevance_score: 0.9,
-    });
+    const client = makeClient(validPayload);
 
     const onClassified = vi.fn(async () => {});
     const onFailed = vi.fn(async () => {});
@@ -172,6 +155,16 @@ describe("runClassify", () => {
     expect(summary.failed).toBe(0);
     expect(summary.tokens.total).toBe(280);
     expect(onClassified).toHaveBeenCalledTimes(2);
+    expect(onClassified).toHaveBeenCalledWith(
+      "a1",
+      expect.objectContaining({
+        categoryId: "cat-id",
+        titleEs: validPayload.title_es,
+        titleEn: validPayload.title_en,
+        summaryEs: validPayload.summary_es,
+        summaryEn: validPayload.summary_en,
+      }),
+    );
     expect(onFailed).not.toHaveBeenCalled();
   });
 
@@ -219,12 +212,7 @@ describe("runClassify", () => {
       },
     ];
 
-    const client = makeClient({
-      category_slug: "llm",
-      summary: "Two solid sentences worth of summary content for testing purposes.",
-      language: "en",
-      relevance_score: 0.9,
-    });
+    const client = makeClient(validPayload);
 
     const onClassified = vi.fn(async () => {});
     const onFailed = vi.fn(async () => {});

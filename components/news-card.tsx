@@ -20,12 +20,12 @@ export async function NewsCard({ article, locale }: NewsCardProps) {
 
   return (
     <article
-      className="group card-hover relative flex flex-col overflow-hidden rounded-2xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] hover:-translate-y-0.5 hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)] focus-within:border-[color:var(--color-border-strong)]"
+      className="group relative isolate flex flex-col overflow-hidden rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface)] transition-colors hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)]"
       style={{ ["--accent" as string]: accent }}
     >
       <span
         aria-hidden
-        className="absolute inset-x-0 top-0 h-[3px]"
+        className="pointer-events-none absolute inset-y-0 left-0 w-[3px]"
         style={{ background: "var(--accent)" }}
       />
 
@@ -37,29 +37,24 @@ export async function NewsCard({ article, locale }: NewsCardProps) {
             alt=""
             loading="lazy"
             referrerPolicy="no-referrer"
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
           />
         ) : (
           <PlaceholderImage accent={accent} label={tCard("noImage")} />
         )}
-        {categoryLabel && (
-          <span
-            className="absolute left-3 top-3 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-background)] shadow-sm backdrop-blur"
-            style={{ background: "var(--accent)" }}
-          >
-            {categoryLabel}
-          </span>
-        )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 p-5">
-        <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-[color:var(--color-muted-foreground)]">
-          <span className="truncate">{article.sourceName}</span>
-          <span aria-hidden>·</span>
-          <time dateTime={article.publishedAt.toISOString()}>
-            {formatRelative(article.publishedAt, locale)}
-          </time>
-        </div>
+      <div className="flex flex-1 flex-col gap-2.5 p-5 pl-6">
+        {categoryLabel && (
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-muted-foreground)]">
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: "var(--accent)" }}
+            />
+            <span>{categoryLabel}</span>
+          </div>
+        )}
 
         <h3 className="text-lg font-semibold leading-snug tracking-tight text-[color:var(--color-foreground)]">
           <a
@@ -78,6 +73,14 @@ export async function NewsCard({ article, locale }: NewsCardProps) {
             {article.summary}
           </p>
         )}
+
+        <div className="mt-auto flex items-center gap-2 pt-2 text-xs text-[color:var(--color-muted-foreground)]">
+          <span className="truncate">{article.sourceName}</span>
+          <span aria-hidden>·</span>
+          <time dateTime={article.publishedAt.toISOString()}>
+            {formatRelative(article.publishedAt, locale)}
+          </time>
+        </div>
       </div>
     </article>
   );
@@ -94,7 +97,7 @@ function PlaceholderImage({ accent, label }: { accent: string; label: string }) 
     >
       <svg
         viewBox="0 0 24 24"
-        className="h-12 w-12 text-[color:var(--color-muted-foreground)] opacity-60"
+        className="h-10 w-10 text-[color:var(--color-muted-foreground)] opacity-50"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"

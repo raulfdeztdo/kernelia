@@ -26,16 +26,20 @@ export interface ClassifySummary {
   };
 }
 
+export interface ClassifiedPayload {
+  categoryId: string;
+  titleEs: string;
+  titleEn: string;
+  summaryEs: string;
+  summaryEn: string;
+}
+
 export interface RunClassifyOptions extends ClassifyOptions {
   limit?: number;
   /** Sleep this many ms between articles. Use to stay within LLM rate limits. */
   delayBetweenMs?: number;
   fetchPending?: (limit: number) => Promise<PendingArticle[]>;
-  onClassified?: (id: string, update: {
-    categoryId: string;
-    summary: string;
-    language: "es" | "en";
-  }) => Promise<void>;
+  onClassified?: (id: string, update: ClassifiedPayload) => Promise<void>;
   onFailed?: (id: string, reason: string) => Promise<void>;
   resolveCategoryId?: (slug: string) => Promise<string | undefined>;
 }
@@ -87,8 +91,10 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
 
       await onClassified(article.id, {
         categoryId,
-        summary: result.classification.summary,
-        language: result.classification.language,
+        titleEs: result.classification.title_es,
+        titleEn: result.classification.title_en,
+        summaryEs: result.classification.summary_es,
+        summaryEn: result.classification.summary_en,
       });
 
       tokens.prompt += result.usage.promptTokens;
