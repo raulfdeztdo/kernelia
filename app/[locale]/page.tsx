@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { CategoryFilter } from "@/components/category-filter";
@@ -10,10 +11,35 @@ import {
 import { parseCategoryParam, type CategorySlug } from "@/lib/categories";
 import { createLogger } from "@/lib/logger";
 import { isLocale } from "@/i18n/routing";
+import { localeAlternates, localizedUrl } from "@/lib/site";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) return {};
+  const t = await getTranslations({ locale, namespace: "metadata" });
+  const tHome = await getTranslations({ locale, namespace: "home" });
+  return {
+    title: t("title"),
+    description: t("description"),
+    alternates: {
+      canonical: localizedUrl(locale, "/"),
+      languages: localeAlternates("/"),
+    },
+    openGraph: {
+      title: tHome("heading"),
+      description: tHome("subheading"),
+      url: localizedUrl(locale, "/"),
+    },
+  };
+}
 
 const PAGE_SIZE = 18;
 const log = createLogger("home");
