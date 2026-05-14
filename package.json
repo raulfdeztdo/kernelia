@@ -62,12 +62,5 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@11.1.1",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp",
-      "unrs-resolver"
-    ]
-  }
+  "packageManager": "pnpm@11.1.1"
 }

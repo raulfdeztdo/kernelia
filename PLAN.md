@@ -19,7 +19,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 2 | Modelo de datos e ingesta RSS | **done** | 2026-05-14 | Schema sources/categories/articles aplicado en Supabase. 10 fuentes seeded. Endpoint `/api/cron/ingest` con auth, 975 articulos pending tras smoke real. Dedupe verificado (segunda corrida = 0 inserts). |
 | 3 | Agente IA (clasificacion + resumen) | **done** | 2026-05-14 | Cliente Cerebras (openai SDK) + Zod + prompt cerrado a 10 slugs. Endpoint `/api/cron/classify` con auth y param `limit`. Smoke real: 23/23 articulos clasificados, 0 failed, ~280ms latencia media, ~720 tokens/articulo. |
 | 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
-| 5 | Pulido, SEO, accesibilidad | pending | — | — |
+| 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. `vercel.json` con crons. Skip-link, focus-visible global y `prefers-reduced-motion`. |
 | 6 | Release v0.1.0 a produccion | pending | — | — |
 
 ---
@@ -209,18 +209,44 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 
 ---
 
-## Fase 5 — Pulido, SEO, accesibilidad · `pending`
+## Fase 5 — Pulido, SEO, accesibilidad · `done`
 
 **Objetivo:** dejar la app presentable y observable antes de produccion.
 
-- [ ] `generateMetadata` por locale (title, description, OG, canonical, alternates `hreflang`).
-- [ ] `sitemap.ts` y `robots.ts` con ambos locales.
-- [ ] Feed RSS propio (`/rss.xml`) opcional.
-- [ ] Auditoria de accesibilidad basica (focus visible, contraste, `aria-*`).
-- [ ] Lighthouse > 90 en performance/SEO/accesibilidad en preview.
-- [ ] `vercel.json` con cron jobs (`ingest` cada 3h, `classify` cada 30min).
-- [ ] Healthcheck `/api/health` (DB ping + ultima ingesta).
-- [ ] Pagina `/about` bilingue con explicacion del proyecto y fuentes.
+### Completado (2026-05-14)
+
+- [x] `lib/site.ts`: resolve del origen publico (`NEXT_PUBLIC_SITE_URL` -> `VERCEL_URL` -> `localhost:3000`), `localizedUrl(locale, path)` y `localeAlternates(path)` (incluye `x-default`).
+- [x] `app/[locale]/layout.tsx` -> `generateMetadata` con `metadataBase`, `title` template, `description`, OG (`type=website`, `siteName`, `locale`, `alternateLocale`), Twitter `summary_large_image`, `robots` (index/follow + googleBot), `alternates.canonical`, `alternates.languages` y `alternates.types['application/rss+xml']`.
+- [x] `app/[locale]/page.tsx` y `app/[locale]/about/page.tsx` extienden la metadata con su propio canonical, OG y alternates por path.
+- [x] `app/sitemap.ts`: home + `/about` por locale con `xhtml:link rel=alternate` y `x-default`.
+- [x] `app/robots.ts`: allow `/`, disallow `/api/`, `sitemap` y `host`.
+- [x] `app/rss.xml/route.ts` + `lib/rss.ts`: builder propio (CDATA, escape XML), endpoint con `?lang=es|en`, `Cache-Control` 10min + SWR 1h, `<atom:link rel=self>`, `<category>` por slug, `pubDate` RFC-822.
+- [x] `db/queries/articles.listLatestForFeed(locale)`: select locale-aware con `coalesce(title_<loc>, title)`, ordenado por `publishedAt desc`.
+- [x] `app/api/health/route.ts`: `select 1` contra Postgres + ultimo `ingested_at` + counts por status; 200/503; `Cache-Control: no-store`.
+- [x] `app/[locale]/about/page.tsx`: explicacion "como funciona", listado de fuentes en vivo (`listSourcesPublic`), categorias con su acento, limites honestos. Bilingue (ES/EN).
+- [x] `vercel.json`: cron `/api/cron/ingest` cada 3h, `/api/cron/classify?limit=20` cada 30min. Vercel inyecta `Authorization: Bearer ${CRON_SECRET}` automaticamente.
+- [x] `components/skip-link.tsx`: enlace "Saltar al contenido" focado, sr-only por defecto, montado en `LocaleLayout` antes del header.
+- [x] Foco accesible: `:focus-visible` global con `outline` accent en `globals.css`; `focus-within` ring en `news-card`; `focus-visible` ring en footer/locale-switcher; `aria-current="page"` y `lang={l}` en `locale-switcher`.
+- [x] `CategoryFilter` con `role="group"` y `aria-label` (`home.filterCategoriesAria`).
+- [x] `@media (prefers-reduced-motion: reduce)` global: anula transiciones/animaciones no esenciales.
+- [x] `messages/{es,en}.json` ampliados con `a11y.skipToContent`, `home.filterCategoriesAria`, `footer.about` y todo el namespace `about.*`.
+- [x] Tests Vitest nuevos: `tests/site.test.ts` (9 tests sobre `getSiteUrl`/`localizedUrl`/`localeAlternates`) y `tests/rss.test.ts` (6 tests sobre el builder). Suite total: **45 tests**.
+
+### Verificacion local
+
+- `pnpm lint` ✔
+- `pnpm typecheck` ✔
+- `pnpm test` ✔ (45 tests: 3 smoke + 14 ingest + 13 classify + 9 site + 6 rss)
+- `pnpm build` ✔: rutas registradas `/[locale]`, `/[locale]/about`, `/api/cron/{ingest,classify}`, `/api/health`, `/rss.xml`, `/robots.txt`, `/sitemap.xml`.
+- Dev smoke (`curl`): `/robots.txt`, `/sitemap.xml`, `/rss.xml`, `/rss.xml?lang=en`, `/api/health`, `/`, `/en`, `/about`, `/en/about` -> todos `200`. Sitemap incluye `<xhtml:link rel="alternate" hreflang>` para `es`, `en`, `x-default`. RSS valida CDATA y `<atom:link rel=self>`. `/api/health` devuelve `{ status: "ok", lastIngestAt, articles: { total, classified, pending, failed } }`.
+
+### Notas operativas
+
+- `NEXT_PUBLIC_SITE_URL` debe poblarse en Vercel con el dominio publico (sin slash). En local cae a `localhost:3000`.
+- Las URLs canonicas de la home difieren entre locales: `/` para `es`, `/en` para `en`. Cada par incluye `hreflang` reciproco + `x-default`.
+- Lighthouse en preview queda como tarea de Fase 6 una vez el dominio este en Vercel (necesita HTTPS real para medir).
+- El crawler ve solo los items `classified` via RSS / sitemap (la home ya filtra por status). Los `pending` siguen invisibles.
+- Vercel cron requiere `CRON_SECRET` en el proyecto. El header `Authorization: Bearer ${CRON_SECRET}` lo añade Vercel automaticamente segun la documentacion oficial.
 
 **Criterio de cierre:** auditoria pasada y crons configurados en Vercel preview.
 

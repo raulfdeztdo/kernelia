@@ -42,7 +42,11 @@ export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
   }
 
   return (
-    <div className="-mx-4 overflow-x-auto px-4">
+    <div
+      className="-mx-4 overflow-x-auto px-4"
+      role="group"
+      aria-label={tHome("filterCategoriesAria")}
+    >
       <div className="flex min-w-min gap-2">
         <button
           type="button"

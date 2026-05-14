@@ -38,6 +38,26 @@ body {
   color: var(--color-foreground);
 }
 
+/* Reasonable defaults so keyboard users always see where focus is, even
+   when a component forgets to opt in explicitly. */
+:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--color-accent) 70%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect prefers-reduced-motion: kill non-essential transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 body {
   background-image:
     radial-gradient(60rem 40rem at 80% -10%, oklch(0.3 0.04 250 / 0.35), transparent 60%),

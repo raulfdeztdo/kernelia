@@ -159,6 +159,45 @@ export async function listClassifiedArticles(
   return rows;
 }
 
+export interface FeedArticle {
+  id: string;
+  title: string;
+  summary: string | null;
+  url: string;
+  publishedAt: Date;
+  sourceName: string;
+  categorySlug: string | null;
+}
+
+/**
+ * Latest classified articles, locale-resolved, intended for the public RSS feed.
+ * Does not paginate — caller passes a small limit (e.g. 50).
+ */
+export async function listLatestForFeed(
+  locale: "es" | "en",
+  limit = 50,
+): Promise<FeedArticle[]> {
+  const titleCol = locale === "es" ? articles.titleEs : articles.titleEn;
+  const summaryCol = locale === "es" ? articles.summaryEs : articles.summaryEn;
+
+  return db
+    .select({
+      id: articles.id,
+      title: sql<string>`coalesce(${titleCol}, ${articles.title})`,
+      summary: summaryCol,
+      url: articles.url,
+      publishedAt: articles.publishedAt,
+      sourceName: sources.name,
+      categorySlug: categories.slug,
+    })
+    .from(articles)
+    .innerJoin(sources, eq(sources.id, articles.sourceId))
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(eq(articles.status, "classified"))
+    .orderBy(desc(articles.publishedAt), desc(articles.id))
+    .limit(limit);
+}
+
 export interface CategoryFacet {
   slug: string;
   count: number;

@@ -3,6 +3,9 @@
     "title": "Kernelia — Noticias de IA, filtradas para ti",
     "description": "Agregador de noticias sobre Inteligencia Artificial, clasificadas y resumidas automáticamente. Filtra por categoría o busca por palabras clave."
   },
+  "a11y": {
+    "skipToContent": "Saltar al contenido"
+  },
   "header": {
     "tagline": "Señal IA, sin ruido.",
     "searchPlaceholder": "Buscar en titulares y resúmenes…",
@@ -19,6 +22,7 @@
     "allCategories": "Todas",
     "filteringBy": "Filtrando por",
     "clearFilters": "Quitar filtros",
+    "filterCategoriesAria": "Filtrar por categoría",
     "resultsCount": "{count, plural, =0 {Sin resultados} one {# noticia} other {# noticias}}",
     "loadMore": "Cargar más",
     "noResults": {
@@ -47,9 +51,37 @@
     "coding": "Coding",
     "other": "Otros"
   },
+  "about": {
+    "title": "Sobre Kernelia",
+    "intro": "Kernelia agrupa lo que se publica sobre Inteligencia Artificial, lo clasifica con un agente y te lo muestra resumido en español y en inglés. Sin opiniones, sin ruido.",
+    "howItWorks": {
+      "title": "Cómo funciona",
+      "step1": "Cada pocas horas leemos los feeds RSS de fuentes seleccionadas.",
+      "step2": "Eliminamos duplicados comparando URLs canónicas.",
+      "step3": "Un modelo open-source clasifica cada noticia en una de diez categorías y genera un resumen breve en ambos idiomas.",
+      "step4": "Solo verás artículos validados por el agente: los descartes quedan fuera."
+    },
+    "categories": {
+      "title": "Categorías",
+      "body": "Estas son las únicas etiquetas posibles. El agente está forzado a elegir una de ellas."
+    },
+    "sources": {
+      "title": "Fuentes",
+      "body": "Solo agregamos publicaciones serias. Los enlaces siempre apuntan al artículo original — Kernelia no aloja contenido ajeno."
+    },
+    "limits": {
+      "title": "Límites honestos",
+      "body": "Los resúmenes los genera un LLM y pueden contener errores o matices perdidos. Para profundizar, lee siempre el artículo original. Las traducciones son automáticas."
+    },
+    "stack": {
+      "title": "Stack",
+      "body": "Next.js, Supabase, Drizzle, Cerebras Llama 3.1, Tailwind v4 y Vercel. Código abierto."
+    }
+  },
   "footer": {
     "tagline": "Construido con Next.js, Supabase y Cerebras.",
     "source": "Código fuente",
+    "about": "Sobre el proyecto",
     "rights": "© {year} Kernelia"
   }
 }
