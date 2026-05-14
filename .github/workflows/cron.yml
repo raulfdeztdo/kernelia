@@ -11,7 +11,14 @@ on:
   schedule:
     # Ingesta cada 3 horas en punto.
     - cron: "0 */3 * * *"
-    # Clasificacion cada 30 minutos (free tier Cerebras digiere 20 articulos/tick).
+    # Clasificacion cada 30 minutos. limit=8 porque Vercel Hobby corta a
+    # los 60s y el handler espera `DEFAULT_DELAY_BETWEEN_MS=3000ms` entre
+    # articulos por el TPM de Cerebras free tier:
+    #   7 huecos x 3s = 21s solo de delays
+    # + 8 llamadas LLM x ~3-4s (Llama 3.x 70B)
+    # = ~45-55s total, deja margen frente al hard cap.
+    # 8 art/tick x 48 ticks/dia = 384 art/dia, suficiente para drenar
+    # un backlog de ~900 en ~2.5 dias.
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
@@ -35,6 +42,10 @@ jobs:
     if: github.event.schedule == '0 */3 * * *' || inputs.job == 'ingest'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # `KERNELIA_PROD_URL` y `CRON_SECRET` viven como secrets del environment
+    # "Production" (no como repo secrets). Sin esta linea `${{ secrets.* }}`
+    # los sustituye por "" y `curl` se queja con "No host part in the URL".
+    environment: Production
     steps:
       - name: Hit /api/cron/ingest
         env:
@@ -42,6 +53,22 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
+          # Fail loud if the secrets are missing. Without this guard GitHub
+          # silently substitutes "" and curl reports the unhelpful
+          # "URL rejected: No host part in the URL" — costing one cron tick
+          # to figure out the real cause.
+          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
+          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
+          # Trim leading/trailing whitespace (incl. the trailing \n that
+          # commonly sneaks in via copy-paste from Vercel) and a trailing
+          # slash. Then sanity-check the result.
+          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
+          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
+          BASE_URL="${BASE_URL%/}"
+          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
+            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL}). Expected something like https://kernelia.dev — no trailing slash, no quotes, no whitespace." >&2
+            exit 1
+          fi
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
             --retry 2 --retry-delay 10 --retry-connrefused \
@@ -55,17 +82,30 @@ jobs:
     if: github.event.schedule == '*/30 * * * *' || inputs.job == 'classify'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: Production
     steps:
-      - name: Hit /api/cron/classify?limit=20
+      - name: Hit /api/cron/classify?limit=8
         env:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
+          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
+          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
+          # Trim leading/trailing whitespace (incl. the trailing \n that
+          # commonly sneaks in via copy-paste from Vercel) and a trailing
+          # slash. Then sanity-check the result.
+          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
+          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
+          BASE_URL="${BASE_URL%/}"
+          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
+            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL}). Expected something like https://kernelia.dev — no trailing slash, no quotes, no whitespace." >&2
+            exit 1
+          fi
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
             --retry 2 --retry-delay 10 --retry-connrefused \
             --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
             --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/classify?limit=20")
+            "${BASE_URL}/api/cron/classify?limit=8")
           echo "${response}"
