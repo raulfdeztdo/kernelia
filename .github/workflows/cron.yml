@@ -1,0 +1,71 @@
+name: Cron
+
+# Vercel Hobby restringe crons a 1/dia, asi que la cadencia real se gestiona
+# desde GitHub Actions (gratis, minimo 5min). Los endpoints siguen siendo los
+# mismos en Vercel y se autentican con CRON_SECRET.
+#
+# Aviso: en repos publicos, los workflows scheduled se DESACTIVAN tras 60 dias
+# sin actividad. Cualquier push/PR resetea ese contador.
+
+on:
+  schedule:
+    # Ingesta cada 3 horas en punto.
+    - cron: "0 */3 * * *"
+    # Clasificacion cada 30 minutos (free tier Cerebras digiere 20 articulos/tick).
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Cual cron disparar manualmente"
+        required: true
+        default: "classify"
+        type: choice
+        options:
+          - ingest
+          - classify
+
+concurrency:
+  group: cron-${{ github.event.schedule || inputs.job }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    name: Ingest RSS feeds
+    # Solo en el schedule de cada 3h, o si el dispatch lo pide explicitamente.
+    if: github.event.schedule == '0 */3 * * *' || inputs.job == 'ingest'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/ingest
+        env:
+          BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 90 \
+            --retry 2 --retry-delay 10 --retry-connrefused \
+            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL}/api/cron/ingest")
+          echo "${response}"
+
+  classify:
+    name: Classify pending articles
+    if: github.event.schedule == '*/30 * * * *' || inputs.job == 'classify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hit /api/cron/classify?limit=20
+        env:
+          BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 90 \
+            --retry 2 --retry-delay 10 --retry-connrefused \
+            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL}/api/cron/classify?limit=20")
+          echo "${response}"
