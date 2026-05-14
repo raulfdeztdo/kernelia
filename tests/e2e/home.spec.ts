@@ -14,7 +14,11 @@ test("loads English home at /en", async ({ page }) => {
 
 test("switches locale from header", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "en", exact: false }).click();
+  // Scope to the locale switcher group so we don't collide with category
+  // chips whose Spanish names contain the substring "en"
+  // (e.g. "Modelos de lenguaje", "Agentes").
+  const localeGroup = page.getByRole("group", { name: "Idioma" });
+  await localeGroup.getByRole("button", { name: "en", exact: true }).click();
   await expect(page).toHaveURL(/\/en$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
