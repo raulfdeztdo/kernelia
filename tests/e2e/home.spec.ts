@@ -14,7 +14,11 @@ test("loads English home at /en", async ({ page }) => {
 
 test("switches locale from header", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "en", exact: false }).click();
+  // Scope to the locale switcher group so we don't collide with category
+  // chips whose Spanish names contain the substring "en"
+  // (e.g. "Modelos de lenguaje", "Agentes").
+  const localeGroup = page.getByRole("group", { name: "Idioma" });
+  await localeGroup.getByRole("button", { name: "en", exact: true }).click();
   await expect(page).toHaveURL(/\/en$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
@@ -29,7 +33,20 @@ test("category filter updates URL", async ({ page }) => {
 
 test("search input writes ?q= to URL", async ({ page }) => {
   await page.goto("/");
+  // Wait for the document and bundle to fully load so React has a chance
+  // to attach its onChange handler to the input.
+  await page.waitForLoadState("load");
+
   const input = page.getByRole("searchbox");
-  await input.fill("openai");
-  await expect(page).toHaveURL(/q=openai/, { timeout: 2000 });
+  await expect(input).toBeVisible();
+  await input.focus();
+
+  // `fill()` is one-shot: if React hasn't hydrated yet, the single onChange
+  // is lost and the URL never updates (we observed "9× polled, never moved"
+  // on slow runners). `pressSequentially` emits a keypress per char, so even
+  // if the first one or two are dropped pre-hydration, the later ones will
+  // fire onChange and the debounced commit() runs.
+  await input.pressSequentially("openai", { delay: 80 });
+
+  await expect(page).toHaveURL(/q=openai/, { timeout: 10000 });
 });

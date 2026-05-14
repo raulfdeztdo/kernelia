@@ -19,7 +19,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 2 | Modelo de datos e ingesta RSS | **done** | 2026-05-14 | Schema sources/categories/articles aplicado en Supabase. 10 fuentes seeded. Endpoint `/api/cron/ingest` con auth, 975 articulos pending tras smoke real. Dedupe verificado (segunda corrida = 0 inserts). |
 | 3 | Agente IA (clasificacion + resumen) | **done** | 2026-05-14 | Cliente Cerebras (openai SDK) + Zod + prompt cerrado a 10 slugs. Endpoint `/api/cron/classify` con auth y param `limit`. Smoke real: 23/23 articulos clasificados, 0 failed, ~280ms latencia media, ~720 tokens/articulo. |
 | 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
-| 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. `vercel.json` con crons. Skip-link, focus-visible global y `prefers-reduced-motion`. |
+| 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. Cron via GitHub Actions (Vercel Hobby restringe a 1/dia). Skip-link, focus-visible global y `prefers-reduced-motion`. |
 | 6 | Release v0.1.0 a produccion | pending | — | — |
 
 ---
@@ -224,7 +224,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 - [x] `db/queries/articles.listLatestForFeed(locale)`: select locale-aware con `coalesce(title_<loc>, title)`, ordenado por `publishedAt desc`.
 - [x] `app/api/health/route.ts`: `select 1` contra Postgres + ultimo `ingested_at` + counts por status; 200/503; `Cache-Control: no-store`.
 - [x] `app/[locale]/about/page.tsx`: explicacion "como funciona", listado de fuentes en vivo (`listSourcesPublic`), categorias con su acento, limites honestos. Bilingue (ES/EN).
-- [x] `vercel.json`: cron `/api/cron/ingest` cada 3h, `/api/cron/classify?limit=20` cada 30min. Vercel inyecta `Authorization: Bearer ${CRON_SECRET}` automaticamente.
+- [x] Cron via GitHub Actions (`.github/workflows/cron.yml`): `/api/cron/ingest` cada 3h y `/api/cron/classify?limit=20` cada 30min. Cada job hace `curl` con `Authorization: Bearer ${CRON_SECRET}`. Tambien expone `workflow_dispatch` para disparos manuales. **Por que no Vercel cron**: el plan Hobby restringe schedules a 1/dia, lo que dejaba la clasificacion sin cadencia util.
 - [x] `components/skip-link.tsx`: enlace "Saltar al contenido" focado, sr-only por defecto, montado en `LocaleLayout` antes del header.
 - [x] Foco accesible: `:focus-visible` global con `outline` accent en `globals.css`; `focus-within` ring en `news-card`; `focus-visible` ring en footer/locale-switcher; `aria-current="page"` y `lang={l}` en `locale-switcher`.
 - [x] `CategoryFilter` con `role="group"` y `aria-label` (`home.filterCategoriesAria`).
@@ -246,7 +246,8 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 - Las URLs canonicas de la home difieren entre locales: `/` para `es`, `/en` para `en`. Cada par incluye `hreflang` reciproco + `x-default`.
 - Lighthouse en preview queda como tarea de Fase 6 una vez el dominio este en Vercel (necesita HTTPS real para medir).
 - El crawler ve solo los items `classified` via RSS / sitemap (la home ya filtra por status). Los `pending` siguen invisibles.
-- Vercel cron requiere `CRON_SECRET` en el proyecto. El header `Authorization: Bearer ${CRON_SECRET}` lo añade Vercel automaticamente segun la documentacion oficial.
+- Cron operado desde GitHub Actions: hace falta crear dos secrets en el repo (Settings -> Secrets and variables -> Actions): `KERNELIA_PROD_URL` (p.ej. `https://kernelia.vercel.app`, sin slash) y `CRON_SECRET` (el mismo string que en Vercel).
+- En repos publicos, los workflows de tipo `schedule` se desactivan automaticamente tras **60 dias sin actividad**. Cualquier push o PR resetea el contador.
 
 **Criterio de cierre:** auditoria pasada y crons configurados en Vercel preview.
 
