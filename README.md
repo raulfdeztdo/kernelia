@@ -34,7 +34,6 @@
     <img src="https://img.shields.io/badge/Cerebras-F05032?style=flat&logoColor=white" alt="Cerebras" />
     <img src="https://img.shields.io/badge/Vercel-000000?style=flat&logo=vercel&logoColor=white" alt="Vercel" />
     <img src="https://img.shields.io/badge/pnpm-F69220?style=flat&logo=pnpm&logoColor=white" alt="pnpm" />
-    [![React Review](https://react.review/api/badge/raulfdeztdo/kernelia)](https://react.review/repo/raulfdeztdo/kernelia)
   </p>
 </div>
 
