@@ -5,29 +5,31 @@
     var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-border: oklch(0.922 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-primary: oklch(0.205 0 0);
-  --color-primary-foreground: oklch(0.985 0 0);
-}
+  /* Dark by default — Kernelia is a night-mode aggregator. */
+  --color-background: oklch(0.16 0.005 260);
+  --color-surface: oklch(0.205 0.008 260);
+  --color-surface-2: oklch(0.245 0.01 260);
+  --color-foreground: oklch(0.985 0 0);
+  --color-muted: oklch(0.245 0.01 260);
+  --color-muted-foreground: oklch(0.7 0.01 260);
+  --color-border: oklch(0.305 0.01 260);
+  --color-border-strong: oklch(0.4 0.01 260);
+  --color-accent: oklch(0.78 0.16 175);
+  --color-accent-foreground: oklch(0.18 0.02 175);
+  --color-primary: oklch(0.985 0 0);
+  --color-primary-foreground: oklch(0.16 0.005 260);
 
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-background: oklch(0.145 0 0);
-    --color-foreground: oklch(0.985 0 0);
-    --color-muted: oklch(0.205 0 0);
-    --color-muted-foreground: oklch(0.708 0 0);
-    --color-border: oklch(0.269 0 0);
-    --color-accent: oklch(0.205 0 0);
-    --color-accent-foreground: oklch(0.985 0 0);
-    --color-primary: oklch(0.985 0 0);
-    --color-primary-foreground: oklch(0.205 0 0);
-  }
+  /* Per-category accent strip (top border of card + badge tint). */
+  --color-cat-llm: oklch(0.7 0.18 295);
+  --color-cat-agents: oklch(0.75 0.16 220);
+  --color-cat-research: oklch(0.78 0.16 175);
+  --color-cat-products: oklch(0.78 0.16 60);
+  --color-cat-robotics: oklch(0.72 0.18 25);
+  --color-cat-policy: oklch(0.82 0.16 95);
+  --color-cat-safety: oklch(0.74 0.18 350);
+  --color-cat-multimodal: oklch(0.78 0.16 200);
+  --color-cat-coding: oklch(0.78 0.18 145);
+  --color-cat-other: oklch(0.65 0.01 260);
 }
 
 html,
@@ -36,6 +38,31 @@ body {
   color: var(--color-foreground);
 }
 
+body {
+  background-image:
+    radial-gradient(60rem 40rem at 80% -10%, oklch(0.3 0.04 250 / 0.35), transparent 60%),
+    radial-gradient(50rem 30rem at -10% 100%, oklch(0.3 0.04 175 / 0.18), transparent 55%);
+  background-attachment: fixed;
+}
+
 * {
   border-color: var(--color-border);
+}
+
+@utility card-hover {
+  transition: transform 200ms ease, border-color 200ms ease, background-color 200ms ease;
+}
+
+@utility line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@utility line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

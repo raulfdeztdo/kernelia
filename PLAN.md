@@ -18,7 +18,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 1 | Bootstrap del proyecto Next.js | **done** | 2026-05-13 | Next 15 + TS estricto + Tailwind v4 + next-intl ES/EN + Drizzle + Vitest + Playwright + CI. Build, lint, typecheck y tests verdes. |
 | 2 | Modelo de datos e ingesta RSS | **done** | 2026-05-14 | Schema sources/categories/articles aplicado en Supabase. 10 fuentes seeded. Endpoint `/api/cron/ingest` con auth, 975 articulos pending tras smoke real. Dedupe verificado (segunda corrida = 0 inserts). |
 | 3 | Agente IA (clasificacion + resumen) | **done** | 2026-05-14 | Cliente Cerebras (openai SDK) + Zod + prompt cerrado a 10 slugs. Endpoint `/api/cron/classify` con auth y param `limit`. Smoke real: 23/23 articulos clasificados, 0 failed, ~280ms latencia media, ~720 tokens/articulo. |
-| 4 | Web: listado, filtros, busqueda, i18n | pending | — | — |
+| 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
 | 5 | Pulido, SEO, accesibilidad | pending | — | — |
 | 6 | Release v0.1.0 a produccion | pending | — | — |
 
@@ -163,22 +163,49 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 
 ---
 
-## Fase 4 — Web: listado, filtros, busqueda, i18n · `pending`
+## Fase 4 — Web: listado, filtros, busqueda, i18n · `done`
 
 **Objetivo:** UI bilingue funcional y agradable.
 
-- [ ] Layout `app/[locale]/layout.tsx` con header (titulo + selector idioma) y footer.
-- [ ] Home `app/[locale]/page.tsx` (RSC): listado paginado por `published_at desc`.
-- [ ] Componente `NewsCard` con: medio, categoria (badge), titulo, resumen, fecha relativa, link externo.
-- [ ] Filtros por categoria (multi-select, server-side via search params).
-- [ ] Input de busqueda con debounce (client) -> `?q=` server-side `ILIKE` sobre title y summary.
-- [ ] Paginacion (cursor por `published_at` + `id`).
-- [ ] Estados UI: skeleton, vacio, error.
-- [ ] Responsive (mobile-first), modo oscuro automatico via Tailwind.
-- [ ] Mensajes en `messages/es.json` y `messages/en.json` completos.
-- [ ] Test E2E Playwright: cargar `/es`, filtrar por categoria, buscar termino, cambiar a `/en`.
+### Completado (2026-05-14)
 
-**Criterio de cierre:** la web funciona en local con datos reales; filtros y busqueda devuelven resultados correctos; cambio de idioma preserva ruta.
+- [x] Schema: columna `image_url TEXT` en `articles` (migracion `0001_normal_squadron_supreme.sql`) aplicada en Supabase.
+- [x] Extraccion de imagen en RSS (`lib/ingest/rss.ts`): enclosure tipo image, `media:content`, `media:thumbnail`, `<image>`, fallback al primer `<img>` en `content:encoded`/`description`. Helper `extractFirstImage` en `lib/ingest/normalize.ts`.
+- [x] Script `db/backfill-images.ts` que re-parsea los feeds y rellena `image_url` de filas existentes con NULL.
+- [x] Theme propio en `app/globals.css`: dark por defecto, acentos OKLCH por categoria (10 colores), gradientes ambientales, utilidades `line-clamp-2/3` y `card-hover`.
+- [x] `components/header.tsx`: sticky, logo sparkles, tagline, search box centrado, locale switcher; `components/footer.tsx` con creditos + año dinamico.
+- [x] `components/search-box.tsx` (client): debounce 350ms -> `router.replace(?q=)`, sync con URL externo via `useEffect`, `useTransition`.
+- [x] `components/category-filter.tsx` (client): chip "Todas" + 10 chips con conteo (facets), multi-select via `category=a,b,c`, accent backgrund por categoria activa.
+- [x] `components/news-card.tsx`: aspect 16/9 con imagen lazy (referrerPolicy no-referrer) o placeholder con gradiente del acento de su categoria + icono sparkles; badge de categoria flotante; tipografia con line-clamp.
+- [x] `app/[locale]/page.tsx`: RSC con `searchParams`, ejecuta `listClassifiedArticles` + `getCategoryFacets` en paralelo, paginacion cursor por `(publishedAt, id)`, estados error/empty/results.
+- [x] `db/queries/articles.ts`: `listClassifiedArticles(params)` con filtros, busqueda `ILIKE` sobre title+summary, cursor keyset; `getCategoryFacets()` para conteo por slug.
+- [x] `lib/categories.ts` (parse + helpers) y `lib/format.ts` (relative time bilingue con `Intl.RelativeTimeFormat`).
+- [x] `messages/{es,en}.json` con keys completas: metadata, header (tagline, search, language), home (heading, subheading, allCategories, resultsCount con plural ICU, loadMore, noResults, error), card, categories (10 slugs), footer (tagline, source, rights).
+- [x] `tests/e2e/home.spec.ts`: home ES, home EN, switch locale, click chip "Agentes" -> URL contiene `category=agents`, escribir en search -> URL contiene `q=`.
+- [x] Rate-limit hook en `lib/ai/run.ts`: opcion `delayBetweenMs` (default 0); el cron de classify usa **3000ms** (~20 RPM) tras observar 429s a 2s en el free tier de Cerebras.
+- [x] Bilingue real: nuevas columnas `title_es`, `title_en`, `summary_es`, `summary_en` (migracion `0002`). El LLM devuelve los 4 campos en cada llamada; `listClassifiedArticles(locale)` selecciona el titulo/resumen del idioma activo via `coalesce(title_<loc>, title)`. La cuasi totalidad de articulos sale en EN del feed; el agente traduce el titulo y genera el resumen fresco en cada idioma.
+- [x] Diseno final de tarjeta: filo de 3px en el lateral izquierdo con color de categoria (en vez de franja superior y badge sobre la imagen). Imagen 16:9 limpia, fila inicial con dot+nombre de categoria en minimalismo, titulo, resumen, y al pie fuente + fecha relativa. Sobrio.
+- [x] `relevance_score` con `z.coerce.number()` para aguantar respuestas LLM que lo devuelven como string.
+
+### Verificacion contra Supabase real
+
+- Backfill de imagenes: **168/975 articulos** con `image_url` poblada (Verge, MIT, Wired, Xataka, Genbeta exponen media:content/enclosure). Hugging Face Blog no aporta imagenes en RSS (777 articulos sin imagen) — el UI muestra placeholder con gradiente.
+- Smoke real `classify` con `delayBetweenMs=2000`: 50 articulos clasificados sin errores ni rate-limit (tiempo ~100s).
+- Dev server smoke (`curl` a `/`, `/en`, `/?category=agents`, `/?q=openai`): home renderiza heading correcto por locale, chips muestran `aria-pressed=true` al filtrar, query string se respeta.
+
+### Verificacion local
+
+- `pnpm lint` ✔
+- `pnpm typecheck` ✔
+- `pnpm test` ✔ (29 tests: 3 smoke + 14 ingest + 12 classify)
+- `pnpm build` ✔ (`/[locale]` 15.4 kB, `/api/cron/{ingest,classify}` registradas)
+
+### Notas operativas
+
+- Las imagenes se sirven con `<img>` plano (no `next/image`) para evitar configurar 10 `remotePatterns` y consumo de optimizaciones en Vercel. `loading="lazy"` + `referrerPolicy="no-referrer"`.
+- Articulos sin imagen reciben un placeholder con gradiente derivado del color de su categoria — no rompe la maqueta.
+- El home solo muestra `status='classified'`. Los `pending` siguen invisibles hasta que el cron los procese.
+- Cerebras free tier (`llama3.1-8b`): ~30 RPM. Con `delayBetweenMs=2000` y `limit=10` por tick, un cron cada 5min digiere ~120 articulos/hora — suficiente para ~3 ciclos completos de ingesta al dia.
 
 ---
 

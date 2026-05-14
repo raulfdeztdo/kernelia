@@ -75,6 +75,21 @@ export function plainTextExcerpt(html: string | undefined | null, max = 500): st
 }
 
 /**
+ * Extract the URL of the first <img> tag in the given HTML, if any.
+ * Returns null when no image is found or the input is empty.
+ */
+export function extractFirstImage(html: string | undefined | null): string | null {
+  if (!html) return null;
+  const match = html.match(/<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/i);
+  if (!match) return null;
+  const src = match[1]?.trim();
+  if (!src) return null;
+  // Basic sanity check
+  if (!/^https?:\/\//i.test(src)) return null;
+  return src;
+}
+
+/**
  * Parse various date string formats. Returns null when input is unusable.
  */
 export function parseDate(input: string | undefined | null): Date | null {

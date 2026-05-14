@@ -66,6 +66,7 @@ async function ingestSource(source: Source): Promise<SourceResult> {
       urlHash: item.urlHash,
       title: item.title,
       rawExcerpt: item.rawExcerpt || null,
+      imageUrl: item.imageUrl,
       language: source.language,
       publishedAt: item.publishedAt,
     }));
