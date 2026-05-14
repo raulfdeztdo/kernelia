@@ -4,6 +4,7 @@
 [![Issues][issues-shield]][issues-url]
 [![License][license-shield]][license-url]
 [![Release][release-shield]][release-url]
+[![React Review](https://react.review/api/badge/raulfdeztdo/kernelia)](https://react.review/repo/raulfdeztdo/kernelia)
 
 <!-- PROJECT LOGO -->
 <br />
