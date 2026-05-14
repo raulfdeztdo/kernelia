@@ -34,6 +34,13 @@ test("category filter updates URL", async ({ page }) => {
 test("search input writes ?q= to URL", async ({ page }) => {
   await page.goto("/");
   const input = page.getByRole("searchbox");
+  // Make sure React has hydrated and the input is interactive before typing.
+  // Otherwise on a slow runner the keystrokes can land before the onChange
+  // listener is attached and the URL never updates.
+  await expect(input).toBeVisible();
   await input.fill("openai");
-  await expect(page).toHaveURL(/q=openai/, { timeout: 2000 });
+  // The SearchBox debounces 350ms + startTransition + router.replace, so on a
+  // cold CI runner the full pipeline can comfortably take 1.5-2s. Give it
+  // 5s of headroom instead of the previous 2s ceiling.
+  await expect(page).toHaveURL(/q=openai/, { timeout: 5000 });
 });
