@@ -255,14 +255,22 @@ Raúl Fernández Tirado — [@raulfdeztdo](https://github.com/raulfdeztdo)
 
 Repositorio: [https://github.com/raulfdeztdo/kernelia](https://github.com/raulfdeztdo/kernelia)
 
-<!-- MARKDOWN LINKS & IMAGES -->
-[contributors-shield]: https://img.shields.io/github/contributors/raulfdeztdo/kernelia.svg?style=for-the-badge
+<!--
+  MARKDOWN LINKS & IMAGES
+  The `&_=v010` is a cache-buster: GitHub proxies external images via
+  Camo and caches each unique URL for up to ~1h. When the release badge
+  rendered "no releases" before we tagged v0.1.0, that response stuck
+  even after tagging. Appending a versioned param forces GitHub to
+  generate a new Camo signature on next push, bypassing the stale cache.
+  Bump `v010` on subsequent releases if a badge looks stale.
+-->
+[contributors-shield]: https://img.shields.io/github/contributors/raulfdeztdo/kernelia.svg?style=for-the-badge&_=v010
 [contributors-url]: https://github.com/raulfdeztdo/kernelia/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/raulfdeztdo/kernelia.svg?style=for-the-badge
+[forks-shield]: https://img.shields.io/github/forks/raulfdeztdo/kernelia.svg?style=for-the-badge&_=v010
 [forks-url]: https://github.com/raulfdeztdo/kernelia/network/members
-[issues-shield]: https://img.shields.io/github/issues/raulfdeztdo/kernelia.svg?style=for-the-badge
+[issues-shield]: https://img.shields.io/github/issues/raulfdeztdo/kernelia.svg?style=for-the-badge&_=v010
 [issues-url]: https://github.com/raulfdeztdo/kernelia/issues
-[license-shield]: https://img.shields.io/github/license/raulfdeztdo/kernelia.svg?style=for-the-badge&cacheSeconds=0
+[license-shield]: https://img.shields.io/github/license/raulfdeztdo/kernelia.svg?style=for-the-badge&cacheSeconds=0&_=v010
 [license-url]: https://github.com/raulfdeztdo/kernelia/blob/main/LICENSE
-[release-shield]: https://img.shields.io/github/v/release/raulfdeztdo/kernelia?style=for-the-badge&color=purple
+[release-shield]: https://img.shields.io/github/v/release/raulfdeztdo/kernelia?style=for-the-badge&color=purple&_=v010
 [release-url]: https://github.com/raulfdeztdo/kernelia/releases/latest
