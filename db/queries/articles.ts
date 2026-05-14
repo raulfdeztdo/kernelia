@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, lte, lt, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   articles,
@@ -7,6 +7,14 @@ import {
   type Article,
   type NewArticle,
 } from "@/db/schema";
+
+/**
+ * Maximum number of articles any single source can contribute to the public
+ * feed. Without this cap, a high-volume source (e.g. Hugging Face Blog with
+ * 700+ posts) would monopolize the listing once classified. The cap is
+ * applied via a `row_number()` window function partitioned by source.
+ */
+const PER_SOURCE_CAP = 5;
 
 export async function insertPendingArticles(rows: NewArticle[]): Promise<number> {
   if (rows.length === 0) return 0;
@@ -112,48 +120,79 @@ export async function listClassifiedArticles(
   const titleCol = params.locale === "es" ? articles.titleEs : articles.titleEn;
   const summaryCol = params.locale === "es" ? articles.summaryEs : articles.summaryEn;
 
-  const conds = [eq(articles.status, "classified")];
+  // Filters that determine the pool from which per-source ranking is computed.
+  // The cap MUST live inside the ranked CTE: if it sat at the outer query it
+  // would be applied after the cursor cut, and pagination could skip articles
+  // that should have made the per-source top-5.
+  const innerConds = [eq(articles.status, "classified")];
 
   if (params.categorySlugs && params.categorySlugs.length > 0) {
-    conds.push(inArray(categories.slug, params.categorySlugs));
+    innerConds.push(inArray(categories.slug, params.categorySlugs));
   }
   if (params.q && params.q.trim().length > 0) {
     const needle = `%${params.q.trim()}%`;
-    // Search the locale-resolved title (falling back to the original feed title)
-    // and the locale-resolved summary.
     const titleMatch = or(ilike(titleCol, needle), ilike(articles.title, needle));
     const summaryMatch = ilike(summaryCol, needle);
     const combined = or(titleMatch, summaryMatch);
-    if (combined) conds.push(combined);
+    if (combined) innerConds.push(combined);
   }
+
+  // CTE: rank each article within its source by recency, then we will keep
+  // only the top PER_SOURCE_CAP rows per source in the outer query. This
+  // prevents one high-volume source from monopolising the public feed.
+  const ranked = db
+    .$with("ranked")
+    .as(
+      db
+        .select({
+          id: articles.id,
+          title: sql<string>`coalesce(${titleCol}, ${articles.title})`.as("title"),
+          url: articles.url,
+          summary: sql<string | null>`${summaryCol}`.as("summary"),
+          imageUrl: articles.imageUrl,
+          sourceLanguage: articles.language,
+          publishedAt: articles.publishedAt,
+          sourceName: sources.name,
+          categorySlug: categories.slug,
+          rn: sql<number>`row_number() over (
+            partition by ${articles.sourceId}
+            order by ${articles.publishedAt} desc, ${articles.id} desc
+          )`.as("rn"),
+        })
+        .from(articles)
+        .innerJoin(sources, eq(sources.id, articles.sourceId))
+        .leftJoin(categories, eq(categories.id, articles.categoryId))
+        .where(and(...innerConds)),
+    );
+
+  const outerConds = [lte(ranked.rn, PER_SOURCE_CAP)];
   if (params.cursor) {
     const cursorCond = or(
-      lt(articles.publishedAt, params.cursor.publishedAt),
+      lt(ranked.publishedAt, params.cursor.publishedAt),
       and(
-        eq(articles.publishedAt, params.cursor.publishedAt),
-        lt(articles.id, params.cursor.id),
+        eq(ranked.publishedAt, params.cursor.publishedAt),
+        lt(ranked.id, params.cursor.id),
       ),
     );
-    if (cursorCond) conds.push(cursorCond);
+    if (cursorCond) outerConds.push(cursorCond);
   }
 
   const rows = await db
+    .with(ranked)
     .select({
-      id: articles.id,
-      title: sql<string>`coalesce(${titleCol}, ${articles.title})`,
-      url: articles.url,
-      summary: summaryCol,
-      imageUrl: articles.imageUrl,
-      sourceLanguage: articles.language,
-      publishedAt: articles.publishedAt,
-      sourceName: sources.name,
-      categorySlug: categories.slug,
+      id: ranked.id,
+      title: ranked.title,
+      url: ranked.url,
+      summary: ranked.summary,
+      imageUrl: ranked.imageUrl,
+      sourceLanguage: ranked.sourceLanguage,
+      publishedAt: ranked.publishedAt,
+      sourceName: ranked.sourceName,
+      categorySlug: ranked.categorySlug,
     })
-    .from(articles)
-    .innerJoin(sources, eq(sources.id, articles.sourceId))
-    .leftJoin(categories, eq(categories.id, articles.categoryId))
-    .where(and(...conds))
-    .orderBy(desc(articles.publishedAt), desc(articles.id))
+    .from(ranked)
+    .where(and(...outerConds))
+    .orderBy(desc(ranked.publishedAt), desc(ranked.id))
     .limit(params.limit);
 
   return rows;

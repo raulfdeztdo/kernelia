@@ -18,8 +18,20 @@
   --color-accent-foreground: oklch(0.18 0.02 175);
   --color-primary: oklch(0.985 0 0);
   --color-primary-foreground: oklch(0.16 0.005 260);
+}
 
-  /* Per-category accent strip (top border of card + badge tint). */
+/*
+ * Per-category accent strip (lateral edge + badge dot). These live OUTSIDE
+ * `@theme` on purpose: Tailwind v4 tree-shakes theme variables that aren't
+ * detected statically in source, and we reference these via
+ * `categoryColorVar(slug)` -> `var(--color-cat-${slug})`, a dynamic string
+ * the scanner cannot follow. Result: only `--color-cat-other` survived
+ * (because there's a literal `"var(--color-cat-other)"` fallback in
+ * components/news-card.tsx), so every non-Other card lost its accent.
+ *
+ * A plain `:root` block is always emitted — problem solved.
+ */
+:root {
   --color-cat-llm: oklch(0.7 0.18 295);
   --color-cat-agents: oklch(0.75 0.16 220);
   --color-cat-research: oklch(0.78 0.16 175);
