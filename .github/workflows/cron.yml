@@ -11,7 +11,14 @@ on:
   schedule:
     # Ingesta cada 3 horas en punto.
     - cron: "0 */3 * * *"
-    # Clasificacion cada 30 minutos (free tier Cerebras digiere 20 articulos/tick).
+    # Clasificacion cada 30 minutos. limit=8 porque Vercel Hobby corta a
+    # los 60s y el handler espera `DEFAULT_DELAY_BETWEEN_MS=3000ms` entre
+    # articulos por el TPM de Cerebras free tier:
+    #   7 huecos x 3s = 21s solo de delays
+    # + 8 llamadas LLM x ~3-4s (Llama 3.x 70B)
+    # = ~45-55s total, deja margen frente al hard cap.
+    # 8 art/tick x 48 ticks/dia = 384 art/dia, suficiente para drenar
+    # un backlog de ~900 en ~2.5 dias.
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
@@ -77,7 +84,7 @@ jobs:
     timeout-minutes: 5
     environment: Production
     steps:
-      - name: Hit /api/cron/classify?limit=20
+      - name: Hit /api/cron/classify?limit=8
         env:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -100,5 +107,5 @@ jobs:
             --retry 2 --retry-delay 10 --retry-connrefused \
             --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
             --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/classify?limit=20")
+            "${BASE_URL}/api/cron/classify?limit=8")
           echo "${response}"
