@@ -16,24 +16,28 @@ const log = createLogger("health");
 export async function GET() {
   const startedAt = Date.now();
   try {
-    // 1. Ping the DB.
-    await db.execute(sql`select 1`);
-
-    // 2. Latest ingest timestamp + classified count (best-effort).
-    const [lastIngestRow] = await db
-      .select({ at: articles.ingestedAt })
-      .from(articles)
-      .orderBy(desc(articles.ingestedAt))
-      .limit(1);
-
-    const [counts] = await db
-      .select({
-        total: sql<number>`count(*)::int`,
-        classified: sql<number>`count(*) filter (where ${articles.status} = 'classified')::int`,
-        pending: sql<number>`count(*) filter (where ${articles.status} = 'pending')::int`,
-        failed: sql<number>`count(*) filter (where ${articles.status} = 'failed')::int`,
-      })
-      .from(articles);
+    // The DB ping, latest-ingest lookup, and counts query are all
+    // independent — race them so the probe finishes in one round-trip
+    // worth of latency instead of three. If any leg throws, the
+    // outer catch surfaces the failure.
+    const [, lastIngestRows, countsRows] = await Promise.all([
+      db.execute(sql`select 1`),
+      db
+        .select({ at: articles.ingestedAt })
+        .from(articles)
+        .orderBy(desc(articles.ingestedAt))
+        .limit(1),
+      db
+        .select({
+          total: sql<number>`count(*)::int`,
+          classified: sql<number>`count(*) filter (where ${articles.status} = 'classified')::int`,
+          pending: sql<number>`count(*) filter (where ${articles.status} = 'pending')::int`,
+          failed: sql<number>`count(*) filter (where ${articles.status} = 'failed')::int`,
+        })
+        .from(articles),
+    ]);
+    const [lastIngestRow] = lastIngestRows;
+    const [counts] = countsRows;
 
     const body = {
       status: "ok" as const,

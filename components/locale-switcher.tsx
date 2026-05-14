@@ -9,14 +9,17 @@ import { cn } from "@/lib/utils";
 export function LocaleSwitcher() {
   const t = useTranslations("header");
   const locale = useLocale() as Locale;
-  const router = useRouter();
+  // Destructure the methods used so the React Compiler can memoize
+  // cleanly and the dependency on `useRouter()` reads as scoped to
+  // `.replace`. Same idiom across the other client components.
+  const { replace } = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
 
   function onChange(nextLocale: Locale) {
     if (nextLocale === locale) return;
     startTransition(() => {
-      router.replace(pathname, { locale: nextLocale });
+      replace(pathname, { locale: nextLocale });
     });
   }
 

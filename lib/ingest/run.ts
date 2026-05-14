@@ -27,11 +27,11 @@ export async function runIngest(): Promise<IngestSummary> {
   const sources = await listActiveSources();
   log.info("ingest start", { sources: sources.length });
 
-  const results: SourceResult[] = [];
-
-  for (const source of sources) {
-    results.push(await ingestSource(source));
-  }
+  // Sources are independent (different hosts, different RSS endpoints) so
+  // we race them. Each `ingestSource` already swallows its own errors
+  // into a `SourceResult` with `error`, so `Promise.all` won't short-
+  // circuit on a single failing feed.
+  const results = await Promise.all(sources.map((source) => ingestSource(source)));
 
   const finishedAt = new Date();
   const totals = results.reduce(

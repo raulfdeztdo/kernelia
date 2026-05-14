@@ -9,8 +9,13 @@ interface SearchBoxProps {
 }
 
 export function SearchBox({ placeholder, ariaLabel }: SearchBoxProps) {
-  const router = useRouter();
+  const { replace } = useRouter();
   const pathname = usePathname();
+  // Note: not destructuring `get` here even though the lint suggests it —
+  // `URLSearchParams.prototype.get` is bound to its instance, so
+  // `const { get } = searchParams; get("q")` throws. The destructure
+  // idiom from React Review only applies to object-literal returns
+  // like `useRouter()`'s methods.
   const searchParams = useSearchParams();
   const initial = searchParams.get("q") ?? "";
   const [value, setValue] = useState(initial);
@@ -39,7 +44,7 @@ export function SearchBox({ placeholder, ariaLabel }: SearchBoxProps) {
     params.delete("cursor");
     const qs = params.toString();
     startTransition(() => {
-      router.replace(qs ? `${pathname}?${qs}` : pathname);
+      replace(qs ? `${pathname}?${qs}` : pathname);
     });
   }
 

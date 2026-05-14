@@ -45,7 +45,7 @@ export function canonicalizeUrl(input: string): string {
     }
 
     // Stable param order so the same URL with reordered params hashes equal.
-    const sorted = new URLSearchParams([...url.searchParams.entries()].sort());
+    const sorted = new URLSearchParams([...url.searchParams.entries()].toSorted());
     url.search = sorted.toString() ? `?${sorted.toString()}` : "";
 
     return url.toString();
