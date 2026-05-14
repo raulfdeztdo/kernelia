@@ -1,14 +1,14 @@
 type Locale = "es" | "en";
 
-const RTF_CACHE = new Map<Locale, Intl.RelativeTimeFormat>();
-function rtf(locale: Locale): Intl.RelativeTimeFormat {
-  let cached = RTF_CACHE.get(locale);
-  if (!cached) {
-    cached = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-    RTF_CACHE.set(locale, cached);
-  }
-  return cached;
-}
+// Hoisted at module load: Intl.RelativeTimeFormat allocates internal
+// data every time it constructs. With only two supported locales we
+// can build both eagerly and avoid the lazy-cache + lookup on each
+// call. `formatRelative` is called once per card (~18 cards per
+// SSR render) so this is the hot path.
+const RTF_BY_LOCALE: Record<Locale, Intl.RelativeTimeFormat> = {
+  es: new Intl.RelativeTimeFormat("es", { numeric: "auto" }),
+  en: new Intl.RelativeTimeFormat("en", { numeric: "auto" }),
+};
 
 const UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
   ["year", 365 * 24 * 3600],
@@ -28,7 +28,7 @@ export function formatRelative(input: Date | string, locale: Locale, now: Date =
   for (const [unit, secs] of UNITS) {
     if (abs >= secs || unit === "second") {
       const value = Math.round(diffSec / secs);
-      return rtf(locale).format(value, unit);
+      return RTF_BY_LOCALE[locale].format(value, unit);
     }
   }
   return "";

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { categoryColorVar, isCategorySlug } from "@/lib/categories";
 import { formatRelative } from "@/lib/format";
@@ -49,13 +50,19 @@ export function NewsCard({ article, locale }: NewsCardProps) {
 
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-[color:var(--color-surface-2)]">
         {article.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          // `next/image` with `fill` lets us keep the existing aspect-ratio
+          // wrapper. `sizes` tells the optimiser to generate srcset for the
+          // three breakpoints the grid actually uses (1 / 2 / 3 columns).
+          // `unoptimized` is intentionally NOT set — the proxy strips
+          // Set-Cookie and blocks SVG XSS, both of which matter when the
+          // host is arbitrary.
+          <Image
             src={article.imageUrl}
             alt=""
-            loading="lazy"
+            fill
+            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
             referrerPolicy="no-referrer"
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
           />
         ) : (
           <SourceCover
@@ -71,7 +78,7 @@ export function NewsCard({ article, locale }: NewsCardProps) {
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-muted-foreground)]">
             <span
               aria-hidden
-              className="h-1.5 w-1.5 rounded-full"
+              className="size-1.5 rounded-full"
               style={{ background: "var(--accent)" }}
             />
             <span>{categoryLabel}</span>

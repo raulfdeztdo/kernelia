@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { NewsCard, type ArticleCardView } from "@/components/news-card";
@@ -40,7 +40,14 @@ export function ArticleList({
   pageSize,
 }: ArticleListProps) {
   const t = useTranslations("home");
+  // Not destructuring `get` even though the lint suggests it: URLSearchParams
+  // methods need their `this` binding.
   const searchParams = useSearchParams();
+  // `initialItems` / `initialCursor` seed the state on mount only. The parent
+  // (app/[locale]/page.tsx) re-keys this component (`key={listKey}`) when the
+  // user changes locale / search / category, which remounts and re-seeds.
+  // No reset-on-prop-change useEffect needed — the key handles it cleanly,
+  // without the cascading set-states React Review flagged.
   const [items, setItems] = useState<ArticleCardView[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [loading, setLoading] = useState(false);
@@ -48,16 +55,6 @@ export function ArticleList({
   // Track in-flight requests so a stale response cannot overwrite newer state
   // if the user clicks twice or filters change mid-fetch.
   const requestIdRef = useRef(0);
-
-  // If the parent (server page) hands us a new initial list because the
-  // category/search changed, reset client state. The parent's URL change
-  // produces a fresh component tree, but we guard against React reusing the
-  // instance by syncing on prop identity.
-  useEffect(() => {
-    setItems(initialItems);
-    setCursor(initialCursor);
-    setError(null);
-  }, [initialItems, initialCursor]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loading) return;

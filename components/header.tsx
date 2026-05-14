@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { LocaleSwitcher } from "@/components/locale-switcher";
@@ -21,10 +22,25 @@ export async function Header() {
         </Link>
 
         <div className="order-3 w-full md:order-2 md:flex-1">
-          <SearchBox
-            placeholder={t("searchPlaceholder")}
-            ariaLabel={t("searchAria")}
-          />
+          {/*
+            SearchBox calls useSearchParams(). Wrapping it in Suspense
+            means Next can render the rest of the page server-side
+            while this slot waits for query params, instead of bailing
+            the WHOLE page out to client-side rendering.
+          */}
+          <Suspense
+            fallback={
+              <div
+                aria-hidden
+                className="h-9 w-full rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)]"
+              />
+            }
+          >
+            <SearchBox
+              placeholder={t("searchPlaceholder")}
+              ariaLabel={t("searchAria")}
+            />
+          </Suspense>
         </div>
 
         <div className="order-2 ml-auto shrink-0 md:order-3">
@@ -42,7 +58,7 @@ function LogoMark() {
   return (
     <svg
       viewBox="0 0 460 470"
-      className="h-7 w-7 shrink-0 text-[color:var(--color-accent)]"
+      className="size-7 shrink-0 text-[color:var(--color-accent)]"
       fill="currentColor"
       aria-hidden
     >

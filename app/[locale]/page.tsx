@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { ArticleList } from "@/components/article-list";
 import type { ArticleCardView } from "@/components/news-card";
@@ -24,8 +25,12 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  const t = await getTranslations({ locale, namespace: "metadata" });
-  const tHome = await getTranslations({ locale, namespace: "home" });
+  // Both translation lookups are independent — race them so metadata
+  // generation isn't a waterfall.
+  const [t, tHome] = await Promise.all([
+    getTranslations({ locale, namespace: "metadata" }),
+    getTranslations({ locale, namespace: "home" }),
+  ]);
   return {
     title: t("title"),
     description: t("description"),
@@ -77,8 +82,12 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
   if (!isLocale(locale)) notFound();
   setRequestLocale(locale);
 
-  const sp = await searchParams;
-  const t = await getTranslations("home");
+  // searchParams and the home-namespace translations are independent —
+  // race them so the page doesn't waterfall before the DB query starts.
+  const [sp, t] = await Promise.all([
+    searchParams,
+    getTranslations("home"),
+  ]);
 
   const selectedCategories = parseCategoryParam(sp.category);
   const q = typeof sp.q === "string" ? sp.q : undefined;
@@ -126,20 +135,31 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
         <p className="max-w-2xl text-[color:var(--color-muted-foreground)]">{t("subheading")}</p>
       </div>
 
-      <CategoryFilter selected={selectedCategories} facets={facets} />
+      {/*
+        Both CategoryFilter and ArticleList call useSearchParams() to
+        keep their UI in sync with URL state. Wrapping each in
+        Suspense isolates the client-rendering boundary to that slot
+        — without it Next bails the entire page out to CSR on every
+        nav.
+      */}
+      <Suspense fallback={<div aria-hidden className="h-9" />}>
+        <CategoryFilter selected={selectedCategories} facets={facets} />
+      </Suspense>
 
       {errored ? (
         <EmptyOrError title={t("error.title")} body={t("error.body")} accent="error" />
       ) : visible.length === 0 ? (
         <EmptyOrError title={t("noResults.title")} body={t("noResults.body")} accent="muted" />
       ) : (
-        <ArticleList
-          key={listKey}
-          initialItems={visible.map(toView)}
-          initialCursor={nextCursor}
-          locale={locale as "es" | "en"}
-          pageSize={LOAD_MORE_PAGE_SIZE}
-        />
+        <Suspense fallback={<div aria-hidden className="h-9" />}>
+          <ArticleList
+            key={listKey}
+            initialItems={visible.map(toView)}
+            initialCursor={nextCursor}
+            locale={locale as "es" | "en"}
+            pageSize={LOAD_MORE_PAGE_SIZE}
+          />
+        </Suspense>
       )}
     </section>
   );

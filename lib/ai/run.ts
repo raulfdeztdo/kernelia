@@ -70,6 +70,13 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   let failed = 0;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
+  // Deliberately serial: Cerebras free tier enforces a TPM cap and we
+  // wait `delayBetweenMs` (typically 3000ms) between articles to stay
+  // under it. Paralelising with Promise.all would trip 429s in seconds
+  // and burn the quota; React Review's `async-await-in-loop` lint is
+  // a false positive in this exact spot. See app/api/cron/classify
+  // for the live `DEFAULT_DELAY_BETWEEN_MS` value and the related
+  // Vercel 60s function-cap reasoning.
   for (const [index, article] of pending.entries()) {
     if (index > 0 && delayBetweenMs > 0) await sleep(delayBetweenMs);
     try {
@@ -84,9 +91,11 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         options,
       );
 
-      const categoryId = await resolveCategoryId(result.classification.category_slug);
+      // Hoist the deep member access read three times below.
+      const { category_slug: categorySlug } = result.classification;
+      const categoryId = await resolveCategoryId(categorySlug);
       if (!categoryId) {
-        throw new Error(`Unknown category slug: ${result.classification.category_slug}`);
+        throw new Error(`Unknown category slug: ${categorySlug}`);
       }
 
       await onClassified(article.id, {
@@ -104,7 +113,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
 
       log.info("article_classified", {
         articleId: article.id,
-        slug: result.classification.category_slug,
+        slug: categorySlug,
         latencyMs: result.latencyMs,
         totalTokens: result.usage.totalTokens,
       });

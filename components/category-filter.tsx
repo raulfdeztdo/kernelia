@@ -14,7 +14,7 @@ interface CategoryFilterProps {
 export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
   const t = useTranslations("categories");
   const tHome = useTranslations("home");
-  const router = useRouter();
+  const { replace } = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
@@ -29,7 +29,7 @@ export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
     params.delete("cursor");
     const qs = params.toString();
     startTransition(() => {
-      router.replace(qs ? `${pathname}?${qs}` : pathname);
+      replace(qs ? `${pathname}?${qs}` : pathname);
     });
   }
 

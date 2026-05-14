@@ -4,12 +4,26 @@ config({ path: ".env.local" });
 config({ path: ".env", override: false });
 
 async function main() {
-  const { drizzle } = await import("drizzle-orm/postgres-js");
-  const { sql, eq, and, isNull } = await import("drizzle-orm");
-  const postgres = (await import("postgres")).default;
-  const schema = await import("./schema");
-  const { listActiveSources } = await import("@/db/queries/sources");
-  const { fetchFeed } = await import("@/lib/ingest/rss");
+  // All these dynamic imports are independent — race them.
+  const [
+    { drizzle },
+    drizzleOrm,
+    postgresMod,
+    schema,
+    sourcesMod,
+    rssMod,
+  ] = await Promise.all([
+    import("drizzle-orm/postgres-js"),
+    import("drizzle-orm"),
+    import("postgres"),
+    import("./schema"),
+    import("@/db/queries/sources"),
+    import("@/lib/ingest/rss"),
+  ]);
+  const { sql, eq, and, isNull } = drizzleOrm;
+  const postgres = postgresMod.default;
+  const { listActiveSources } = sourcesMod;
+  const { fetchFeed } = rssMod;
 
   const url = process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL[_DIRECT] is not set");
@@ -21,6 +35,10 @@ async function main() {
     let totalUpdated = 0;
     let totalFetched = 0;
 
+    // One-off admin script with `max: 1` postgres pool. Parallelising
+    // the per-source and per-item loops would serialise behind the
+    // single connection anyway and obscure the progress logs. Keep
+    // sequential and visible.
     for (const source of sources) {
       try {
         const items = await fetchFeed(source);

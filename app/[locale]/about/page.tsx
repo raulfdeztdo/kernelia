@@ -36,8 +36,11 @@ export default async function AboutPage({ params }: AboutPageProps) {
   if (!isLocale(locale)) notFound();
   setRequestLocale(locale);
 
-  const t = await getTranslations("about");
-  const tCategories = await getTranslations("categories");
+  // Two independent translation lookups — race them.
+  const [t, tCategories] = await Promise.all([
+    getTranslations("about"),
+    getTranslations("categories"),
+  ]);
 
   let sources: { name: string; url: string }[] = [];
   try {
@@ -77,7 +80,7 @@ export default async function AboutPage({ params }: AboutPageProps) {
             >
               <span
                 aria-hidden
-                className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                className="mr-1.5 inline-block size-1.5 rounded-full align-middle"
                 style={{ background: `var(--color-cat-${slug})` }}
               />
               {tCategories(slug)}
