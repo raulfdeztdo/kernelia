@@ -1,16 +1,34 @@
-import { getTranslations } from "next-intl/server";
+"use client";
+
+import { useTranslations } from "next-intl";
 import { categoryColorVar, isCategorySlug } from "@/lib/categories";
 import { formatRelative } from "@/lib/format";
-import type { ListedArticle } from "@/db/queries/articles";
+
+/**
+ * Wire-shape of an article as consumed by the card. Mirrors
+ * `ListedArticle` from `db/queries/articles.ts` but with `publishedAt`
+ * as an ISO string so the same payload works for the SSR pass *and* for
+ * articles fetched via the `/api/articles` JSON route.
+ */
+export interface ArticleCardView {
+  id: string;
+  title: string;
+  url: string;
+  summary: string | null;
+  imageUrl: string | null;
+  publishedAt: string;
+  sourceName: string;
+  categorySlug: string | null;
+}
 
 interface NewsCardProps {
-  article: ListedArticle;
+  article: ArticleCardView;
   locale: "es" | "en";
 }
 
-export async function NewsCard({ article, locale }: NewsCardProps) {
-  const tCategories = await getTranslations("categories");
-  const tCard = await getTranslations("card");
+export function NewsCard({ article, locale }: NewsCardProps) {
+  const tCategories = useTranslations("categories");
+  const tCard = useTranslations("card");
 
   const slug = article.categorySlug && isCategorySlug(article.categorySlug)
     ? article.categorySlug
@@ -81,7 +99,14 @@ export async function NewsCard({ article, locale }: NewsCardProps) {
         <div className="mt-auto flex items-center gap-2 pt-2 text-xs text-[color:var(--color-muted-foreground)]">
           <span className="truncate">{article.sourceName}</span>
           <span aria-hidden>·</span>
-          <time dateTime={article.publishedAt.toISOString()}>
+          {/*
+           * The relative timestamp is computed against `new Date()` on both
+           * server and client. Between SSR and hydration a few seconds can
+           * pass, so the formatted string may drift by one unit. Suppress
+           * the warning rather than locking the SSR value, which would
+           * then look stale forever on long client sessions.
+           */}
+          <time dateTime={article.publishedAt} suppressHydrationWarning>
             {formatRelative(article.publishedAt, locale)}
           </time>
         </div>

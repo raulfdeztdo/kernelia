@@ -14,7 +14,7 @@ import {
  * 700+ posts) would monopolize the listing once classified. The cap is
  * applied via a `row_number()` window function partitioned by source.
  */
-const PER_SOURCE_CAP = 5;
+const PER_SOURCE_CAP = 10;
 
 export async function insertPendingArticles(rows: NewArticle[]): Promise<number> {
   if (rows.length === 0) return 0;

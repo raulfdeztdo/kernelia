@@ -36,19 +36,18 @@ export async function Header() {
 }
 
 function LogoMark() {
+  // The Kernelia "K" wordmark from /media/logo-kernelia.svg, inlined so it
+  // inherits the accent color via `currentColor`. Same paths as the favicon
+  // (app/icon.svg) so the brand is consistent across header + tab.
   return (
     <svg
-      viewBox="0 0 24 24"
-      className="h-6 w-6 text-[color:var(--color-accent)]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      viewBox="0 0 460 470"
+      className="h-7 w-7 shrink-0 text-[color:var(--color-accent)]"
+      fill="currentColor"
       aria-hidden
     >
-      <path d="m12 3 1.9 4 4.1.4-3 2.9.9 4.7L12 12.7l-3.9 2.3.9-4.7-3-2.9 4.1-.4Z" />
-      <path d="M5 19c2-1 5-1 7-1s5 0 7 1" />
+      <polygon points="377,74 316,74 167,240 167,178 125,178 125,351" />
+      <polygon points="210,291 311,390 372,390 240,259" />
     </svg>
   );
 }

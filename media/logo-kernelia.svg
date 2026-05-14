@@ -1,0 +1,23 @@
+<svg width="256" height="256" viewBox="0 0 460 470" xmlns="http://www.w3.org/2000/svg">
+    <g fill="#FFFFFF">
+
+        <!-- Parte superior -->
+        <polygon points="
+      377,74
+      316,74
+      167,240
+      167,178
+      125,178
+      125,351
+    " />
+
+        <!-- Parte inferior -->
+        <polygon points="
+      210,291
+      311,390
+      372,390
+      240,259
+    " />
+
+    </g>
+</svg>

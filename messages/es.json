@@ -25,6 +25,8 @@
     "filterCategoriesAria": "Filtrar por categoría",
     "resultsCount": "{count, plural, =0 {Sin resultados} one {# noticia} other {# noticias}}",
     "loadMore": "Cargar más",
+    "loadingMore": "Cargando…",
+    "loadMoreError": "No pudimos cargar más noticias. Inténtalo de nuevo.",
     "noResults": {
       "title": "Nada por aquí",
       "body": "No encontramos noticias con esos filtros. Prueba con menos restricciones."

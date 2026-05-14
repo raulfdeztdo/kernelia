@@ -9,14 +9,16 @@
 <br />
 <div align="center">
   <h1>
-    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSIyOCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNjNjc4ZGQiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJtMTIgMy0xLjkxMiA1LjgxM2EyIDIgMCAwIDEtMS4yNzUgMS4yNzVMMyAxMmw1LjgxMyAxLjkxMmEyIDIgMCAwIDEgMS4yNzUgMS4yNzVMMTIgMjFsMS45MTItNS44MTNhMiAyIDAgMCAxIDEuMjc1LTEuMjc1TDIxIDEybC01LjgxMy0xLjkxMmEyIDIgMCAwIDEtMS4yNzUtMS4yNzVMMTIgM1oiLz48cGF0aCBkPSJNNSAzdjQiLz48cGF0aCBkPSJNMTkgMTd2NCIvPjxwYXRoIGQ9Ik0zIDVoNCIvPjxwYXRoIGQ9Ik0xNyAxOWg0Ii8+PC9zdmc+" alt="" style="vertical-align: middle; margin-right: 4px;" />
+    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDQ2MCA0NzAiIGZpbGw9IiMyZGQ0YmYiPjxwb2x5Z29uIHBvaW50cz0iMzc3LDc0IDMxNiw3NCAxNjcsMjQwIDE2NywxNzggMTI1LDE3OCAxMjUsMzUxIi8+PHBvbHlnb24gcG9pbnRzPSIyMTAsMjkxIDMxMSwzOTAgMzcyLDM5MCAyNDAsMjU5Ii8+PC9zdmc+" alt="" style="vertical-align: middle; margin-right: 6px;" />
     Kernelia
   </h1>
 
   <p align="center">
     Agregador de noticias sobre Inteligencia Artificial, clasificadas y resumidas automáticamente.
     <br />
-    <a href="#uso"><strong>Explorar la documentación »</strong></a>
+    <a href="https://kernelia.dev"><strong>kernelia.dev »</strong></a>
+    ·
+    <a href="#uso">Documentación</a>
     <br />
     <br />
     <a href="https://github.com/raulfdeztdo/kernelia/issues">Reportar Bug</a>
