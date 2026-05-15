@@ -21,6 +21,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
 | 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. Cron via GitHub Actions (Vercel Hobby restringe a 1/dia). Skip-link, focus-visible global y `prefers-reduced-motion`. |
 | 6 | Release v0.1.0 a produccion | **done** | 2026-05-14 | Dominio kernelia.dev con SSL, brand logo, paginacion append-style, cap por fuente=10, cola de clasificacion round-robin, cron en GHA verde, SEO consistente en produccion (canonical/og/robots/sitemap/RSS apuntan a kernelia.dev). `v0.1.0` taggeado y publicado. |
+| 7 | Backoffice admin (auth + panel) | **pending** | — | Tabla `users` (por email, sin contrasenyas), login en `/admin` via magic-link (Resend), panel con metricas, monitor de cron, gestion de articulos (cambiar `status` con un nuevo valor `hidden` + reasignar categoria entre las existentes), gestion de usuarios (anyadir/quitar emails). Rompe la regla "sin auth" — declarada como excepcion controlada para superficie interna no indexable. |
 
 ---
 
@@ -327,6 +328,385 @@ VentureBeat AI                   7          0
 - [ ] Anuncio publico (opcional).
 
 **Criterio de cierre:** dominio publico sirviendo articulos clasificados al dia, en ES y EN, con SEO consistente y cron auto-sostenido. **Cumplido.**
+
+---
+
+## Fase 7 — Backoffice admin: auth, panel y gestion · `pending`
+
+**Objetivo:** dar al operador humano una superficie privada (`/admin`)
+para observar la web, gobernar el contenido y administrar usuarios
+sin tocar la DB a mano ni pelearse con Vercel/Supabase para tareas
+rutinarias.
+
+### Excepcion a la regla "sin auth"
+
+`context-docs/non-negotiable.md` declara hoy "Web publica, sin auth".
+Esta fase introduce auth pero **solo** para la superficie `/admin/*`,
+que es estrictamente interna. El feed publico, `/api/articles`,
+`rss.xml`, `sitemap.xml`, `robots.txt` y todo lo SEO siguen sin auth
+y siguen siendo el producto. `/admin/*` lleva `noindex, nofollow` y
+queda fuera del sitemap.
+
+Al cerrar la fase, el mismo PR debe actualizar:
+- `context-docs/non-negotiable.md`: reformular el punto a "lectura
+  publica + backoffice privado en `/admin`".
+- `context-docs/coding-principles.md`: declarar los modulos nuevos
+  (`lib/auth/`, `lib/email/`, `db/queries/users.ts`,
+  `db/queries/cron-runs.ts`).
+- `AGENTS.md`: anyadir nota sobre la superficie admin en el resumen.
+
+### Decisiones de arquitectura (cerradas)
+
+- **Auth:** **magic-link por email**. Sin contrasenyas ni hashes.
+  La identidad de un user es su email; para entrar pide un link,
+  lo recibe en su bandeja y al pulsarlo se crea una sesion. Esto
+  elimina toda la superficie de password storage, rotacion, polizas,
+  brute-force y reset flows.
+- **Proveedor de email:** **Resend**. Free tier (100 emails/dia)
+  cubre con margen el uso real (1-3 emails por sesion por admin).
+  Requiere verificar el dominio `kernelia.dev` en Resend (registros
+  DNS SPF/DKIM). Si en el futuro hace falta migrar, el helper
+  `lib/email/send.ts` aisla la integracion en un punto.
+- **Tokens de magic-link:** opaque, 32 bytes random base64url. TTL
+  15 min. Se almacena el SHA-256 en `magic_link_tokens.token_hash`
+  (no el plaintext); al pulsar el link comparamos hashes via
+  `crypto.timingSafeEqual`. Single-use: marca `used_at` al primer
+  consumo, rechazo si ya tiene `used_at` o si paso `expires_at`.
+- **Bootstrap del admin:** env var `INITIAL_ADMIN_EMAIL`. El seed
+  crea un user con ese email **solo si no existe ningun user en
+  la tabla todavia** (idempotente). Sin contrasenyas por defecto,
+  sin force-change.
+- **Sesion:** cookie HTTP-only + signed token. Tabla `sessions`
+  (id, user_id, created_at, expires_at, last_used_at) para poder
+  revocar logout-side sin esperar a expiracion. La cookie lleva
+  solo el `session_id` firmado con HMAC y `SESSION_SECRET`.
+  TTL 7 dias; refresh `last_used_at` en cada uso.
+- **Locale del admin:** sin segmento `[locale]`. `/admin` plano,
+  copy en ES (lengua del operador). Si en el futuro hace falta EN,
+  se anyade despues.
+- **Rate-limit de magic-link:** in-memory counter por IP **y** por
+  email (5 solicitudes / 10 min, lo que se cumpla primero). Bastante
+  para Hobby; no necesitamos Redis.
+- **Indexacion:** `app/admin/layout.tsx` emite `<meta name="robots"
+  content="noindex,nofollow">` y `sitemap.ts` / `robots.ts` excluyen
+  explicitamente `/admin`.
+- **`user_type` enum.** Solo `admin` hoy. Declarado como enum
+  Postgres extensible (`editor`, `viewer` reservados para mas
+  adelante) para no migrar de string a enum despues.
+- **Gestion de categorias:** **solo a nivel articulo individual**.
+  El admin puede reasignar la categoria de un articulo concreto
+  entre los 10 slugs vigentes (parte de 7.D). **No** se permite
+  editar nombres del catalogo, crear nuevas, ni borrar. Editar el
+  catalogo o crear nuevos slugs toca el prompt del LLM y queda
+  fuera de scope: si llega a hacer falta se abre como fase aparte.
+
+### Schema (Drizzle)
+
+Tres tablas nuevas + un valor nuevo en `articleStatusEnum`:
+
+```ts
+// users — operadores del backoffice (auth por email)
+export const userTypeEnum = pgEnum("user_type", ["admin"]); // extensible
+export const users = pgTable("users", {
+  id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+  // Guardar en lowercase + trim para deduplicar variantes ("Foo@x"
+  // vs "foo@x"). Validado con Zod antes del insert.
+  email: text().notNull().unique(),
+  userType: userTypeEnum("user_type").notNull().default("admin"),
+  active: boolean().notNull().default(true), // soft-disable sin borrar
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+});
+
+// magic_link_tokens — single-use, TTL corto (15min)
+export const magicLinkTokens = pgTable(
+  "magic_link_tokens",
+  {
+    id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    tokenHash: text("token_hash").notNull(), // sha256 del token plaintext
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [index("magic_link_tokens_user_id_idx").on(t.userId)],
+);
+
+// sessions — vida del login una vez consumido el magic-link
+export const sessions = pgTable("sessions", {
+  id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, {
+    onDelete: "cascade",
+  }),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// cron_runs — historial de ejecuciones para el monitor
+export const cronJobEnum = pgEnum("cron_job", ["ingest", "classify"]);
+export const cronStatusEnum = pgEnum("cron_run_status", ["ok", "partial", "failed"]);
+export const cronRuns = pgTable("cron_runs", {
+  id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+  job: cronJobEnum().notNull(),
+  status: cronStatusEnum().notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }).notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  // classify: processed/classified/failed/timedOut/budgetExhausted/tokens
+  // ingest: feedsAttempted/articlesInserted/errors
+  // JSONB libre para no migrar cada vez que cambie el resumen.
+  summary: jsonb().notNull(),
+  errorMessage: text("error_message"),
+});
+
+// articleStatusEnum — anyadir valor "hidden"
+// alter type article_status add value 'hidden';
+// La migracion debe correr ANTES de cualquier deploy que asuma el
+// nuevo valor en aplicacion (Postgres no permite usar valores de
+// enum recien anyadidos dentro de la misma transaccion).
+```
+
+### Por que `status = 'hidden'` y no una columna `active`
+
+Reutilizar el enum `status` (anyadiendole `hidden`) en lugar de una
+columna `active` separada tiene dos ventajas:
+
+1. **Las queries publicas no cambian.** Ya filtran `status =
+   'classified'`. Los articulos hidden quedan fuera del feed, RSS,
+   sitemap y contadores **automaticamente**, sin tocar 5 sitios.
+2. **Una sola fuente de verdad para "estado de un articulo".** Un
+   articulo es exactamente uno de: pending, classified, failed,
+   hidden. Sin combinaciones imposibles que validar (e.g. "failed
+   pero active=true").
+
+El precio: el admin no puede mover `pending → classified` a mano sin
+mas. Solo es legal si el articulo ya tiene `category_id`, `title_es`,
+`title_en`, `summary_es`, `summary_en` poblados — las mismas
+columnas que el clasificador automatico exige. El guard vive en
+`adminSetArticleStatus(id, newStatus)` y se valida tanto via Zod
+como con un read previo a la DB:
+
+```ts
+// db/queries/admin-articles.ts
+export async function adminSetArticleStatus(
+  id: string,
+  newStatus: ArticleStatus,
+): Promise<void> {
+  if (newStatus === "classified") {
+    const [row] = await db
+      .select({
+        categoryId: articles.categoryId,
+        titleEs: articles.titleEs,
+        titleEn: articles.titleEn,
+        summaryEs: articles.summaryEs,
+        summaryEn: articles.summaryEn,
+      })
+      .from(articles)
+      .where(eq(articles.id, id))
+      .limit(1);
+    if (!row) throw new Error("Article not found");
+    const missing = [];
+    if (!row.categoryId) missing.push("category_id");
+    if (!row.titleEs)   missing.push("title_es");
+    if (!row.titleEn)   missing.push("title_en");
+    if (!row.summaryEs) missing.push("summary_es");
+    if (!row.summaryEn) missing.push("summary_en");
+    if (missing.length > 0) {
+      throw new Error(
+        `Cannot set status='classified': missing ${missing.join(", ")}`,
+      );
+    }
+  }
+  await db.update(articles).set({ status: newStatus }).where(eq(articles.id, id));
+}
+```
+
+Las otras transiciones son libres (`classified ↔ hidden`,
+`classified → pending`, `failed → pending`, etc.).
+
+### Sub-fase 7.A · Schema + auth backend (magic-link)
+
+- [ ] Migracion Drizzle: tablas `users`, `magic_link_tokens`,
+  `sessions`, `cron_runs`; nuevo valor `hidden` en
+  `articleStatusEnum`. Indices: `users.email` unique ya esta por
+  el `.unique()`, anyadir `sessions.user_id`,
+  `cron_runs.started_at desc`, `magic_link_tokens.user_id`.
+- [ ] `db/seed.ts`: si no existe ningun user, insertar uno con
+  `email = process.env.INITIAL_ADMIN_EMAIL`, `user_type = 'admin'`.
+  Fail-fast si la env var falta. Idempotente: re-correr el seed
+  no toca users existentes.
+- [ ] `lib/auth/tokens.ts`: `generateMagicLinkToken(userId)` ->
+  devuelve `{ plaintext, hash }`. `verifyAndConsumeToken(plaintext)`
+  -> devuelve `{ userId }` o lanza. `crypto.timingSafeEqual` para
+  el compare.
+- [ ] `lib/auth/sessions.ts`: `createSession(userId)`,
+  `getUserBySession(sessionId)`, `revokeSession(sessionId)`.
+  TTL 7 dias; refresh `last_used_at` en cada uso.
+- [ ] `lib/email/send.ts`: helper minimalista alrededor de la API
+  de Resend. Funcion `sendMagicLink({ to, link })`. Plantilla HTML
+  + text inline en el modulo (no JSX) para no traerse @react-email.
+- [ ] Cookie: `__Host-kernelia-session`, `HttpOnly`, `Secure`,
+  `SameSite=Lax`, `Path=/`. Valor: `session_id` firmado HMAC con
+  `SESSION_SECRET`. `getSessionFromCookie(req)` helper compartido.
+- [ ] Rate-limit en `/api/admin/magic-link` (Map en memoria,
+  5 solicitudes / 10 min por IP y por email).
+- [ ] Env vars nuevas: `RESEND_API_KEY`, `EMAIL_FROM`
+  (e.g. `admin@kernelia.dev`), `INITIAL_ADMIN_EMAIL`,
+  `SESSION_SECRET`. Documentadas en `README.md` y verificadas en
+  boot con fail-fast.
+- [ ] Tests Vitest para tokens, sessions y rate-limit.
+
+### Sub-fase 7.B · Login via magic-link
+
+- [ ] `app/admin/login/page.tsx`: server component con form post a
+  `/api/admin/magic-link`. Un solo input (email) + boton "Enviarme
+  enlace". Sin JS para el happy path; mensaje "Si ese email tiene
+  acceso, recibiras un enlace en breve" (constante: no revelamos
+  si el email existe en DB — evita enumeracion).
+- [ ] `app/api/admin/magic-link/route.ts`: POST con `email`.
+  Validar via Zod, normalizar lowercase+trim. Si existe user
+  activo, generar token, persistir hash, enviar email. Si no
+  existe, **igualmente** devolver 200 sin pista para el cliente.
+  Aplica el rate-limit antes del lookup.
+- [ ] `app/admin/auth/callback/route.ts`: GET con `?token=...`.
+  Verifica + consume el token. Si ok, crea session, set-cookie,
+  redirect a `/admin`. Si no, redirect a `/admin/login?error=expired`.
+- [ ] `app/admin/layout.tsx`: middleware-style — valida sesion,
+  redirige a `/admin/login` si no hay. Si la hay pero el user
+  esta `active=false`, revoca todas sus sessions y redirige a
+  `/admin/login?error=revoked`.
+- [ ] `<meta name="robots" content="noindex,nofollow">` en el layout.
+- [ ] Excluir `/admin` de `app/sitemap.ts` y `app/robots.ts`.
+- [ ] Logout: `POST /api/admin/logout` que invalida la session row y
+  borra cookie. Boton en el header del admin.
+
+### Sub-fase 7.C · Panel de metricas + monitor del cron
+
+- [ ] `app/admin/page.tsx` (dashboard): cards con totales agregados
+  obtenidos via nuevas queries en `db/queries/admin.ts`:
+  - Articulos: total / classified / pending / failed / hidden
+  - Por categoria (reusar `getCategoryFacets`, ampliar con
+    breakdown por status)
+  - Por fuente (count + last_ingested_at por fuente)
+  - Tokens consumidos por dia (ultimos 7 dias) desde `cron_runs`
+- [ ] `app/admin/cron/page.tsx`: tabla con ultimas 50 ejecuciones
+  de `cron_runs`, ordenadas desc. Muestra job, status, duracion,
+  resumen relevante (processed/classified/failed/timedOut para
+  classify, inserted/errors para ingest). Filtro por job y status.
+- [ ] `lib/cron-logging.ts`: helper que `runClassify` y `runIngest`
+  llaman al final para persistir en `cron_runs`. Catch defensivo:
+  fallo de logging no debe tumbar el cron.
+- [ ] Modificar `/api/cron/{classify,ingest}/route.ts` para
+  escribir el resultado en `cron_runs` al terminar (success o
+  caught error).
+- [ ] Mostrar info estatica del schedule: "ingest cada 3h en UTC
+  multiplo-de-3, classify cada 30min". Hardcoded en una constante
+  leida tanto por `cron.yml` como por el panel — fuente unica.
+
+### Sub-fase 7.D · Gestion de articulos
+
+- [ ] `app/admin/articles/page.tsx`: tabla paginada (cursor) con
+  filtros por status, categoria, fuente. Columnas: title, source,
+  category, published_at, status. El status `hidden` se muestra
+  con badge distinto a `failed` para distinguir decision humana
+  vs error del LLM.
+- [ ] Accion "Cambiar status": dropdown con los 4 valores del
+  enum. POST `/api/admin/articles/[id]/status`. Server-side usa
+  `adminSetArticleStatus` que aplica el guard descrito arriba
+  (cambiar a `classified` exige las 5 columnas pobladas). Si el
+  guard falla, devuelve 422 con el listado de campos faltantes;
+  la UI muestra el mensaje sin recargar.
+- [ ] Accion "Reasignar categoria": dropdown con los 10 slugs
+  vigentes (mas `null` = sin categoria). Endpoint similar. **Solo**
+  reasigna; no edita el catalogo de categorias. El admin no puede
+  crear ni renombrar slugs (decision cerrada arriba).
+- [ ] Accion "Re-clasificar": atajo que mueve un articulo
+  `classified` o `failed` a `pending` y limpia
+  `classification_error`. Util cuando el LLM se equivoco. El
+  proximo tick del cron lo recoge.
+- [ ] Audit-friendly: cualquier cambio de status o categoria desde
+  el admin loggea via `console.log` estructurado (`{ adminEmail,
+  articleId, action, before, after, ts }`). Sin tabla de audit-log
+  dedicada en V1.
+
+### Sub-fase 7.E · Gestion de usuarios
+
+- [ ] `app/admin/users/page.tsx`: lista con email, user_type,
+  active, last_login_at. Boton "anyadir usuario" y acciones por
+  fila: desactivar / reactivar, borrar.
+- [ ] Endpoint POST `/api/admin/users`: anyadir un email nuevo
+  como user `admin` activo. No requiere "invitar" via email — el
+  user invitado simplemente entra a `/admin/login`, pide
+  magic-link, y entra.
+- [ ] Endpoint DELETE / PATCH `/api/admin/users/[id]`: desactivar
+  / reactivar / borrar. Al desactivar, revocar todas sus sessions
+  activas (`delete from sessions where user_id = ?`).
+- [ ] Guardrails: no permitir borrarse / desactivarse a uno mismo;
+  no permitir dejar el sistema sin ningun admin activo (check
+  antes de desactivar / borrar).
+
+### Seguridad — lista de comprobacion
+
+- [ ] Cookie `__Host-` prefix, `HttpOnly`, `Secure`, `SameSite=Lax`.
+- [ ] HMAC sign del session id con `SESSION_SECRET` (env var
+  obligatoria, fail-fast en boot si falta).
+- [ ] Tokens de magic-link almacenados como SHA-256, single-use,
+  TTL 15min. Compare con `crypto.timingSafeEqual`.
+- [ ] Rate-limit en magic-link (5/10min por IP **y** por email).
+- [ ] Respuesta del endpoint magic-link constante: "si el email
+  tiene acceso, recibiras un enlace". No revela si el email
+  existe (evita enumeracion).
+- [ ] CSRF: usar Next server actions o form post + SameSite=Lax.
+  Magic-link de por si mitiga (el token GET-able no es exploitable
+  sin acceso al inbox).
+- [ ] Logs: nunca loguear tokens completos, secrets, ni el cookie.
+  Solo `userId`, `email` y prefijo del session id si hace falta
+  correlar.
+- [ ] Verificar el dominio `kernelia.dev` en Resend (SPF + DKIM)
+  antes de enviar nada en produccion. Sin verificacion los emails
+  van a spam o se rechazan.
+
+### Open questions
+
+- [ ] **CSP**. El admin no necesita inline scripts; conviene
+  endurecer Content-Security-Policy solo para `/admin/*` antes de
+  exponerlo. Tirarlo a follow-up post-cierre si retrasa.
+- [ ] **2FA / TOTP**. Out of scope inicial. Mencionado para que
+  conste como camino natural si se anyaden mas usuarios. Magic-link
+  ya supone factor "tienes acceso al inbox".
+- [ ] **Audit log**. Sin tabla dedicada en V1; `console.log`
+  estructurado es suficiente para un operador unico. Si se anyaden
+  mas users, abrir sub-fase para tabla `audit_events`.
+
+### Criterio de cierre
+
+1. Primer login en produccion: pides magic-link al email definido
+   en `INITIAL_ADMIN_EMAIL`, llega a tu inbox, lo pulsas, te
+   redirige a `/admin` con metricas en vista.
+2. Mover un articulo a `status='hidden'` desde el admin lo oculta
+   inmediatamente del feed publico, del RSS y del sitemap (sin
+   tocar las queries: el filtro `status='classified'` ya hace el
+   trabajo).
+3. Intentar mover un articulo `pending` (sin categoria/titulos/
+   resumenes en su idioma) a `classified` falla con mensaje
+   accionable; mover uno que SI los tiene funciona.
+4. Reasignar la categoria de un articulo desde el admin se ve
+   reflejado en la home publica al refrescar.
+5. Anyadir un segundo usuario admin desde `/admin/users`, hacer
+   logout, pedir magic-link con el email nuevo: llega, entra,
+   funciona.
+6. Tabla `cron_runs` se rellena automaticamente con cada tick del
+   cron en GHA; el monitor en `/admin/cron` muestra los ultimos 50.
+7. `noindex,nofollow` en `/admin/*` verificado en HTML de la
+   preview de Vercel.
+8. `context-docs/non-negotiable.md`, `context-docs/coding-principles.md`
+   y `AGENTS.md` actualizados en el mismo PR (sub-fase 7.A o donde
+   toque la regla).
 
 ---
 
