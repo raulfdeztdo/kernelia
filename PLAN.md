@@ -21,6 +21,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
 | 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. Cron via GitHub Actions (Vercel Hobby restringe a 1/dia). Skip-link, focus-visible global y `prefers-reduced-motion`. |
 | 6 | Release v0.1.0 a produccion | **done** | 2026-05-14 | Dominio kernelia.dev con SSL, brand logo, paginacion append-style, cap por fuente=10, cola de clasificacion round-robin, cron en GHA verde, SEO consistente en produccion (canonical/og/robots/sitemap/RSS apuntan a kernelia.dev). `v0.1.0` taggeado y publicado. |
+| 7 | Backoffice admin (auth + panel) | **pending** | — | Tabla `users`, login en `/admin` con credenciales por defecto `admin`/`root` (forzar cambio en primer login), panel con metricas, monitor de cron, gestion de articulos (activar/desactivar, reasignar categoria), gestion del catalogo de categorias y gestion de usuarios. Rompe la regla "sin auth" — declarada como excepcion controlada para superficie interna no indexable. |
 
 ---
 
@@ -327,6 +328,282 @@ VentureBeat AI                   7          0
 - [ ] Anuncio publico (opcional).
 
 **Criterio de cierre:** dominio publico sirviendo articulos clasificados al dia, en ES y EN, con SEO consistente y cron auto-sostenido. **Cumplido.**
+
+---
+
+## Fase 7 — Backoffice admin: auth, panel y gestion · `pending`
+
+**Objetivo:** dar al operador humano una superficie privada (`/admin`)
+para observar la web, gobernar el contenido y administrar usuarios
+sin tocar la DB a mano ni pelearse con Vercel/Supabase para tareas
+rutinarias.
+
+### Excepcion a la regla "sin auth"
+
+`context-docs/non-negotiable.md` declara hoy "Web publica, sin auth".
+Esta fase introduce auth pero **solo** para la superficie `/admin/*`,
+que es estrictamente interna. El feed publico, `/api/articles`,
+`rss.xml`, `sitemap.xml`, `robots.txt` y todo lo SEO siguen sin auth
+y siguen siendo el producto. `/admin/*` lleva `noindex, nofollow` y
+queda fuera del sitemap.
+
+Al cerrar la fase, el mismo PR debe actualizar:
+- `context-docs/non-negotiable.md`: reformular el punto a "lectura
+  publica + backoffice privado en `/admin`".
+- `context-docs/coding-principles.md`: declarar los modulos nuevos
+  (`lib/auth/`, `db/queries/users.ts`, `db/queries/cron-runs.ts`).
+- `AGENTS.md`: anyadir nota sobre la superficie admin en el resumen.
+
+### Decisiones de arquitectura (cerradas)
+
+- **Hash de contrasenya:** `bcrypt` via `bcryptjs` (pure-JS, sin
+  dependencia nativa que rompa el build en Vercel). Cost factor 12.
+- **Sesion:** cookie HTTP-only + signed token. Almacenamos las
+  sesiones en una tabla `sessions` (id, user_id, created_at,
+  expires_at, last_used_at) para poder revocar logout-side sin
+  esperar a expiracion. La cookie lleva solo el `session_id`
+  firmado con HMAC.
+- **Locale del admin:** sin segmento `[locale]`. `/admin` plano,
+  copy en ES (es la lengua del operador). Si en el futuro hace
+  falta EN, se anyade despues.
+- **Rate-limit del login:** in-memory counter por IP (5 intentos /
+  10 min) suficiente para Hobby. No necesitamos Redis.
+- **Indexacion:** `app/admin/layout.tsx` emite `<meta name="robots"
+  content="noindex,nofollow">` y `sitemap.ts` excluye explicitamente
+  `/admin`.
+
+### Decisiones de arquitectura (abiertas — a cerrar en arch-agent)
+
+- **Categorias editables vs catalogo fijo.** La taxonomia esta hoy
+  hardcoded en el prompt del LLM (`lib/ai/schemas.ts` -> 10 slugs).
+  Permitir editar nombres y colores **sin** tocar slugs es trivial.
+  Permitir crear nuevos slugs requiere regenerar el prompt en cada
+  ingest (o leer la taxonomia de la DB en `classify.ts`). Default
+  recomendado: edicion de nombre/color libre, slug inmutable, "add
+  category" detras de un flag explicito que avise del impacto en el
+  prompt.
+- **`user_type` enum.** El usuario pide solo `admin` por defecto. Lo
+  declaramos como enum Postgres extensible (`admin` hoy; `editor`,
+  `viewer` reservados para mas adelante) para no migrar de string a
+  enum despues.
+
+### Schema (Drizzle)
+
+Tres tablas nuevas + una columna en `articles`:
+
+```ts
+// users — operadores del backoffice
+export const userTypeEnum = pgEnum("user_type", ["admin"]); // extensible
+export const users = pgTable("users", {
+  id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+  username: text().notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  userType: userTypeEnum("user_type").notNull().default("admin"),
+  mustChangePassword: boolean("must_change_password").notNull().default(true),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  active: boolean().notNull().default(true), // soft-disable sin borrar
+});
+
+// sessions — cookie -> user, revocable
+export const sessions = pgTable("sessions", {
+  id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// cron_runs — historial de ejecuciones para el monitor
+export const cronJobEnum = pgEnum("cron_job", ["ingest", "classify"]);
+export const cronStatusEnum = pgEnum("cron_run_status", ["ok", "partial", "failed"]);
+export const cronRuns = pgTable("cron_runs", {
+  id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+  job: cronJobEnum().notNull(),
+  status: cronStatusEnum().notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }).notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  // Para classify: processed/classified/failed/timedOut/budgetExhausted/tokens
+  // Para ingest: feedsAttempted/articlesInserted/errors
+  // JSONB libre para no migrar cada vez que cambie el resumen.
+  summary: jsonb().notNull(),
+  errorMessage: text("error_message"),
+});
+
+// articles — soft-disable desde el admin
+// alter table articles add column active boolean not null default true;
+```
+
+`articles.active = false` debe **excluir** el articulo de
+`listClassifiedArticles`, `countClassifiedArticles`,
+`getCategoryFacets`, `listLatestForFeed` (RSS) y de `sitemap.ts`. Es
+una excusa para refactorizar el filtro `status='classified'` en una
+constante reutilizable.
+
+### Sub-fase 7.A · Schema + auth backend
+
+- [ ] Migracion Drizzle: tablas `users`, `sessions`, `cron_runs`;
+  columna `articles.active`. Indices: `users.username` unique ya
+  esta por el `.unique()`, anyadir `sessions.user_id`,
+  `cron_runs.started_at desc`.
+- [ ] `db/seed.ts`: si no existe ningun user, insertar `admin` con
+  `bcrypt.hash("root", 12)` y `must_change_password = true`.
+  Idempotente: re-correr el seed no machaca contrasenyas ya
+  cambiadas.
+- [ ] `lib/auth/passwords.ts`: `hashPassword(plain)`, `verifyPassword(plain, hash)`.
+- [ ] `lib/auth/sessions.ts`: `createSession(userId)`, `getUserBySession(sessionId)`,
+  `revokeSession(sessionId)`. TTL 7 dias; refresh `last_used_at` en cada uso.
+- [ ] Cookie: `__Host-kernelia-session`, `HttpOnly`, `Secure`,
+  `SameSite=Lax`, `Path=/`. Valor: `session_id` firmado HMAC con
+  `SESSION_SECRET` (env var nueva). `getSessionFromCookie(req)`
+  helper compartido.
+- [ ] Rate-limit en `/api/admin/login` (Map en memoria,
+  5 intentos / 10 min por IP, reset al exito).
+- [ ] Tests Vitest para passwords y sessions.
+
+### Sub-fase 7.B · Login + force-change-password
+
+- [ ] `app/admin/login/page.tsx`: server component con form post a
+  `/api/admin/login`. Sin JS para el happy path; mensajes de error
+  via query param o estado server. Diseño minimo (no shadcn pesado,
+  card centrada).
+- [ ] `app/api/admin/login/route.ts`: POST con `username` + `password`.
+  Validar via Zod. Verificar hash. Si OK, crear session, set-cookie,
+  redirect a `/admin` (o a `/admin/change-password` si
+  `must_change_password = true`).
+- [ ] `app/admin/change-password/page.tsx` + endpoint asociado.
+  Pide contrasenya actual + nueva + confirmacion. Aplica el cambio
+  y baja la flag `must_change_password`. Min 12 caracteres, no igual
+  a la anterior, una mayuscula, un numero (politica explicita).
+- [ ] `app/admin/layout.tsx`: middleware-style — valida sesion,
+  redirige a `/admin/login` si no hay; si la hay pero
+  `must_change_password=true`, redirige a `/admin/change-password`
+  excepto en esa misma ruta.
+- [ ] `<meta name="robots" content="noindex,nofollow">` en el layout.
+- [ ] Excluir `/admin` de `app/sitemap.ts` y `app/robots.ts`.
+- [ ] Logout: `POST /api/admin/logout` que invalida la session row y
+  borra cookie. Boton en el header del admin.
+
+### Sub-fase 7.C · Panel de metricas + monitor del cron
+
+- [ ] `app/admin/page.tsx` (dashboard): cards con totales agregados
+  obtenidos via nuevas queries en `db/queries/admin.ts`:
+  - Articulos: total / classified / pending / failed / inactive
+  - Por categoria (reusar `getCategoryFacets` ampliado con pending)
+  - Por fuente (count + last_ingested_at por fuente)
+  - Tokens consumidos por dia (ultimos 7 dias) desde `cron_runs`
+- [ ] `app/admin/cron/page.tsx`: tabla con ultimas 50 ejecuciones de
+  `cron_runs`, ordenadas desc. Muestra job, status, duracion,
+  resumen relevante (processed/classified/failed para classify,
+  inserted/errors para ingest). Filtro por job y status.
+- [ ] `lib/cron-logging.ts`: helper que `runClassify` y `runIngest`
+  llaman al final para persistir en `cron_runs`. Catch defensivo:
+  fallo de logging no debe tumbar el cron.
+- [ ] Modificar `/api/cron/{classify,ingest}/route.ts` para escribir
+  el resultado en `cron_runs` al terminar (success o caught error).
+- [ ] Mostrar info estatica del schedule: "ingest cada 3h en
+  UTC multiplo-de-3, classify cada 30min". Hardcoded en una
+  constante leida tanto por `cron.yml` como por el panel — fuente
+  unica.
+
+### Sub-fase 7.D · Gestion de articulos
+
+- [ ] `app/admin/articles/page.tsx`: tabla paginada (cursor) con
+  filtros por status, categoria, fuente, active. Columnas: title,
+  source, category, published_at, status, active.
+- [ ] Accion "Toggle active": POST `/api/admin/articles/[id]/toggle-active`.
+  Verifica sesion + admin. Server action o route handler con
+  `revalidatePath`.
+- [ ] Accion "Edit category": dropdown con los 10 slugs vigentes
+  (mas `null` = sin clasificar). Endpoint similar. Audit-friendly:
+  loguear el cambio (quien y cuando) — bastante con `console.log`
+  estructurado, no exige tabla de audit-log inicial.
+- [ ] Accion "Re-clasificar": marca un articulo como `pending`
+  (status='pending', classification_error=null) para que el proximo
+  cron lo coja. Util para articulos mal etiquetados.
+- [ ] **Importante:** todas las queries publicas (`listClassifiedArticles`,
+  `countClassifiedArticles`, `getCategoryFacets`, `listLatestForFeed`)
+  deben pasar a filtrar `active = true`. Es un cambio puntual pero
+  hay que tocar todas a la vez para que el toggle sea coherente.
+- [ ] Excluir articulos `active=false` del `sitemap.xml` y del RSS.
+
+### Sub-fase 7.E · Gestion del catalogo de categorias
+
+- [ ] `app/admin/categories/page.tsx`: lista con count de articulos
+  por categoria, edicion in-line de `name_es`, `name_en`. Slug
+  inmutable (cambiar slug rompe el prompt del LLM).
+- [ ] Endpoint PATCH para actualizar nombres ES/EN.
+- [ ] **No** permitir borrar categorias usadas. Si una categoria
+  tiene 0 articulos, mostrarla con boton de archivar (soft-delete:
+  nueva columna `categories.archived boolean default false`).
+- [ ] Anyadir nueva categoria queda **fuera de scope** de esta
+  sub-fase (cambiar el set de slugs implica tocar el prompt del
+  LLM y regenerar el embedding/clasificacion). Se documenta como
+  follow-up; si llega a hacer falta, abrirla como sub-fase 7.G.
+
+### Sub-fase 7.F · Gestion de usuarios
+
+- [ ] `app/admin/users/page.tsx`: lista de usuarios con username,
+  user_type, active, last_login_at. Boton "crear usuario" y acciones
+  por fila: desactivar/reactivar, forzar cambio de contrasenya,
+  borrar (solo si no es uno mismo y no es el ultimo admin activo).
+- [ ] Endpoint POST `/api/admin/users` para crear: username +
+  password inicial + user_type. `must_change_password=true` por
+  defecto para que el nuevo user lo cambie en su primer login.
+- [ ] Guardrails: no permitir borrarse a uno mismo; no permitir
+  dejar el sistema sin ningun admin activo (check antes de
+  desactivar/borrar).
+- [ ] Re-utilizar `lib/auth/passwords.ts` y la misma politica de
+  contrasenya.
+
+### Seguridad — lista de comprobacion
+
+- [ ] Bcrypt cost 12 (~250ms/hash en Vercel — acceptable).
+- [ ] Cookie `__Host-` prefix, `HttpOnly`, `Secure`, `SameSite=Lax`.
+- [ ] HMAC sign del session id con `SESSION_SECRET` (env var
+  obligatoria, fail-fast en boot si falta).
+- [ ] Rate-limit en login (5/10min/IP). Si en algun momento se
+  necesita persistente, migrar a Postgres (table `login_attempts`).
+- [ ] Constant-time compare en verificacion de hashes (bcrypt lo
+  hace internamente; pero el HMAC del session id debe usar
+  `crypto.timingSafeEqual`).
+- [ ] CSRF: usar Next server actions o tokens en route handlers que
+  mutan estado. Para el login basta con SameSite=Lax + form post.
+- [ ] Logs: nunca loguear `password`, `passwordHash`, ni el cookie
+  completo. Solo `userId`, `username` y el sufijo del session id si
+  hace falta correlar.
+
+### Open questions
+
+- [ ] **CSP**. El admin no necesita inline scripts; conviene
+  endurecer Content-Security-Policy solo para `/admin/*` antes de
+  exponerlo. Tirarlo a follow-up post-cierre si retrasa.
+- [ ] **2FA / TOTP**. Out of scope inicial. Mencionado para que
+  conste como camino natural si se anyaden mas usuarios.
+- [ ] **Audit log**. Sin tabla dedicada en V1; `console.log`
+  estructurado es suficiente para un operador unico. Si se anyaden
+  mas users, abrir sub-fase para tabla `audit_events`.
+
+### Criterio de cierre
+
+1. Login en produccion con `admin`/`root` redirige a
+   `/admin/change-password`. Tras cambiar, redirige a `/admin` con
+   las metricas en vista.
+2. Toggle active sobre un articulo lo oculta inmediatamente del
+   feed publico, del RSS y del sitemap.
+3. Editar el nombre de una categoria se ve reflejado en la home
+   publica al refrescar.
+4. Crear un segundo usuario admin desde `/admin/users`, hacer
+   logout, login con el nuevo: funciona y arranca con
+   `must_change_password=true`.
+5. Tabla `cron_runs` se rellena automaticamente con cada tick del
+   cron en GHA; el monitor en `/admin/cron` muestra los ultimos 50.
+6. `noindex,nofollow` en `/admin/*` verificado en HTML de la
+   preview de Vercel.
+7. `context-docs/non-negotiable.md`, `context-docs/coding-principles.md`
+   y `AGENTS.md` actualizados en el mismo PR (sub-fase 7.A o donde
+   toque la regla).
 
 ---
 
