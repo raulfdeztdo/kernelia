@@ -31,6 +31,12 @@ coverage/
 .env
 .env.local
 .env.*.local
+
+# opencode personal config (API keys, MCP secrets, model overrides).
+# Bootstrapping: copy `opencode.example.jsonc` → `opencode.jsonc` and
+# edit. opencode reads the gitignored versions; the `.example.jsonc`
+# is only a template kept under version control.
+opencode.json
 opencode.jsonc
 
 # Tooling local
