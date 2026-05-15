@@ -13,6 +13,13 @@ interface ArticleListProps {
   locale: "es" | "en";
   /** Size of each "Load more" chunk. */
   pageSize: number;
+  /**
+   * Total matching articles for the current filters (under the per-source
+   * cap). Stays constant while the user pages through with "Cargar más" —
+   * the header should read "N noticias" where N is the whole pool, not the
+   * subset rendered so far.
+   */
+  total: number;
 }
 
 interface ApiResponse {
@@ -38,6 +45,7 @@ export function ArticleList({
   initialCursor,
   locale,
   pageSize,
+  total,
 }: ArticleListProps) {
   const t = useTranslations("home");
   // Not destructuring `get` even though the lint suggests it: URLSearchParams
@@ -110,7 +118,7 @@ export function ArticleList({
   return (
     <>
       <p className="text-sm text-[color:var(--color-muted-foreground)]">
-        {t("resultsCount", { count: items.length })}
+        {t("resultsCount", { count: total })}
       </p>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
