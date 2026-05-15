@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/auth/cron";
 import { runClassify, DEFAULT_BATCH_SIZE } from "@/lib/ai/run";
+import { classifyStatus, logCronRun } from "@/lib/cron-logging";
 
 // Cerebras free tier ~30 RPM on llama3.1-8b but TPM cap kicks in earlier;
 // 3s gap (~20 RPM) holds steady even when several batches run within a minute.
@@ -32,15 +33,32 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  const startedAt = new Date();
   try {
     const summary = await runClassify({
       limit: parseLimit(request),
       delayBetweenMs: DEFAULT_DELAY_BETWEEN_MS,
       maxWallTimeMs: WALL_TIME_BUDGET_MS,
     });
+    // Best-effort persistence to `cron_runs` for the admin monitor.
+    await logCronRun({
+      job: "classify",
+      status: classifyStatus(summary),
+      startedAt,
+      finishedAt: new Date(),
+      summary: summary as unknown as Record<string, unknown>,
+    });
     return NextResponse.json(summary);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    await logCronRun({
+      job: "classify",
+      status: "failed",
+      startedAt,
+      finishedAt: new Date(),
+      summary: { error: message },
+      errorMessage: message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
