@@ -17,12 +17,23 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
 - Raiz unica.
 - Convencion de rutas:
   - `app/` — App Router (paginas, layouts, route handlers).
-  - `app/[locale]/` — paginas con segmento de locale.
-  - `app/api/` — route handlers (cron, health).
+  - `app/[locale]/` — paginas publicas con segmento de locale.
+  - `app/admin/` — backoffice privado (sin segmento locale, copy en ES).
+    `noindex,nofollow` y fuera del sitemap. Toda la rama requiere sesion
+    valida; la unica excepcion es `/admin/login` y `/admin/auth/callback`.
+  - `app/api/` — route handlers (cron, health, admin).
+  - `app/api/admin/` — endpoints internos del backoffice (magic-link,
+    sessions, gestion de articulos y usuarios).
   - `lib/` — utilidades compartidas (clients, helpers).
   - `lib/ai/` — cliente Cerebras + prompts + schemas Zod.
   - `lib/ingest/` — RSS parser, dedupe, normalizacion.
+  - `lib/auth/` — tokens magic-link, sesiones HMAC, rate-limit, helpers
+    de cookie. **Server-only**; nunca importar desde componentes cliente.
+  - `lib/email/` — wrapper minimo sobre Resend (`sendMagicLink`).
   - `db/` — schema Drizzle, migraciones, queries.
+  - `db/queries/` — unico punto de acceso a la DB. Incluye
+    `users.ts`, `cron-runs.ts` y (en sub-fases siguientes)
+    `admin-articles.ts`.
   - `components/` — UI (server y client components).
   - `components/ui/` — primitivos shadcn/ui.
   - `messages/` — `es.json`, `en.json` para next-intl.
@@ -90,6 +101,12 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
   - Cron protegido por `CRON_SECRET` en header (`Authorization: Bearer ...`).
   - Service role key de Supabase **solo** en server (`process.env.SUPABASE_SERVICE_ROLE`).
   - Anon key para lectura publica desde el cliente si se requiere.
+  - **Admin (Fase 7):** auth solo en `/admin/*`. Cookie `__Host-kernelia-session`
+    firmada con HMAC (`SESSION_SECRET`, >= 32 chars). Magic-link via Resend:
+    token plaintext en el email, en DB solo SHA-256 + `expires_at` (15min) +
+    `used_at` para single-use. Rate-limit in-memory por IP **y** por email
+    (5 / 10 min) en el endpoint de magic-link. La respuesta del endpoint
+    es constante (sin pista de si el email existe) para evitar enumeracion.
 - Rate limit en endpoints de busqueda si llegan a publico (no urgente).
 
 ## 9. CI/CD
