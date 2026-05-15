@@ -10,6 +10,12 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// Leave 8s of headroom under the Vercel cap for the JSON response
+// to flush and the gateway to ACK. Without this margin a slow tail
+// LLM call pushes the function past 60s → 504 → curl --retry 2
+// triples the Cerebras load and the next franja also fails.
+const WALL_TIME_BUDGET_MS = (maxDuration - 8) * 1000;
+
 const MAX_LIMIT = 50;
 
 function parseLimit(request: Request): number {
@@ -30,6 +36,7 @@ export async function GET(request: Request) {
     const summary = await runClassify({
       limit: parseLimit(request),
       delayBetweenMs: DEFAULT_DELAY_BETWEEN_MS,
+      maxWallTimeMs: WALL_TIME_BUDGET_MS,
     });
     return NextResponse.json(summary);
   } catch (err) {
