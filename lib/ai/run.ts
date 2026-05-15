@@ -1,3 +1,4 @@
+import { APIConnectionTimeoutError, APIUserAbortError } from "openai";
 import { getCategoryMap } from "@/db/queries/categories";
 import {
   listPendingArticles,
@@ -19,6 +20,13 @@ export interface ClassifySummary {
   processed: number;
   classified: number;
   failed: number;
+  /**
+   * Articles whose LLM call timed out or was aborted. NOT marked as
+   * `failed` in the DB — they stay `pending` so the next cron tick
+   * retries them. Distinct from `failed` (terminal: schema error,
+   * unknown category, etc.).
+   */
+  timedOut: number;
   /**
    * `true` when we exited the loop early because the wall-clock budget
    * was about to be exceeded. The remaining pending items stay in
@@ -84,16 +92,22 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   const delayBetweenMs = options.delayBetweenMs ?? 0;
   // `Infinity` disables the budget — used by the local CLI runner.
   const maxWallTimeMs = options.maxWallTimeMs ?? Infinity;
-  // Worst-case allowance for "delay + LLM call + DB write + JSON
-  // serialisation" for a single iteration. Calibrated to the
-  // observed P95 (~3s delay + ~5s LLM + ~0.2s DB). If we don't have
-  // at least this much headroom left we bail out cleanly instead of
-  // starting an iteration we can't finish in time.
-  const ITERATION_BUDGET_MS = 9000;
+  // Worst-case allowance for "delay + LLM call + DB write" for a
+  // single iteration. The LLM call is hard-capped by the SDK timeout
+  // (CEREBRAS_DEFAULT_TIMEOUT_MS = 15_000) so the worst case is
+  // 3s delay + 15s LLM (timeout) + ~1s DB+slack = 19s. If we don't
+  // have at least this much headroom left we bail out cleanly instead
+  // of starting an iteration that could blow through the Vercel cap.
+  //
+  // Without this guard a single SDK-timeout iteration extends the
+  // function past 60s and Vercel returns 504 — exactly the failure
+  // mode the wall-clock budget was added to prevent.
+  const ITERATION_BUDGET_MS = 19_000;
   log.info("batch_start", { count: pending.length, limit, delayBetweenMs, maxWallTimeMs });
 
   let classified = 0;
   let failed = 0;
+  let timedOut = 0;
   let budgetExhausted = false;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
@@ -158,6 +172,17 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      // Timeouts and user-initiated aborts are transient: the LLM
+      // didn't *reject* the article, the request just ran out the
+      // clock. We DON'T call `onFailed` for these — that would mark
+      // the article terminally failed and `listPendingArticles`
+      // would never pick it up again. Instead we leave the row in
+      // `pending` status so the next cron tick retries it.
+      if (err instanceof APIConnectionTimeoutError || err instanceof APIUserAbortError) {
+        timedOut++;
+        log.warn("article_timeout", { articleId: article.id, reason: message });
+        continue;
+      }
       failed++;
       log.warn("article_failed", { articleId: article.id, reason: message });
       try {
@@ -176,10 +201,12 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     // `processed` reflects how many we actually attempted, not how
     // many we pulled from the DB — important when the budget cuts
-    // the loop short.
-    processed: classified + failed,
+    // the loop short. Includes timeouts (we attempted them, they
+    // just didn't complete).
+    processed: classified + failed + timedOut,
     classified,
     failed,
+    timedOut,
     budgetExhausted,
     tokens,
   };

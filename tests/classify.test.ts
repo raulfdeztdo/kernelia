@@ -1,3 +1,4 @@
+import { APIConnectionTimeoutError } from "openai";
 import { describe, expect, it, vi } from "vitest";
 import { classifyArticle } from "@/lib/ai/classify";
 import { classificationSchema, CATEGORY_SLUGS } from "@/lib/ai/schemas";
@@ -197,6 +198,54 @@ describe("runClassify", () => {
     expect(summary.failed).toBe(1);
     expect(onClassified).not.toHaveBeenCalled();
     expect(onFailed).toHaveBeenCalledWith("a1", expect.stringMatching(/non-JSON/i));
+  });
+
+  it("treats SDK timeouts as transient — does NOT mark article failed", async () => {
+    // When the OpenAI SDK aborts a request due to its per-call
+    // timeout, it throws APIConnectionTimeoutError. We must NOT call
+    // onFailed for those: marking the article terminally `failed`
+    // would prevent the next cron tick from retrying it. The article
+    // should stay in `pending` and surface in the summary's
+    // `timedOut` counter.
+    const pending = [
+      {
+        id: "a1",
+        title: "Slow",
+        url: "https://example.com/1",
+        rawExcerpt: null,
+        language: "en" as const,
+        sourceName: "Example",
+        sourceLanguage: "en" as const,
+      },
+    ];
+
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => {
+            throw new APIConnectionTimeoutError({ message: "Request timed out" });
+          }),
+        },
+      },
+    } as never;
+
+    const onClassified = vi.fn(async () => {});
+    const onFailed = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified,
+      onFailed,
+      resolveCategoryId: async () => "cat-id",
+    });
+
+    expect(summary.timedOut).toBe(1);
+    expect(summary.failed).toBe(0);
+    expect(summary.classified).toBe(0);
+    expect(summary.processed).toBe(1);
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(onClassified).not.toHaveBeenCalled();
   });
 
   it("stops cleanly when the wall-clock budget is exhausted", async () => {
