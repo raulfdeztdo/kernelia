@@ -36,9 +36,17 @@ export default async function AdminDashboardPage() {
       </header>
 
       <section aria-labelledby="totals-heading" className="space-y-3">
-        <h2 id="totals-heading" className="text-lg font-medium">
-          Artículos por estado
-        </h2>
+        <div className="flex items-baseline justify-between">
+          <h2 id="totals-heading" className="text-lg font-medium">
+            Artículos por estado
+          </h2>
+          <Link
+            href="/admin/articles"
+            className="text-sm text-accent underline-offset-2 hover:underline"
+          >
+            Gestionar artículos →
+          </Link>
+        </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <Stat label="Total" value={statusCounts.total} />
           <Stat label="Classified" value={statusCounts.classified} tone="accent" />

@@ -1,3 +1,4 @@
+import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { categories, type Category } from "@/db/schema";
 
@@ -14,4 +15,27 @@ export async function getCategoryMap(): Promise<Map<string, string>> {
 
 export function resetCategoryCache(): void {
   cache = null;
+}
+
+export interface CategoryListItem {
+  id: string;
+  slug: string;
+  nameEs: string;
+  nameEn: string;
+}
+
+/**
+ * Full category catalog with display names. Used by admin UIs that need to
+ * render a dropdown of the 10 slugs with their human-readable labels.
+ */
+export async function listCategories(): Promise<CategoryListItem[]> {
+  return db
+    .select({
+      id: categories.id,
+      slug: categories.slug,
+      nameEs: categories.nameEs,
+      nameEn: categories.nameEn,
+    })
+    .from(categories)
+    .orderBy(asc(categories.slug));
 }
