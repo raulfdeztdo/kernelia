@@ -21,7 +21,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
 | 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. Cron via GitHub Actions (Vercel Hobby restringe a 1/dia). Skip-link, focus-visible global y `prefers-reduced-motion`. |
 | 6 | Release v0.1.0 a produccion | **done** | 2026-05-14 | Dominio kernelia.dev con SSL, brand logo, paginacion append-style, cap por fuente=10, cola de clasificacion round-robin, cron en GHA verde, SEO consistente en produccion (canonical/og/robots/sitemap/RSS apuntan a kernelia.dev). `v0.1.0` taggeado y publicado. |
-| 7 | Backoffice admin (auth + panel) | **pending** | — | Tabla `users` (por email, sin contrasenyas), login en `/admin` via magic-link (Resend), panel con metricas, monitor de cron, gestion de articulos (cambiar `status` con un nuevo valor `hidden` + reasignar categoria entre las existentes), gestion de usuarios (anyadir/quitar emails). Rompe la regla "sin auth" — declarada como excepcion controlada para superficie interna no indexable. |
+| 7 | Backoffice admin (auth + panel) | **done** | 2026-05-15 | Cinco sub-fases (7.A→7.E) entregadas en PRs separados (#19 schema+auth backend, #20 login UI, #21 dashboard+cron monitor, #22 gestion de articulos, #23 gestion de usuarios). Login `/admin` por magic-link (Resend, dominio kernelia.dev verificado, rate-limit 5/10min IP+email), cookie `__Host-` HMAC, session TTL 7d. Panel con metricas de articulos/categorias/fuentes/tokens, monitor `/admin/cron` ultimas 50 ejecuciones, gestion de articulos con guard de 5-columnas para `→ classified`, `hidden` distinto de `failed`, re-clasificar one-click, gestion de usuarios con guardrails (no self-target, never zero active admins). Audit via `console.log` estructurado. `/admin/*` excluido de sitemap/robots/middleware i18n. |
 
 ---
 
@@ -531,143 +531,143 @@ Las otras transiciones son libres (`classified ↔ hidden`,
 
 ### Sub-fase 7.A · Schema + auth backend (magic-link)
 
-- [ ] Migracion Drizzle: tablas `users`, `magic_link_tokens`,
+- [x] Migracion Drizzle: tablas `users`, `magic_link_tokens`,
   `sessions`, `cron_runs`; nuevo valor `hidden` en
   `articleStatusEnum`. Indices: `users.email` unique ya esta por
   el `.unique()`, anyadir `sessions.user_id`,
   `cron_runs.started_at desc`, `magic_link_tokens.user_id`.
-- [ ] `db/seed.ts`: si no existe ningun user, insertar uno con
+- [x] `db/seed.ts`: si no existe ningun user, insertar uno con
   `email = process.env.INITIAL_ADMIN_EMAIL`, `user_type = 'admin'`.
   Fail-fast si la env var falta. Idempotente: re-correr el seed
   no toca users existentes.
-- [ ] `lib/auth/tokens.ts`: `generateMagicLinkToken(userId)` ->
+- [x] `lib/auth/tokens.ts`: `generateMagicLinkToken(userId)` ->
   devuelve `{ plaintext, hash }`. `verifyAndConsumeToken(plaintext)`
   -> devuelve `{ userId }` o lanza. `crypto.timingSafeEqual` para
   el compare.
-- [ ] `lib/auth/sessions.ts`: `createSession(userId)`,
+- [x] `lib/auth/sessions.ts`: `createSession(userId)`,
   `getUserBySession(sessionId)`, `revokeSession(sessionId)`.
   TTL 7 dias; refresh `last_used_at` en cada uso.
-- [ ] `lib/email/send.ts`: helper minimalista alrededor de la API
+- [x] `lib/email/send.ts`: helper minimalista alrededor de la API
   de Resend. Funcion `sendMagicLink({ to, link })`. Plantilla HTML
   + text inline en el modulo (no JSX) para no traerse @react-email.
-- [ ] Cookie: `__Host-kernelia-session`, `HttpOnly`, `Secure`,
+- [x] Cookie: `__Host-kernelia-session`, `HttpOnly`, `Secure`,
   `SameSite=Lax`, `Path=/`. Valor: `session_id` firmado HMAC con
   `SESSION_SECRET`. `getSessionFromCookie(req)` helper compartido.
-- [ ] Rate-limit en `/api/admin/magic-link` (Map en memoria,
+- [x] Rate-limit en `/api/admin/magic-link` (Map en memoria,
   5 solicitudes / 10 min por IP y por email).
-- [ ] Env vars nuevas: `RESEND_API_KEY`, `EMAIL_FROM`
+- [x] Env vars nuevas: `RESEND_API_KEY`, `EMAIL_FROM`
   (e.g. `admin@kernelia.dev`), `INITIAL_ADMIN_EMAIL`,
   `SESSION_SECRET`. Documentadas en `README.md` y verificadas en
   boot con fail-fast.
-- [ ] Tests Vitest para tokens, sessions y rate-limit.
+- [x] Tests Vitest para tokens, sessions y rate-limit.
 
 ### Sub-fase 7.B · Login via magic-link
 
-- [ ] `app/admin/login/page.tsx`: server component con form post a
+- [x] `app/admin/login/page.tsx`: server component con form post a
   `/api/admin/magic-link`. Un solo input (email) + boton "Enviarme
   enlace". Sin JS para el happy path; mensaje "Si ese email tiene
   acceso, recibiras un enlace en breve" (constante: no revelamos
   si el email existe en DB — evita enumeracion).
-- [ ] `app/api/admin/magic-link/route.ts`: POST con `email`.
+- [x] `app/api/admin/magic-link/route.ts`: POST con `email`.
   Validar via Zod, normalizar lowercase+trim. Si existe user
   activo, generar token, persistir hash, enviar email. Si no
   existe, **igualmente** devolver 200 sin pista para el cliente.
   Aplica el rate-limit antes del lookup.
-- [ ] `app/admin/auth/callback/route.ts`: GET con `?token=...`.
+- [x] `app/admin/auth/callback/route.ts`: GET con `?token=...`.
   Verifica + consume el token. Si ok, crea session, set-cookie,
   redirect a `/admin`. Si no, redirect a `/admin/login?error=expired`.
-- [ ] `app/admin/layout.tsx`: middleware-style — valida sesion,
+- [x] `app/admin/layout.tsx`: middleware-style — valida sesion,
   redirige a `/admin/login` si no hay. Si la hay pero el user
   esta `active=false`, revoca todas sus sessions y redirige a
   `/admin/login?error=revoked`.
-- [ ] `<meta name="robots" content="noindex,nofollow">` en el layout.
-- [ ] Excluir `/admin` de `app/sitemap.ts` y `app/robots.ts`.
-- [ ] Logout: `POST /api/admin/logout` que invalida la session row y
+- [x] `<meta name="robots" content="noindex,nofollow">` en el layout.
+- [x] Excluir `/admin` de `app/sitemap.ts` y `app/robots.ts`.
+- [x] Logout: `POST /api/admin/logout` que invalida la session row y
   borra cookie. Boton en el header del admin.
 
 ### Sub-fase 7.C · Panel de metricas + monitor del cron
 
-- [ ] `app/admin/page.tsx` (dashboard): cards con totales agregados
+- [x] `app/admin/page.tsx` (dashboard): cards con totales agregados
   obtenidos via nuevas queries en `db/queries/admin.ts`:
   - Articulos: total / classified / pending / failed / hidden
   - Por categoria (reusar `getCategoryFacets`, ampliar con
     breakdown por status)
   - Por fuente (count + last_ingested_at por fuente)
   - Tokens consumidos por dia (ultimos 7 dias) desde `cron_runs`
-- [ ] `app/admin/cron/page.tsx`: tabla con ultimas 50 ejecuciones
+- [x] `app/admin/cron/page.tsx`: tabla con ultimas 50 ejecuciones
   de `cron_runs`, ordenadas desc. Muestra job, status, duracion,
   resumen relevante (processed/classified/failed/timedOut para
   classify, inserted/errors para ingest). Filtro por job y status.
-- [ ] `lib/cron-logging.ts`: helper que `runClassify` y `runIngest`
+- [x] `lib/cron-logging.ts`: helper que `runClassify` y `runIngest`
   llaman al final para persistir en `cron_runs`. Catch defensivo:
   fallo de logging no debe tumbar el cron.
-- [ ] Modificar `/api/cron/{classify,ingest}/route.ts` para
+- [x] Modificar `/api/cron/{classify,ingest}/route.ts` para
   escribir el resultado en `cron_runs` al terminar (success o
   caught error).
-- [ ] Mostrar info estatica del schedule: "ingest cada 3h en UTC
+- [x] Mostrar info estatica del schedule: "ingest cada 3h en UTC
   multiplo-de-3, classify cada 30min". Hardcoded en una constante
   leida tanto por `cron.yml` como por el panel — fuente unica.
 
 ### Sub-fase 7.D · Gestion de articulos
 
-- [ ] `app/admin/articles/page.tsx`: tabla paginada (cursor) con
+- [x] `app/admin/articles/page.tsx`: tabla paginada (cursor) con
   filtros por status, categoria, fuente. Columnas: title, source,
   category, published_at, status. El status `hidden` se muestra
   con badge distinto a `failed` para distinguir decision humana
   vs error del LLM.
-- [ ] Accion "Cambiar status": dropdown con los 4 valores del
+- [x] Accion "Cambiar status": dropdown con los 4 valores del
   enum. POST `/api/admin/articles/[id]/status`. Server-side usa
   `adminSetArticleStatus` que aplica el guard descrito arriba
   (cambiar a `classified` exige las 5 columnas pobladas). Si el
   guard falla, devuelve 422 con el listado de campos faltantes;
   la UI muestra el mensaje sin recargar.
-- [ ] Accion "Reasignar categoria": dropdown con los 10 slugs
+- [x] Accion "Reasignar categoria": dropdown con los 10 slugs
   vigentes (mas `null` = sin categoria). Endpoint similar. **Solo**
   reasigna; no edita el catalogo de categorias. El admin no puede
   crear ni renombrar slugs (decision cerrada arriba).
-- [ ] Accion "Re-clasificar": atajo que mueve un articulo
+- [x] Accion "Re-clasificar": atajo que mueve un articulo
   `classified` o `failed` a `pending` y limpia
   `classification_error`. Util cuando el LLM se equivoco. El
   proximo tick del cron lo recoge.
-- [ ] Audit-friendly: cualquier cambio de status o categoria desde
+- [x] Audit-friendly: cualquier cambio de status o categoria desde
   el admin loggea via `console.log` estructurado (`{ adminEmail,
   articleId, action, before, after, ts }`). Sin tabla de audit-log
   dedicada en V1.
 
 ### Sub-fase 7.E · Gestion de usuarios
 
-- [ ] `app/admin/users/page.tsx`: lista con email, user_type,
+- [x] `app/admin/users/page.tsx`: lista con email, user_type,
   active, last_login_at. Boton "anyadir usuario" y acciones por
   fila: desactivar / reactivar, borrar.
-- [ ] Endpoint POST `/api/admin/users`: anyadir un email nuevo
+- [x] Endpoint POST `/api/admin/users`: anyadir un email nuevo
   como user `admin` activo. No requiere "invitar" via email — el
   user invitado simplemente entra a `/admin/login`, pide
   magic-link, y entra.
-- [ ] Endpoint DELETE / PATCH `/api/admin/users/[id]`: desactivar
+- [x] Endpoint DELETE / PATCH `/api/admin/users/[id]`: desactivar
   / reactivar / borrar. Al desactivar, revocar todas sus sessions
   activas (`delete from sessions where user_id = ?`).
-- [ ] Guardrails: no permitir borrarse / desactivarse a uno mismo;
+- [x] Guardrails: no permitir borrarse / desactivarse a uno mismo;
   no permitir dejar el sistema sin ningun admin activo (check
   antes de desactivar / borrar).
 
 ### Seguridad — lista de comprobacion
 
-- [ ] Cookie `__Host-` prefix, `HttpOnly`, `Secure`, `SameSite=Lax`.
-- [ ] HMAC sign del session id con `SESSION_SECRET` (env var
+- [x] Cookie `__Host-` prefix, `HttpOnly`, `Secure`, `SameSite=Lax`.
+- [x] HMAC sign del session id con `SESSION_SECRET` (env var
   obligatoria, fail-fast en boot si falta).
-- [ ] Tokens de magic-link almacenados como SHA-256, single-use,
+- [x] Tokens de magic-link almacenados como SHA-256, single-use,
   TTL 15min. Compare con `crypto.timingSafeEqual`.
-- [ ] Rate-limit en magic-link (5/10min por IP **y** por email).
-- [ ] Respuesta del endpoint magic-link constante: "si el email
+- [x] Rate-limit en magic-link (5/10min por IP **y** por email).
+- [x] Respuesta del endpoint magic-link constante: "si el email
   tiene acceso, recibiras un enlace". No revela si el email
   existe (evita enumeracion).
-- [ ] CSRF: usar Next server actions o form post + SameSite=Lax.
+- [x] CSRF: usar Next server actions o form post + SameSite=Lax.
   Magic-link de por si mitiga (el token GET-able no es exploitable
   sin acceso al inbox).
-- [ ] Logs: nunca loguear tokens completos, secrets, ni el cookie.
+- [x] Logs: nunca loguear tokens completos, secrets, ni el cookie.
   Solo `userId`, `email` y prefijo del session id si hace falta
   correlar.
-- [ ] Verificar el dominio `kernelia.dev` en Resend (SPF + DKIM)
+- [x] Verificar el dominio `kernelia.dev` en Resend (SPF + DKIM)
   antes de enviar nada en produccion. Sin verificacion los emails
   van a spam o se rechazan.
 
