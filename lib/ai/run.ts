@@ -19,6 +19,12 @@ export interface ClassifySummary {
   processed: number;
   classified: number;
   failed: number;
+  /**
+   * `true` when we exited the loop early because the wall-clock budget
+   * was about to be exceeded. The remaining pending items stay in
+   * `pending` status for the next cron tick.
+   */
+  budgetExhausted: boolean;
   tokens: {
     prompt: number;
     completion: number;
@@ -38,6 +44,18 @@ export interface RunClassifyOptions extends ClassifyOptions {
   limit?: number;
   /** Sleep this many ms between articles. Use to stay within LLM rate limits. */
   delayBetweenMs?: number;
+  /**
+   * Maximum wall-clock time the loop is allowed to spend before
+   * returning gracefully. Set this *below* the platform's function
+   * cap (Vercel Hobby = 60_000ms) so we can serialise the JSON
+   * response and finish before the gateway kills us with a 504.
+   *
+   * When this budget is exhausted we stop pulling new articles and
+   * return the partial summary with `budgetExhausted: true`. The
+   * remaining items keep `status = 'pending'` and the next tick
+   * picks them up.
+   */
+  maxWallTimeMs?: number;
   fetchPending?: (limit: number) => Promise<PendingArticle[]>;
   onClassified?: (id: string, update: ClassifiedPayload) => Promise<void>;
   onFailed?: (id: string, reason: string) => Promise<void>;
@@ -64,10 +82,19 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
 
   const pending = await fetchPending(limit);
   const delayBetweenMs = options.delayBetweenMs ?? 0;
-  log.info("batch_start", { count: pending.length, limit, delayBetweenMs });
+  // `Infinity` disables the budget — used by the local CLI runner.
+  const maxWallTimeMs = options.maxWallTimeMs ?? Infinity;
+  // Worst-case allowance for "delay + LLM call + DB write + JSON
+  // serialisation" for a single iteration. Calibrated to the
+  // observed P95 (~3s delay + ~5s LLM + ~0.2s DB). If we don't have
+  // at least this much headroom left we bail out cleanly instead of
+  // starting an iteration we can't finish in time.
+  const ITERATION_BUDGET_MS = 9000;
+  log.info("batch_start", { count: pending.length, limit, delayBetweenMs, maxWallTimeMs });
 
   let classified = 0;
   let failed = 0;
+  let budgetExhausted = false;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
   // Deliberately serial: Cerebras free tier enforces a TPM cap and we
@@ -78,6 +105,18 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   // for the live `DEFAULT_DELAY_BETWEEN_MS` value and the related
   // Vercel 60s function-cap reasoning.
   for (const [index, article] of pending.entries()) {
+    // Budget check BEFORE the inter-article sleep so we don't sit
+    // idle just to find out we have no time to actually classify.
+    const elapsedMs = Date.now() - startedAt.getTime();
+    if (elapsedMs + ITERATION_BUDGET_MS > maxWallTimeMs) {
+      budgetExhausted = true;
+      log.info("budget_exhausted", {
+        elapsedMs,
+        maxWallTimeMs,
+        remaining: pending.length - index,
+      });
+      break;
+    }
     if (index > 0 && delayBetweenMs > 0) await sleep(delayBetweenMs);
     try {
       const result = await classifyArticle(
@@ -135,9 +174,13 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
-    processed: pending.length,
+    // `processed` reflects how many we actually attempted, not how
+    // many we pulled from the DB — important when the budget cuts
+    // the loop short.
+    processed: classified + failed,
     classified,
     failed,
+    budgetExhausted,
     tokens,
   };
   log.info("batch_done", { ...summary });

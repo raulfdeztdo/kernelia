@@ -199,6 +199,46 @@ describe("runClassify", () => {
     expect(onFailed).toHaveBeenCalledWith("a1", expect.stringMatching(/non-JSON/i));
   });
 
+  it("stops cleanly when the wall-clock budget is exhausted", async () => {
+    // Six pending items, but every classification call sleeps 80ms.
+    // With a 250ms total budget and a 9_000ms-per-iteration headroom
+    // check, the loop bails *before* even the first iteration (the
+    // headroom check fails on entry). That confirms the early-exit
+    // path runs and the summary reports `budgetExhausted: true`
+    // with no spurious failures.
+    const pending = Array.from({ length: 6 }, (_, i) => ({
+      id: `a${i}`,
+      title: `T${i}`,
+      url: `https://example.com/${i}`,
+      rawExcerpt: null,
+      language: "en" as const,
+      sourceName: "Example",
+      sourceLanguage: "en" as const,
+    }));
+
+    const client = makeClient(validPayload);
+    const onClassified = vi.fn(async () => {});
+    const onFailed = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified,
+      onFailed,
+      resolveCategoryId: async () => "cat-id",
+      maxWallTimeMs: 250,
+    });
+
+    expect(summary.budgetExhausted).toBe(true);
+    // No items attempted: the headroom check is 9_000ms and the
+    // budget is 250ms, so the loop exits before iteration 0.
+    expect(summary.processed).toBe(0);
+    expect(summary.classified).toBe(0);
+    expect(summary.failed).toBe(0);
+    expect(onClassified).not.toHaveBeenCalled();
+    expect(onFailed).not.toHaveBeenCalled();
+  });
+
   it("fails the article when the category slug is unknown to the DB", async () => {
     const pending = [
       {

@@ -11,14 +11,16 @@ on:
   schedule:
     # Ingesta cada 3 horas en punto.
     - cron: "0 */3 * * *"
-    # Clasificacion cada 30 minutos. limit=8 porque Vercel Hobby corta a
-    # los 60s y el handler espera `DEFAULT_DELAY_BETWEEN_MS=3000ms` entre
-    # articulos por el TPM de Cerebras free tier:
-    #   7 huecos x 3s = 21s solo de delays
-    # + 8 llamadas LLM x ~3-4s (Llama 3.x 70B)
-    # = ~45-55s total, deja margen frente al hard cap.
-    # 8 art/tick x 48 ticks/dia = 384 art/dia, suficiente para drenar
-    # un backlog de ~900 en ~2.5 dias.
+    # Clasificacion cada 30 minutos. `limit=8` es un techo: el handler
+    # arranca con un wall-clock budget (~52s, ver WALL_TIME_BUDGET_MS en
+    # app/api/cron/classify/route.ts) y sale limpio devolviendo 200
+    # antes del cap de 60s de Vercel Hobby, aunque eso signifique
+    # procesar menos articulos en un tick lento. En condiciones
+    # nominales caben los 8 (7 huecos x 3s + 8 LLM ~3-4s = ~45-55s);
+    # si Cerebras esta lento ese tick procesa ~5-6 y los demas
+    # quedan pendientes para el siguiente.
+    # 6-8 art/tick x 48 ticks/dia = ~290-380 art/dia, suficiente para
+    # drenar un backlog de ~900 en ~3 dias.
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
@@ -102,9 +104,13 @@ jobs:
             echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL}). Expected something like https://kernelia.dev — no trailing slash, no quotes, no whitespace." >&2
             exit 1
           fi
+          # No --retry: the handler now enforces its own wall-clock
+          # budget and always returns 200 (with `budgetExhausted:
+          # true` when it bails early). A 5xx here means a real
+          # platform incident — retrying just burns Cerebras tokens
+          # and snowballs the TPM throttle into the next franja.
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
-            --retry 2 --retry-delay 10 --retry-connrefused \
             --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
             --header "Authorization: Bearer ${CRON_SECRET}" \
             "${BASE_URL}/api/cron/classify?limit=8")
