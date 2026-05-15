@@ -7,11 +7,19 @@ below as binding for any session that lands here.
 
 ## 1. What is Kernelia
 
-Public, no-auth, bilingual (ES/EN) AI-news aggregator. RSS feeds are
-ingested every 3h; pending articles are classified by an LLM into a
-fixed taxonomy and translated/summarised in both languages, then
-served via a Next.js App Router home page with category filters,
-search, RSS, and SEO metadata per locale.
+Public bilingual (ES/EN) AI-news aggregator. RSS feeds are ingested
+every 3h; pending articles are classified by an LLM into a fixed
+taxonomy and translated/summarised in both languages, then served via
+a Next.js App Router home page with category filters, search, RSS,
+and SEO metadata per locale.
+
+Two surfaces:
+
+- **Public feed** (`/[locale]`, `/api/articles`, `rss.xml`,
+  `sitemap.xml`, `robots.txt`) — no auth, free read.
+- **Admin backoffice** (`/admin/*`, `/api/admin/*`) — auth required
+  (magic-link via Resend + HMAC-signed cookie session). `noindex,
+  nofollow`, excluded from sitemap. Operator-only.
 
 Production: <https://kernelia.dev>
 
@@ -87,14 +95,18 @@ backend-agent  ⟂  frontend-agent     ← parallel where possible
 
 | Path | What lives there |
 |---|---|
-| `app/[locale]/` | Pages with locale segment (home, about). Server components by default. |
+| `app/[locale]/` | Public pages with locale segment (home, about). Server components by default. |
+| `app/admin/` | Admin backoffice (Fase 7). No locale segment, ES copy, `noindex,nofollow`. Requires session. |
 | `app/api/` | Route handlers: `cron/{ingest,classify}`, `articles`, `health`, `rss.xml`. |
+| `app/api/admin/` | Admin endpoints: `magic-link`, `logout`, `articles/*`, `users/*`. |
 | `components/` | UI; `components/ui/` is shadcn primitives. |
 | `lib/ai/` | Cerebras client, prompts, Zod schemas, `classifyArticle`, `runClassify`. |
 | `lib/ingest/` | RSS parser, dedupe, normalisation. |
+| `lib/auth/` | Magic-link tokens, HMAC-signed session cookie, in-memory rate-limit. Server-only. |
+| `lib/email/` | Minimal Resend wrapper (`sendMagicLink`). |
 | `db/` | Drizzle schema, migrations, queries. `db/queries/*` is the only DB surface. |
 | `db/queries/` | All SQL-touching code. UI imports from here, never from `db/index.ts`. |
-| `messages/` | `es.json`, `en.json` — every UI string. |
+| `messages/` | `es.json`, `en.json` — every UI string of the public site. |
 | `context-docs/` | Canonical rules (this is the source of truth, not the README). |
 | `.agents/` | Full agent contracts (verbose, human-oriented). |
 | `.opencode/agent/` | opencode-native subagent definitions (thin shims that point back to `.agents/`). |

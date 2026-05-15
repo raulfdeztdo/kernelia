@@ -40,6 +40,13 @@ Maxima prioridad. Si una instruccion entra en conflicto con este fichero, el age
 - Service role key de Supabase y `CERBRAS_API_KEY` viven solo en el server (env vars).
 - Endpoint de cron protegido por `CRON_SECRET` en header.
 - Validar respuestas del LLM con Zod antes de persistir.
+- **Superficie publica sin auth, backoffice privado en `/admin`** (Fase 7).
+  El feed publico (`/[locale]`, `/api/articles`, `rss.xml`, `sitemap.xml`,
+  `robots.txt`) sigue siendo lectura libre. `/admin/*` y `/api/admin/*`
+  exigen sesion valida (cookie `__Host-kernelia-session` firmada con
+  `SESSION_SECRET`). `/admin/*` lleva `noindex,nofollow` y queda fuera
+  del sitemap. Nunca loguear tokens magic-link, el valor de la cookie
+  ni el plaintext del token de sesion.
 
 ## 7. Datos y agente IA
 
