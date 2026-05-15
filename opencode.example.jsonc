@@ -1,0 +1,56 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    // ──────────────────────────────────────────────────────────────────
+    // opencode project TEMPLATE — `opencode.example.jsonc`
+    //
+    // This file IS committed. It is the template you copy from.
+    // opencode itself does NOT read `.example.jsonc` files.
+    //
+    // First-time setup on a fresh clone:
+    //
+    //     cp opencode.example.jsonc opencode.jsonc
+    //     # then edit opencode.jsonc — add MCP keys, override model, etc.
+    //
+    // Both `opencode.jsonc` and `opencode.json` are gitignored, so that
+    // is where every secret lives. NEVER put API keys in this template
+    // file — this one ends up in git history forever.
+    //
+    // Docs: https://opencode.ai/docs/config
+    // ──────────────────────────────────────────────────────────────────
+    // ── Project context loaded on every session ──────────────────────
+    // Each file is appended to the system prompt at session start.
+    // Order matters — non-negotiables first so they cannot be
+    // overridden by anything downstream. PLAN.md is last so the agent
+    // sees the current phase against the rules, not before them.
+    "instructions": [
+        "AGENTS.md",
+        "context-docs/non-negotiable.md",
+        "context-docs/coding-principles.md",
+        ".agents/*.md",
+        "PLAN.md"
+    ],
+    // ── MCP servers ──────────────────────────────────────────────────
+    // Pre-wired starting point. After `cp opencode.example.jsonc
+    // opencode.jsonc`, replace the placeholder below with your real
+    // Context7 key (get one at https://context7.com). If you don't
+    // want this MCP, just delete the whole `mcp` block in your
+    // personal `opencode.jsonc`.
+    //
+    // NEVER paste a real key back into THIS file — it's the committed
+    // template and would leak into git history forever.
+    //
+    // Docs: https://opencode.ai/docs/mcp
+    "mcp": {
+        "context7": {
+            "type": "remote",
+            "url": "https://mcp.context7.com/mcp",
+            "headers": {
+                "CONTEXT7_API_KEY": "REPLACE_WITH_YOUR_CONTEXT7_KEY"
+            }
+        }
+    }
+    // ── Default model (optional) ─────────────────────────────────────
+    // Uncomment in your personal `opencode.jsonc` to lock the model at
+    // session start; opencode otherwise uses your last selection.
+    // "model": "anthropic/claude-sonnet-4-5"
+}
