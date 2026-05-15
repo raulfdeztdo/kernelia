@@ -112,6 +112,23 @@ export default async function AdminDashboardPage() {
         />
       </section>
 
+      <section aria-labelledby="users-heading" className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 id="users-heading" className="text-lg font-medium">
+            Usuarios
+          </h2>
+          <Link
+            href="/admin/users"
+            className="text-sm text-accent underline-offset-2 hover:underline"
+          >
+            Gestionar usuarios →
+          </Link>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Lista de admins con acceso al backoffice. Añade, desactiva o borra emails.
+        </p>
+      </section>
+
       <section aria-labelledby="cron-heading" className="space-y-3">
         <div className="flex items-baseline justify-between">
           <h2 id="cron-heading" className="text-lg font-medium">
