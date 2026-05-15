@@ -98,7 +98,14 @@ export function NewsCard({ article, locale }: NewsCardProps) {
         </h3>
 
         {article.summary && (
-          <p className="line-clamp-3 text-sm text-[color:var(--color-muted-foreground)]">
+          // On mobile (single-column layout) we show the full summary so
+          // the reader gets the whole pitch — truncation here would push
+          // people to click out of curiosity rather than informed
+          // interest, which is the click-bait pattern we explicitly
+          // don't want. On `sm:` (two/three-column grid) we re-introduce
+          // the clamp so cards in the same row keep roughly aligned
+          // baselines.
+          <p className="text-sm text-[color:var(--color-muted-foreground)] sm:line-clamp-3">
             {article.summary}
           </p>
         )}

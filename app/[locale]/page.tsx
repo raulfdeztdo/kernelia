@@ -5,6 +5,7 @@ import { ArticleList } from "@/components/article-list";
 import type { ArticleCardView } from "@/components/news-card";
 import { CategoryFilter } from "@/components/category-filter";
 import {
+  countClassifiedArticles,
   getCategoryFacets,
   listClassifiedArticles,
   type ListedArticle,
@@ -94,10 +95,11 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 
   let articles: ListedArticle[] = [];
   let facets: Record<string, number> = {};
+  let total = 0;
   let errored = false;
 
   try {
-    const [list, facetRows] = await Promise.all([
+    const [list, facetRows, totalCount] = await Promise.all([
       listClassifiedArticles({
         locale: locale as "es" | "en",
         categorySlugs: selectedCategories,
@@ -107,9 +109,18 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
         limit: INITIAL_PAGE_SIZE + 1,
       }),
       getCategoryFacets(),
+      // Counts the whole filtered pool (under the same per-source cap).
+      // Stays stable as the user clicks "Cargar más" — that button
+      // only appends client-side, it doesn't change the total.
+      countClassifiedArticles({
+        locale: locale as "es" | "en",
+        categorySlugs: selectedCategories,
+        q,
+      }),
     ]);
     articles = list;
     facets = Object.fromEntries(facetRows.map((r) => [r.slug, r.count]));
+    total = totalCount;
   } catch (err) {
     errored = true;
     log.error("home_query_failed", {
@@ -158,6 +169,7 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
             initialCursor={nextCursor}
             locale={locale as "es" | "en"}
             pageSize={LOAD_MORE_PAGE_SIZE}
+            total={total}
           />
         </Suspense>
       )}

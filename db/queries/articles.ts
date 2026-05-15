@@ -245,6 +245,62 @@ export async function listClassifiedArticles(
   return rows;
 }
 
+/**
+ * How many articles match the current filters under the same per-source cap
+ * that `listClassifiedArticles` applies. Used by the home page to display a
+ * stable total ("N noticias") that does not grow as the user clicks
+ * "Cargar más" — because that button only fetches a new page client-side,
+ * it doesn't change the underlying total.
+ *
+ * Pagination (cursor / limit) is intentionally NOT applied here: we count
+ * the whole filtered pool, not the visible slice.
+ */
+export async function countClassifiedArticles(
+  params: Omit<ListArticlesParams, "limit" | "cursor">,
+): Promise<number> {
+  // Mirrors `listClassifiedArticles`'s inner filters exactly so the count
+  // can't drift from what the listing actually shows. If you tweak the
+  // filter logic there, tweak it here too.
+  const titleCol = params.locale === "es" ? articles.titleEs : articles.titleEn;
+  const summaryCol = params.locale === "es" ? articles.summaryEs : articles.summaryEn;
+
+  const innerConds = [eq(articles.status, "classified")];
+  if (params.categorySlugs && params.categorySlugs.length > 0) {
+    innerConds.push(inArray(categories.slug, params.categorySlugs));
+  }
+  if (params.q && params.q.trim().length > 0) {
+    const needle = `%${params.q.trim()}%`;
+    const titleMatch = or(ilike(titleCol, needle), ilike(articles.title, needle));
+    const summaryMatch = ilike(summaryCol, needle);
+    const combined = or(titleMatch, summaryMatch);
+    if (combined) innerConds.push(combined);
+  }
+
+  const ranked = db
+    .$with("ranked_count")
+    .as(
+      db
+        .select({
+          rn: sql<number>`row_number() over (
+            partition by ${articles.sourceId}
+            order by ${articles.publishedAt} desc, ${articles.id} desc
+          )`.as("rn"),
+        })
+        .from(articles)
+        .innerJoin(sources, eq(sources.id, articles.sourceId))
+        .leftJoin(categories, eq(categories.id, articles.categoryId))
+        .where(and(...innerConds)),
+    );
+
+  const rows = await db
+    .with(ranked)
+    .select({ total: sql<number>`count(*)::int` })
+    .from(ranked)
+    .where(lte(ranked.rn, PER_SOURCE_CAP));
+
+  return rows[0]?.total ?? 0;
+}
+
 export interface FeedArticle {
   id: string;
   title: string;
