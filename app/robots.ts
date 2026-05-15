@@ -8,7 +8,10 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/"],
+        // /admin is the backoffice (Fase 7). Layout also emits
+        // `noindex,nofollow`, but disallow here keeps well-behaved
+        // crawlers from fetching it at all.
+        disallow: ["/api/", "/admin/"],
       },
     ],
     sitemap: `${origin}/sitemap.xml`,

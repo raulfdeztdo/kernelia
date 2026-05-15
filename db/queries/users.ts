@@ -2,6 +2,11 @@ import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { sessions, users, type NewUser, type User, type UserType } from "@/db/schema";
 
+// Re-export domain types so route handlers / flow modules consume `User`
+// from the queries surface (the only allowed DB surface), not from
+// `@/db/schema` directly.
+export type { User, UserType } from "@/db/schema";
+
 /**
  * The only DB surface for the `users` table. UI / route handlers MUST go
  * through these helpers — never import `users` directly from `@/db/schema`
