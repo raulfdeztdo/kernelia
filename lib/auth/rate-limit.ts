@@ -6,7 +6,8 @@
  * each call so the map can't grow unbounded.
  *
  * Use with two keys (one per IP, one per email) and OR the results: deny
- * if either is over budget. See `app/api/admin/magic-link/route.ts`.
+ * if either is over budget. See `lib/auth/login-flow.ts` and
+ * `lib/auth/forgot-password-flow.ts`.
  */
 
 export interface RateLimitOptions {
@@ -31,6 +32,30 @@ interface Store {
 const globalStore: Store = {
   hits: new Map(),
 };
+
+/**
+ * Reads the current bucket state for `key` WITHOUT recording a new event.
+ * Used by surfaces that only want to charge the bucket on certain paths
+ * (e.g. login charges per-email only on failures, not successes).
+ */
+export function peekRateLimit(
+  key: string,
+  opts: RateLimitOptions,
+  store: Store = globalStore,
+  now: number = Date.now(),
+): RateLimitResult {
+  const windowStart = now - opts.windowMs;
+  const arr = (store.hits.get(key) ?? []).filter((t) => t > windowStart);
+  if (arr.length >= opts.max) {
+    const oldest = arr[0] ?? now;
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterMs: Math.max(0, oldest + opts.windowMs - now),
+    };
+  }
+  return { allowed: true, remaining: Math.max(0, opts.max - arr.length), retryAfterMs: 0 };
+}
 
 /**
  * Records an event for `key` and returns whether it is allowed. Caller is

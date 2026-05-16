@@ -1,36 +1,35 @@
 import { z } from "zod";
-import { generateMagicLinkToken } from "@/lib/auth/tokens";
+import { generatePasswordResetToken } from "@/lib/auth/password-reset";
 import { consumeRateLimit } from "@/lib/auth/rate-limit";
 import { getUserByEmail, normaliseEmail, type User } from "@/db/queries/users";
-import { sendMagicLink } from "@/lib/email/send";
+import { sendPasswordReset } from "@/lib/email/send";
 import { createLogger } from "@/lib/logger";
 
 /**
- * Orchestrates the magic-link request flow. Extracted from the route handler
- * so it can be unit-tested with injected collaborators (clock, store, fetch,
- * db lookup, email sender).
+ * Orchestrates the forgot-password request flow. Same shape as the previous
+ * magic-link-flow (Phase 7.A): extracted from the route handler so it can be
+ * unit-tested with injected collaborators (clock, store, fetch, db lookup,
+ * email sender).
  *
- * Always returns "ok" externally — the route handler will translate any
- * result into the same constant copy. This module reports the *internal*
- * outcome (`rate_limited`, `unknown_email`, `sent`, `error`) so we can log
- * and observe without leaking through the HTTP response.
+ * Always returns "ok" externally — the route handler maps every outcome to
+ * the same "if that email is registered, you'll receive a reset link in
+ * a minute" copy. This module reports the *internal* outcome
+ * (`rate_limited`, `unknown_email`, `inactive_user`, `sent`, `error`) so we
+ * can log and observe without leaking through the HTTP response. Account
+ * enumeration is the threat we're shutting down.
  */
 
-const log = createLogger("magic_link_flow");
+const log = createLogger("forgot_password_flow");
 
-export const emailSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .email()
-  .max(254);
+export const emailSchema = z.string().trim().toLowerCase().email().max(254);
 
-// Limits aligned with `PLAN.md` §7.A. Per-IP catches abuse from a single
-// source; per-email catches credential-stuffing across distributed IPs.
-export const MAGIC_LINK_PER_IP_LIMIT = { max: 5, windowMs: 10 * 60 * 1000 };
-export const MAGIC_LINK_PER_EMAIL_LIMIT = { max: 5, windowMs: 10 * 60 * 1000 };
+// Same numerical budget as the previous magic-link surface. Per-IP catches
+// abuse from a single source; per-email catches a distributed campaign
+// trying to spam someone's inbox with reset emails.
+export const FORGOT_PASSWORD_PER_IP_LIMIT = { max: 5, windowMs: 10 * 60 * 1000 };
+export const FORGOT_PASSWORD_PER_EMAIL_LIMIT = { max: 5, windowMs: 10 * 60 * 1000 };
 
-export type MagicLinkRequestOutcome =
+export type ForgotPasswordOutcome =
   | { kind: "invalid_email" }
   | { kind: "rate_limited"; reason: "ip" | "email"; retryAfterMs: number }
   | { kind: "unknown_email" }
@@ -38,10 +37,10 @@ export type MagicLinkRequestOutcome =
   | { kind: "sent"; userId: string }
   | { kind: "error"; message: string };
 
-export interface RequestMagicLinkParams {
+export interface RequestPasswordResetParams {
   rawEmail: unknown;
   ip: string;
-  /** Absolute origin (e.g. "https://kernelia.dev") used to build the callback URL. */
+  /** Absolute origin (e.g. "https://kernelia.dev") used to build the reset URL. */
   origin: string;
   // Injectables (defaults wired to real implementations).
   findUserByEmail?: (email: string) => Promise<User | null>;
@@ -51,15 +50,9 @@ export interface RequestMagicLinkParams {
   rateLimitStore?: { hits: Map<string, number[]> };
 }
 
-/**
- * Idempotent, side-effect-aware. Caller MUST always respond with the same
- * "if that email has access, you'll receive a link" copy regardless of the
- * outcome. We never differentiate user-unknown from user-known in the HTTP
- * response — that prevents account enumeration.
- */
-export async function requestMagicLink(
-  params: RequestMagicLinkParams,
-): Promise<MagicLinkRequestOutcome> {
+export async function requestPasswordReset(
+  params: RequestPasswordResetParams,
+): Promise<ForgotPasswordOutcome> {
   const parsed = emailSchema.safeParse(params.rawEmail);
   if (!parsed.success) {
     return { kind: "invalid_email" };
@@ -68,24 +61,24 @@ export async function requestMagicLink(
   const now = params.now ?? Date.now();
   const store = params.rateLimitStore;
 
-  // Per-IP first: if a single source is hammering us, drop before doing
-  // any DB / email work.
-  const ipKey = `ip:${params.ip}`;
-  const ipLimit = consumeRateLimit(ipKey, MAGIC_LINK_PER_IP_LIMIT, store, now);
+  const ipKey = `forgot:ip:${params.ip}`;
+  const ipLimit = consumeRateLimit(ipKey, FORGOT_PASSWORD_PER_IP_LIMIT, store, now);
   if (!ipLimit.allowed) {
     log.warn("rate_limited", { reason: "ip", ip: params.ip });
     return { kind: "rate_limited", reason: "ip", retryAfterMs: ipLimit.retryAfterMs };
   }
-  const emailKey = `email:${email}`;
-  const emailLimit = consumeRateLimit(emailKey, MAGIC_LINK_PER_EMAIL_LIMIT, store, now);
+  const emailKey = `forgot:email:${email}`;
+  const emailLimit = consumeRateLimit(emailKey, FORGOT_PASSWORD_PER_EMAIL_LIMIT, store, now);
   if (!emailLimit.allowed) {
     log.warn("rate_limited", { reason: "email", email });
     return { kind: "rate_limited", reason: "email", retryAfterMs: emailLimit.retryAfterMs };
   }
 
   const finder = params.findUserByEmail ?? getUserByEmail;
-  const generator = params.generateToken ?? ((id) => generateMagicLinkToken(id).then((r) => ({ plaintext: r.plaintext })));
-  const sender = params.send ?? ((p) => sendMagicLink(p));
+  const generator =
+    params.generateToken ??
+    ((id) => generatePasswordResetToken(id).then((r) => ({ plaintext: r.plaintext })));
+  const sender = params.send ?? ((p) => sendPasswordReset(p));
 
   const user = await finder(email);
   if (!user) {
@@ -106,7 +99,9 @@ export async function requestMagicLink(
     return { kind: "error", message };
   }
 
-  const link = `${params.origin.replace(/\/$/, "")}/admin/auth/callback?token=${encodeURIComponent(token.plaintext)}`;
+  const link = `${params.origin.replace(/\/$/, "")}/admin/reset-password?token=${encodeURIComponent(
+    token.plaintext,
+  )}`;
 
   try {
     await sender({ to: user.email, link });
@@ -116,7 +111,7 @@ export async function requestMagicLink(
     return { kind: "error", message };
   }
 
-  log.info("magic_link_sent", { email, userId: user.id });
+  log.info("password_reset_sent", { email, userId: user.id });
   return { kind: "sent", userId: user.id };
 }
 

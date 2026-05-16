@@ -85,7 +85,7 @@ export async function PATCH(
  * DELETE /api/admin/users/[id]
  *
  * Permanently removes a user. FK cascade drops their sessions and any
- * outstanding magic-link tokens. Same guardrails as PATCH.
+ * outstanding password-reset tokens. Same guardrails as PATCH.
  */
 export async function DELETE(
   _req: Request,

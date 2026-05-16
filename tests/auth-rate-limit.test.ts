@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { consumeRateLimit } from "@/lib/auth/rate-limit";
+import { consumeRateLimit, peekRateLimit } from "@/lib/auth/rate-limit";
 
 describe("consumeRateLimit", () => {
   function freshStore() {
@@ -50,5 +50,32 @@ describe("consumeRateLimit", () => {
     const opts = { max: 5, windowMs: 60_000 };
     expect(consumeRateLimit("k", opts, store, 1).remaining).toBe(4);
     expect(consumeRateLimit("k", opts, store, 2).remaining).toBe(3);
+  });
+});
+
+describe("peekRateLimit", () => {
+  function freshStore() {
+    return { hits: new Map<string, number[]>() };
+  }
+
+  it("does NOT consume the bucket — repeated peeks stay allowed", () => {
+    const store = freshStore();
+    const opts = { max: 2, windowMs: 60_000 };
+    expect(peekRateLimit("k", opts, store, 1000).allowed).toBe(true);
+    expect(peekRateLimit("k", opts, store, 1100).allowed).toBe(true);
+    expect(peekRateLimit("k", opts, store, 1200).allowed).toBe(true);
+    // Bucket is still empty — a real consume should still go through max times.
+    expect(consumeRateLimit("k", opts, store, 1300).allowed).toBe(true);
+    expect(consumeRateLimit("k", opts, store, 1400).allowed).toBe(true);
+  });
+
+  it("reports `allowed: false` once the consumed budget is full", () => {
+    const store = freshStore();
+    const opts = { max: 2, windowMs: 60_000 };
+    consumeRateLimit("k", opts, store, 1000);
+    consumeRateLimit("k", opts, store, 1100);
+    const peek = peekRateLimit("k", opts, store, 1200);
+    expect(peek.allowed).toBe(false);
+    expect(peek.retryAfterMs).toBeGreaterThan(0);
   });
 });

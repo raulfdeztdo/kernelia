@@ -708,6 +708,86 @@ Las otras transiciones son libres (`classified ↔ hidden`,
    y `AGENTS.md` actualizados en el mismo PR (sub-fase 7.A o donde
    toque la regla).
 
+### Sub-fase 7.F · Refactor de auth a email + contrasenya
+
+Decision (2026-05-16): se retira magic-link como mecanismo de login.
+El usuario y el operador prefieren contrasenya clasica. Resend pasa
+a usarse SOLO para enviar enlaces de password-reset.
+
+- [x] Migracion Drizzle `0004_admin_passwords.sql`:
+  - `users.password_hash text` (nullable; NULL = sin contrasenya aun).
+  - `password_reset_tokens` (misma forma que magic_link_tokens).
+  - `DROP TABLE magic_link_tokens CASCADE`.
+- [x] `lib/auth/passwords.ts`: `hashPassword` / `verifyPassword` con
+  `bcrypt-ts` (cost 12; sin deps nativas → compatible Vercel
+  serverless). Politica: min 12 chars, max 256, sin reglas de
+  composicion (NIST 800-63B).
+- [x] `lib/auth/password-reset.ts`: tokens SHA-256 + single-use con
+  `verify` (read-only) separado de `consume` (atomico). TTL 30min.
+  `invalidateAllResetTokensForUser` para invalidar enlaces pendientes
+  tras un reset exitoso.
+- [x] `lib/email/send.ts`: `sendPasswordReset` (renombrado desde
+  `sendMagicLink`). Mismo wrapper Resend, plantilla nueva.
+- [x] `lib/auth/login-flow.ts`: orquestacion email+password con
+  injectables. Anti-enumeracion: misma respuesta para unknown_email,
+  inactive_user, wrong_password, password_hash=NULL.
+- [x] `lib/auth/forgot-password-flow.ts`: misma estructura que la
+  vieja magic-link-flow; rate-limit IP + email (5/10min).
+- [x] Rate-limit reforzado en login: IP 10/10min; email-FAILURE-only
+  5/15min (un login OK no consume budget). `peekRateLimit` nuevo.
+- [x] Routes: `POST /api/admin/login`, `POST /api/admin/forgot-password`,
+  `POST /api/admin/reset-password`. Cookie de sesion identica a la
+  fase 7.B (`__Host-kernelia-session`, HMAC). El reset revoca TODAS
+  las sesiones activas del usuario tras escribir el nuevo hash.
+- [x] UI: `/admin/login` (email + password + link a forgot),
+  `/admin/forgot-password` (sent banner constante), `/admin/reset-password?token=...`
+  (verifica el token server-side antes de pintar el form).
+- [x] Bootstrap del primer admin: seed inserta el row con
+  `password_hash=NULL`; el operador entra a `/admin/login`, pulsa
+  "olvidaste contrasenya", recibe enlace por Resend, pone su primera
+  contrasenya. Mismo camino para usuarios anyadidos via 7.E.
+- [x] Eliminadas: `lib/auth/tokens.ts`, `lib/auth/magic-link-flow.ts`,
+  `app/api/admin/magic-link/`, `app/admin/auth/callback/`,
+  `tests/magic-link-flow.test.ts`, `tests/auth-tokens.test.ts`.
+- [x] Tests Vitest: `auth-passwords.test.ts` (policy + hash/verify
+  roundtrip), `forgot-password-flow.test.ts` (port del antiguo),
+  `login-flow.test.ts` (rate-limit + anti-enumeracion + no-budget-
+  on-success), `auth-rate-limit.test.ts` ampliado con
+  `peekRateLimit`.
+- [x] `.env.example`, `non-negotiable.md`, `coding-principles.md`,
+  `AGENTS.md` actualizados.
+
+### Sub-fase 7.G · Dashboard redisenyado con sidebar + health card
+
+Plan (proximo PR tras 7.F).
+
+- [ ] Layout `/admin/*` con sidebar fija (Panel · Articulos · Usuarios
+  · Cron) y header con email + logout. Migrar de "header simple +
+  paginas planas" a layout shell.
+- [ ] `lib/admin-health.ts`: pequeno helper que llama a `/api/health`
+  desde el server component del dashboard. Render como card con
+  status (200/503), latencia DB, counts por status y ultimo ingest.
+- [ ] Refactor del actual `app/admin/(private)/page.tsx`: la tabla
+  por categoria/fuente se queda; las cards de totales pasan a un
+  grid compacto arriba. Sin gr aficas todavia.
+
+### Sub-fase 7.H · Graficas (tokens, classified, status, fuentes)
+
+Plan (proximo PR tras 7.G).
+
+- [ ] Recharts (o equivalente ligero). Cuatro gr aficas:
+  1. Tokens consumidos por dia, ultimos 30d. Stacked bar
+     prompt+completion. Reusa `getTokensPerDay(30)`.
+  2. Articulos clasificados por dia, ultimos 30d. Line chart.
+     Nueva query `getClassifiedPerDay(30)`.
+  3. Estado de articulos. Donut: classified / pending / failed /
+     hidden. Reusa `getArticleStatusCounts`.
+  4. Volumen por fuente, ultimos 30d. Bar horizontal top-N.
+     Nueva query `getArticlesPerSource(30)`.
+- [ ] Server-render con datos pre-calculados; client island solo
+  para el SVG (Recharts es client-only). Sin tooltips animados
+  pesados — la pagina sigue siendo sobria.
+
 ---
 
 ## Notas

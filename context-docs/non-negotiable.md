@@ -44,9 +44,11 @@ Maxima prioridad. Si una instruccion entra en conflicto con este fichero, el age
   El feed publico (`/[locale]`, `/api/articles`, `rss.xml`, `sitemap.xml`,
   `robots.txt`) sigue siendo lectura libre. `/admin/*` y `/api/admin/*`
   exigen sesion valida (cookie `__Host-kernelia-session` firmada con
-  `SESSION_SECRET`). `/admin/*` lleva `noindex,nofollow` y queda fuera
-  del sitemap. Nunca loguear tokens magic-link, el valor de la cookie
-  ni el plaintext del token de sesion.
+  `SESSION_SECRET`). Login por email + contrasenya (bcrypt cost 12);
+  Resend solo para enlaces de password-reset. `/admin/*` lleva
+  `noindex,nofollow` y queda fuera del sitemap. Nunca loguear contrasenyas
+  en plaintext, tokens de password-reset, el valor de la cookie ni el
+  plaintext del session id.
 
 ## 7. Datos y agente IA
 

@@ -1,44 +1,37 @@
 import { NextResponse } from "next/server";
-import { requestMagicLink } from "@/lib/auth/magic-link-flow";
+import { requestPasswordReset } from "@/lib/auth/forgot-password-flow";
 
-// Force this route to the Node runtime (default), but pin the segment as
-// dynamic — we never want this cached.
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/admin/magic-link
+ * POST /api/admin/forgot-password
  *
- * Accepts `application/x-www-form-urlencoded` (from the login form) or JSON.
- * Always responds with the same constant copy — never leaks whether the
- * email exists. The flow handles rate-limits, lookup, token generation and
- * email delivery internally and reports the outcome to logs only.
+ * Accepts `application/x-www-form-urlencoded` (no-JS form) or JSON. Always
+ * redirects to `/admin/forgot-password?sent=1` on any benign outcome — the
+ * copy is constant and never reveals whether the email is registered, in
+ * order to prevent account enumeration.
  *
- * On success (or any benign failure), redirect back to `/admin/login?sent=1`
- * so the no-JS happy path lands on the same "check your inbox" banner. On
- * rate-limit, redirect to `/admin/login?error=rate_limited`. Hard server
- * errors propagate as 500 so they show up in monitoring instead of being
- * swallowed silently.
+ * Rate-limit hits → `?error=rate_limited`. Hard email-provider failure →
+ * 500 so platform monitoring catches it instead of silently telling the
+ * user "check your inbox".
  */
 export async function POST(req: Request): Promise<Response> {
   const rawEmail = await readEmailFromRequest(req);
   const origin = pickOrigin(req);
   const ip = pickClientIp(req);
 
-  const outcome = await requestMagicLink({ rawEmail, origin, ip });
+  const outcome = await requestPasswordReset({ rawEmail, origin, ip });
 
   switch (outcome.kind) {
     case "rate_limited":
-      return redirectBack(req, "/admin/login?error=rate_limited");
+      return redirectBack(req, "/admin/forgot-password?error=rate_limited");
     case "error":
-      // Hard failure (e.g. Resend down). Surface as 500 so platform
-      // monitoring catches it; do NOT swallow into "sent=1".
       return NextResponse.json({ error: "internal_error" }, { status: 500 });
     case "invalid_email":
     case "unknown_email":
     case "inactive_user":
     case "sent":
-      // Constant-copy path. We always show the "check your inbox" banner.
-      return redirectBack(req, "/admin/login?sent=1");
+      return redirectBack(req, "/admin/forgot-password?sent=1");
   }
 }
 
@@ -52,7 +45,6 @@ async function readEmailFromRequest(req: Request): Promise<unknown> {
       return undefined;
     }
   }
-  // Default: HTML form post.
   try {
     const form = await req.formData();
     const value = form.get("email");
@@ -63,8 +55,6 @@ async function readEmailFromRequest(req: Request): Promise<unknown> {
 }
 
 function pickOrigin(req: Request): string {
-  // Trust `x-forwarded-host`/`x-forwarded-proto` on Vercel; fall back to the
-  // request URL's origin for local dev.
   const url = new URL(req.url);
   const proto = req.headers.get("x-forwarded-proto") ?? url.protocol.replace(":", "");
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? url.host;
