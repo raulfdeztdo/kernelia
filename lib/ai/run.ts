@@ -1,4 +1,10 @@
-import { APIConnectionTimeoutError, APIUserAbortError } from "openai";
+import {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIUserAbortError,
+  InternalServerError,
+  RateLimitError,
+} from "openai";
 import { getCategoryMap } from "@/db/queries/categories";
 import {
   listPendingArticles,
@@ -172,15 +178,35 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // Timeouts and user-initiated aborts are transient: the LLM
-      // didn't *reject* the article, the request just ran out the
-      // clock. We DON'T call `onFailed` for these — that would mark
-      // the article terminally failed and `listPendingArticles`
-      // would never pick it up again. Instead we leave the row in
-      // `pending` status so the next cron tick retries it.
-      if (err instanceof APIConnectionTimeoutError || err instanceof APIUserAbortError) {
+      // Transient errors leave the row in `pending` so the next cron
+      // tick retries it. Marking these `failed` would lose them
+      // forever to `listPendingArticles`'s status filter.
+      //
+      // What counts as transient:
+      // - Timeouts / user aborts: the LLM didn't *reject* the article,
+      //   the request just ran out the clock.
+      // - 429 RateLimitError: Cerebras TPM throttle. The next tick (in
+      //   the next franja) will have fresh budget.
+      // - 5xx InternalServerError: provider-side hiccup.
+      // - APIConnectionError (non-timeout subclass): DNS/TCP hiccup.
+      //
+      // Everything else (schema validation, unknown category, 4xx
+      // request errors, etc.) is terminal: the LLM rejected the article
+      // for a reason that won't fix itself, so we mark it failed and
+      // the operator can re-classify from /admin/articles if needed.
+      if (
+        err instanceof APIConnectionTimeoutError ||
+        err instanceof APIUserAbortError ||
+        err instanceof RateLimitError ||
+        err instanceof InternalServerError ||
+        err instanceof APIConnectionError
+      ) {
         timedOut++;
-        log.warn("article_timeout", { articleId: article.id, reason: message });
+        log.warn("article_transient", {
+          articleId: article.id,
+          reason: message,
+          errorKind: err.constructor.name,
+        });
         continue;
       }
       failed++;
