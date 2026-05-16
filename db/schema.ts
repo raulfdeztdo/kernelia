@@ -107,28 +107,37 @@ export const users = pgTable(
     email: text("email").notNull(),
     userType: userTypeEnum("user_type").notNull().default("admin"),
     active: boolean("active").notNull().default(true),
+    // Bcrypt hash of the password. NULL means the user hasn't bootstrapped
+    // a password yet — login is impossible until they go through "forgot
+    // password" (which sends a one-time reset link via Resend). This is the
+    // path for both initial admin and admin-added users.
+    passwordHash: text("password_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("users_email_unique").on(t.email)],
 );
 
-export const magicLinkTokens = pgTable(
-  "magic_link_tokens",
+// Password-reset tokens. Same shape as the deprecated `magic_link_tokens`
+// (sha256 hex digest, single-use, time-bounded) but a different purpose:
+// these gate the `/admin/reset-password` page only — they never grant a
+// session directly. After consumption, the user picks a new password and
+// then logs in normally via email + password.
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
   {
     id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // sha256 hex digest of the plaintext token. Never store plaintext.
     tokenHash: text("token_hash").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     usedAt: timestamp("used_at", { withTimezone: true }),
   },
   (t) => [
-    index("magic_link_tokens_user_id_idx").on(t.userId),
-    uniqueIndex("magic_link_tokens_token_hash_unique").on(t.tokenHash),
+    index("password_reset_tokens_user_id_idx").on(t.userId),
+    uniqueIndex("password_reset_tokens_token_hash_unique").on(t.tokenHash),
   ],
 );
 
@@ -171,8 +180,8 @@ export const cronRuns = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type MagicLinkToken = typeof magicLinkTokens.$inferSelect;
-export type NewMagicLinkToken = typeof magicLinkTokens.$inferInsert;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
 export type CronRun = typeof cronRuns.$inferSelect;

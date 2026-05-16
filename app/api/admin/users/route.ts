@@ -14,8 +14,8 @@ const bodySchema = z.object({
  * POST /api/admin/users
  *
  * Body: `{ email }`. Adds a new admin user (active by default). No invite
- * email is sent — the user can immediately request a magic-link from
- * `/admin/login` once their email is in the table.
+ * email is sent — the user goes to `/admin/login`, clicks "forgot password",
+ * receives the reset link via Resend and chooses their first password.
  *
  * Responses:
  * - 200 `{ ok: true, id }` on success.

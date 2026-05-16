@@ -2,56 +2,53 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Acceso · Kernelia Admin",
+  title: "Restablecer contraseña · Kernelia Admin",
 };
-
-/**
- * Login page for the admin backoffice. From 7.F onward this is a classic
- * email + password form. Magic-link is gone; the only Resend-powered path
- * is the "forgot password" link below the form.
- *
- * The form posts native HTML to `/api/admin/login` so the happy path works
- * with no JS at all. Error and confirmation banners come back as query
- * params (`?error=` / `?reset=1`) — same pattern as the previous magic-link
- * UI.
- */
 
 const ERROR_COPY: Record<string, string> = {
-  invalid_credentials: "Email o contraseña incorrectos.",
   rate_limited: "Demasiados intentos. Espera unos minutos y prueba otra vez.",
-  expired: "El enlace de restablecimiento ha caducado. Pide uno nuevo.",
-  used: "El enlace de restablecimiento ya se usó. Pide uno nuevo.",
-  not_found: "Enlace de restablecimiento no válido. Pide uno nuevo.",
-  invalid_reset: "Falta el token. Pide un enlace nuevo desde \"¿Olvidaste tu contraseña?\".",
-  revoked: "Tu cuenta ya no tiene acceso. Contacta al administrador.",
 };
+
+const SUCCESS_COPY =
+  "Si ese email está registrado, recibirás un enlace para restablecer la contraseña en unos minutos.";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function AdminLoginPage({ searchParams }: PageProps) {
+/**
+ * `/admin/forgot-password` — bootstraps a new password (for users who never
+ * set one) or recovers a forgotten one. The endpoint always responds with
+ * the same "if that email is registered…" copy, so this surface never
+ * reveals whether the email exists.
+ *
+ * This is also the documented onboarding path: an admin adds a user via
+ * `/admin/users`, the new user lands here, asks for a link, and sets their
+ * password via `/admin/reset-password`. No invitation email is sent
+ * directly — the user pulls the link themselves.
+ */
+export default async function ForgotPasswordPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const errorKey = typeof sp.error === "string" ? sp.error : undefined;
   const errorMessage = errorKey ? ERROR_COPY[errorKey] : undefined;
-  const justReset = sp.reset === "1";
+  const sent = sp.sent === "1";
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm space-y-6 rounded-lg border bg-surface p-6 shadow-lg">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Kernelia · Admin</h1>
+          <h1 className="text-2xl font-semibold">Restablecer contraseña</h1>
           <p className="text-sm text-muted-foreground">
-            Introduce tu email y contraseña para entrar al panel.
+            Te enviaremos un enlace de un solo uso para elegir una nueva contraseña.
           </p>
         </header>
 
-        {justReset ? (
+        {sent ? (
           <div
             role="status"
             className="rounded-md border border-accent/40 bg-accent/10 p-3 text-sm text-foreground"
           >
-            Contraseña actualizada. Inicia sesión con la nueva.
+            {SUCCESS_COPY}
           </div>
         ) : null}
 
@@ -64,7 +61,7 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
           </div>
         ) : null}
 
-        <form action="/api/admin/login" method="post" className="space-y-3">
+        <form action="/api/admin/forgot-password" method="post" className="space-y-3">
           <label className="block space-y-1.5">
             <span className="text-sm font-medium">Email</span>
             <input
@@ -76,32 +73,23 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
               className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-border-strong"
             />
           </label>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Contraseña</span>
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              required
-              minLength={1}
-              className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-border-strong"
-            />
-          </label>
           <button
             type="submit"
             className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
           >
-            Entrar
+            Enviarme enlace
           </button>
         </form>
 
         <p className="text-center text-sm">
-          <Link
-            href="/admin/forgot-password"
-            className="text-accent underline-offset-2 hover:underline"
-          >
-            ¿Olvidaste tu contraseña?
+          <Link href="/admin/login" className="text-accent underline-offset-2 hover:underline">
+            ← Volver al login
           </Link>
+        </p>
+
+        <p className="text-xs text-muted-foreground">
+          El enlace caduca en 30 minutos y solo puede usarse una vez. Después de cambiar la
+          contraseña, todas las sesiones activas se cerrarán.
         </p>
       </div>
     </main>

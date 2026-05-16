@@ -18,8 +18,9 @@ Two surfaces:
 - **Public feed** (`/[locale]`, `/api/articles`, `rss.xml`,
   `sitemap.xml`, `robots.txt`) — no auth, free read.
 - **Admin backoffice** (`/admin/*`, `/api/admin/*`) — auth required
-  (magic-link via Resend + HMAC-signed cookie session). `noindex,
-  nofollow`, excluded from sitemap. Operator-only.
+  (email + bcrypt password, HMAC-signed cookie session; Resend powers
+  password reset only). `noindex, nofollow`, excluded from sitemap.
+  Operator-only.
 
 Production: <https://kernelia.dev>
 
@@ -98,12 +99,12 @@ backend-agent  ⟂  frontend-agent     ← parallel where possible
 | `app/[locale]/` | Public pages with locale segment (home, about). Server components by default. |
 | `app/admin/` | Admin backoffice (Fase 7). No locale segment, ES copy, `noindex,nofollow`. Requires session. |
 | `app/api/` | Route handlers: `cron/{ingest,classify}`, `articles`, `health`, `rss.xml`. |
-| `app/api/admin/` | Admin endpoints: `magic-link`, `logout`, `articles/*`, `users/*`. |
+| `app/api/admin/` | Admin endpoints: `login`, `logout`, `forgot-password`, `reset-password`, `articles/*`, `users/*`. |
 | `components/` | UI; `components/ui/` is shadcn primitives. |
 | `lib/ai/` | Cerebras client, prompts, Zod schemas, `classifyArticle`, `runClassify`. |
 | `lib/ingest/` | RSS parser, dedupe, normalisation. |
-| `lib/auth/` | Magic-link tokens, HMAC-signed session cookie, in-memory rate-limit. Server-only. |
-| `lib/email/` | Minimal Resend wrapper (`sendMagicLink`). |
+| `lib/auth/` | Password hashing (bcrypt), password-reset tokens, HMAC-signed session cookie, in-memory rate-limit. Server-only. |
+| `lib/email/` | Minimal Resend wrapper (`sendPasswordReset`). |
 | `db/` | Drizzle schema, migrations, queries. `db/queries/*` is the only DB surface. |
 | `db/queries/` | All SQL-touching code. UI imports from here, never from `db/index.ts`. |
 | `messages/` | `es.json`, `en.json` — every UI string of the public site. |

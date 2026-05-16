@@ -20,16 +20,19 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
   - `app/[locale]/` — paginas publicas con segmento de locale.
   - `app/admin/` — backoffice privado (sin segmento locale, copy en ES).
     `noindex,nofollow` y fuera del sitemap. Toda la rama requiere sesion
-    valida; la unica excepcion es `/admin/login` y `/admin/auth/callback`.
+    valida; las unicas excepciones son `/admin/login`,
+    `/admin/forgot-password` y `/admin/reset-password`.
   - `app/api/` — route handlers (cron, health, admin).
-  - `app/api/admin/` — endpoints internos del backoffice (magic-link,
-    sessions, gestion de articulos y usuarios).
+  - `app/api/admin/` — endpoints internos del backoffice (`login`,
+    `logout`, `forgot-password`, `reset-password`, gestion de articulos
+    y usuarios).
   - `lib/` — utilidades compartidas (clients, helpers).
   - `lib/ai/` — cliente Cerebras + prompts + schemas Zod.
   - `lib/ingest/` — RSS parser, dedupe, normalizacion.
-  - `lib/auth/` — tokens magic-link, sesiones HMAC, rate-limit, helpers
-    de cookie. **Server-only**; nunca importar desde componentes cliente.
-  - `lib/email/` — wrapper minimo sobre Resend (`sendMagicLink`).
+  - `lib/auth/` — hash de contrasenya (bcrypt), tokens de password-reset,
+    sesiones HMAC, rate-limit, helpers de cookie. **Server-only**; nunca
+    importar desde componentes cliente.
+  - `lib/email/` — wrapper minimo sobre Resend (`sendPasswordReset`).
   - `db/` — schema Drizzle, migraciones, queries.
   - `db/queries/` — unico punto de acceso a la DB. Incluye
     `users.ts`, `cron-runs.ts` y (en sub-fases siguientes)
@@ -102,11 +105,13 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
   - Service role key de Supabase **solo** en server (`process.env.SUPABASE_SERVICE_ROLE`).
   - Anon key para lectura publica desde el cliente si se requiere.
   - **Admin (Fase 7):** auth solo en `/admin/*`. Cookie `__Host-kernelia-session`
-    firmada con HMAC (`SESSION_SECRET`, >= 32 chars). Magic-link via Resend:
-    token plaintext en el email, en DB solo SHA-256 + `expires_at` (15min) +
-    `used_at` para single-use. Rate-limit in-memory por IP **y** por email
-    (5 / 10 min) en el endpoint de magic-link. La respuesta del endpoint
-    es constante (sin pista de si el email existe) para evitar enumeracion.
+    firmada con HMAC (`SESSION_SECRET`, >= 32 chars). Login por email +
+    contrasenya: hash bcrypt (cost 12) en `users.password_hash`. Resend
+    se usa solo para enviar enlaces de password-reset (TTL 30min, SHA-256
+    + single-use atomico). Rate-limit in-memory por IP y por email (5/10min
+    en forgot-password; 10/10min IP y 5/15min fallo-por-email en login).
+    Las respuestas constantes — tanto el endpoint de forgot-password como
+    el de login no revelan si el email existe (anti-enumeracion).
 - Rate limit en endpoints de busqueda si llegan a publico (no urgente).
 
 ## 9. CI/CD

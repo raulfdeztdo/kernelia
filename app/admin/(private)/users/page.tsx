@@ -39,8 +39,10 @@ export default async function AdminUsersPage() {
       </header>
 
       <p className="text-sm text-muted-foreground">
-        Los usuarios añadidos aquí pueden iniciar sesión inmediatamente vía magic-link en{" "}
-        <code className="text-xs">/admin/login</code>. No se envía email de invitación.
+        Los usuarios añadidos aquí pueden entrar a{" "}
+        <code className="text-xs">/admin/login</code>, pulsar &quot;¿olvidaste tu contraseña?&quot;
+        y elegir su primera contraseña vía el enlace que recibirán por email. No se envía
+        invitación automática.
       </p>
 
       <section className="rounded-md border border-border bg-surface p-4">

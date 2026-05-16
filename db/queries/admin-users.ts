@@ -20,9 +20,10 @@ import {
  *   the operator does it by accident and locks themselves out. We forbid it
  *   server-side; the UI hides the controls too as defense in depth.
  * - **would_orphan**: the operation would leave the system with zero active
- *   admin users. If that happens nobody can log back in via magic-link
- *   (token sender requires an existing+active user). Recovery would mean
- *   running a manual SQL `update users set active = true`.
+ *   admin users. If that happens nobody can log back in (the login route
+ *   only accepts active users, and even "forgot password" requires an
+ *   active row). Recovery would mean running a manual SQL
+ *   `update users set active = true`.
  * - **duplicate_email**: someone already has this address.
  * - **not_found**: the target id doesn't match any row.
  *
@@ -46,8 +47,9 @@ export class AdminUserError extends Error {
   }
 }
 
-// RFC-5322-ish — same shape as `lib/auth/magic-link-flow.ts`. Kept inline to
-// avoid coupling this module to the magic-link flow.
+// RFC-5322-ish — same shape as the email validation in
+// `lib/auth/forgot-password-flow.ts`. Kept inline to avoid coupling this
+// module to the password flow.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface AdminAddUserParams {

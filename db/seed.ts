@@ -45,6 +45,15 @@ async function main() {
     //   1) INITIAL_ADMIN_EMAIL is set, and
     //   2) the users table is still empty.
     // Idempotent: re-running the seed never touches existing users.
+    //
+    // The seeded user has NO password (`password_hash = NULL`). From Phase
+    // 7.F onward, the bootstrap path is:
+    //   1) seed creates the row with email only,
+    //   2) operator goes to `/admin/login`, clicks "forgot password",
+    //   3) Resend delivers a reset link,
+    //   4) operator sets their first password via `/admin/reset-password`.
+    // This is the same path admin-added users walk; no separate "set
+    // initial password" mechanism exists.
     const initialAdminEmail = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
     if (initialAdminEmail) {
       const countRows = await db
@@ -59,6 +68,10 @@ async function main() {
         });
         // eslint-disable-next-line no-console
         console.log(`[seed] initial admin inserted: ${initialAdminEmail}`);
+        // eslint-disable-next-line no-console
+        console.log(
+          "[seed] no password set — bootstrap via /admin/login → 'forgot password' → reset link",
+        );
       } else {
         // eslint-disable-next-line no-console
         console.log(`[seed] users table already populated (${n} rows) — skipping admin seed`);
