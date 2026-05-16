@@ -759,17 +759,29 @@ a usarse SOLO para enviar enlaces de password-reset.
 
 ### Sub-fase 7.G · Dashboard redisenyado con sidebar + health card
 
-Plan (proximo PR tras 7.F).
-
-- [ ] Layout `/admin/*` con sidebar fija (Panel · Articulos · Usuarios
-  · Cron) y header con email + logout. Migrar de "header simple +
-  paginas planas" a layout shell.
-- [ ] `lib/admin-health.ts`: pequeno helper que llama a `/api/health`
-  desde el server component del dashboard. Render como card con
-  status (200/503), latencia DB, counts por status y ultimo ingest.
-- [ ] Refactor del actual `app/admin/(private)/page.tsx`: la tabla
-  por categoria/fuente se queda; las cards de totales pasan a un
-  grid compacto arriba. Sin gr aficas todavia.
+- [x] Layout `/admin/*` con sidebar fija (Panel · Articulos · Usuarios
+  · Cron) y header sticky con email + logout. La sidebar es un
+  client component (`usePathname` para `aria-current`); el resto
+  del layout sigue siendo server.
+- [x] Mobile: la sidebar colapsa a un strip horizontal scroll sobre
+  el contenido. Sin hamburguesa — los 4 items caben.
+- [x] `lib/health.ts`: helper `probeHealth()` compartido por
+  `/api/health` y el dashboard. El admin lo llama por funcion
+  directa (no por fetch interno) para evitar un round-trip HTTP.
+  El endpoint publico se queda fino: invoca `probeHealth` y
+  traduce a 200/503.
+- [x] `components/admin/health-card.tsx`: status pill (200/503),
+  DB latencia con warn >=500ms, ultimo ingest relativo, counts
+  por status. Server-rendered, sin auto-refresh — recargar la
+  pagina re-corre el probe.
+- [x] Refactor de `app/admin/(private)/page.tsx`: card de salud
+  arriba, grid compacto de totales (5-up), tablas por categoria
+  / fuente / tokens 7d, schedule del cron al pie. Eliminadas las
+  cards-navegacion duplicadas (Usuarios/Cron) — la sidebar ya
+  ocupa ese rol.
+- [x] Tests: `tests/admin-sidebar.test.ts` (logica de active-link
+  pura, extraida como `isNavItemActive`) + `tests/health.test.ts`
+  (contrato del union `HealthResult`).
 
 ### Sub-fase 7.H · Graficas (tokens, classified, status, fuentes)
 

@@ -6,18 +6,30 @@ import {
   getTokensPerDay,
 } from "@/db/queries/admin-metrics";
 import { CRON_SCHEDULE } from "@/lib/cron-schedule";
+import { probeHealth } from "@/lib/health";
+import { HealthCard } from "@/components/admin/health-card";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Admin dashboard. Server component that fans out 4 metric queries in
- * parallel and renders them as plain HTML cards / tables. No client JS.
+ * Admin dashboard. Server component that fans out the metric queries and
+ * the health probe in parallel, then renders them as static HTML.
  *
- * Heavier interactive views (cron monitor table with filters, article
- * management, user management) live in their own pages.
+ * Phase 7.G shape:
+ *   - Health card (`probeHealth`) at the top — same probe `/api/health`
+ *     uses, called directly to skip a self-HTTP round-trip.
+ *   - Compact 5-up status grid (totals).
+ *   - Category and source breakdowns (tables).
+ *   - Tokens last 7 days (table). Charts arrive in 7.H.
+ *   - Cron schedule reminder + link to the runs monitor.
+ *
+ * Navigation (Panel · Artículos · Usuarios · Cron) lives in the sidebar
+ * provided by `app/admin/(private)/layout.tsx`, so this page only renders
+ * data — no nav cards.
  */
 export default async function AdminDashboardPage() {
-  const [statusCounts, byCategory, bySource, tokensPerDay] = await Promise.all([
+  const [health, statusCounts, byCategory, bySource, tokensPerDay] = await Promise.all([
+    probeHealth(),
     getArticleStatusCounts(),
     getCategoryBreakdown(),
     getSourceBreakdown(),
@@ -27,13 +39,20 @@ export default async function AdminDashboardPage() {
   const totalTokensLast7 = tokensPerDay.reduce((acc, r) => acc + r.totalTokens, 0);
 
   return (
-    <div className="space-y-10">
-      <header className="space-y-2">
+    <div className="space-y-8">
+      <header className="space-y-1">
         <h1 className="text-2xl font-semibold">Panel de administración</h1>
         <p className="text-sm text-muted-foreground">
           Métricas en vivo de Kernelia. Lectura directa de Supabase, sin caché.
         </p>
       </header>
+
+      <section aria-labelledby="health-heading" className="space-y-3">
+        <h2 id="health-heading" className="text-lg font-medium">
+          Estado del servicio
+        </h2>
+        <HealthCard result={health} />
+      </section>
 
       <section aria-labelledby="totals-heading" className="space-y-3">
         <div className="flex items-baseline justify-between">
@@ -112,27 +131,10 @@ export default async function AdminDashboardPage() {
         />
       </section>
 
-      <section aria-labelledby="users-heading" className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h2 id="users-heading" className="text-lg font-medium">
-            Usuarios
-          </h2>
-          <Link
-            href="/admin/users"
-            className="text-sm text-accent underline-offset-2 hover:underline"
-          >
-            Gestionar usuarios →
-          </Link>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Lista de admins con acceso al backoffice. Añade, desactiva o borra emails.
-        </p>
-      </section>
-
       <section aria-labelledby="cron-heading" className="space-y-3">
         <div className="flex items-baseline justify-between">
           <h2 id="cron-heading" className="text-lg font-medium">
-            Cron
+            Schedule del cron
           </h2>
           <Link
             href="/admin/cron"
