@@ -1,4 +1,9 @@
-import { APIConnectionTimeoutError } from "openai";
+import {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  InternalServerError,
+  RateLimitError,
+} from "openai";
 import { describe, expect, it, vi } from "vitest";
 import { classifyArticle } from "@/lib/ai/classify";
 import { classificationSchema, CATEGORY_SLUGS } from "@/lib/ai/schemas";
@@ -247,6 +252,65 @@ describe("runClassify", () => {
     expect(onFailed).not.toHaveBeenCalled();
     expect(onClassified).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      "429 RateLimitError (Cerebras TPM throttle)",
+      () => new RateLimitError(429, { error: { message: "rate_limit_exceeded" } }, "rate_limit_exceeded", {}),
+    ],
+    [
+      "5xx InternalServerError (provider hiccup)",
+      () => new InternalServerError(503, { error: { message: "upstream" } }, "service_unavailable", {}),
+    ],
+    [
+      "APIConnectionError (DNS/TCP)",
+      () => new APIConnectionError({ message: "ECONNRESET" }),
+    ],
+  ])(
+    "treats %s as transient — does NOT mark article failed",
+    async (_label, makeError) => {
+      // Regression for the 504-loop bug: before #N, a single throttled or
+      // 5xx Cerebras call was caught here as a terminal failure and the
+      // article was marked `failed`. Next cron tick skipped it. Now we
+      // treat 429 / 5xx / connection-errors the same as a timeout: the
+      // article stays `pending` and the next franja retries it.
+      const pending = [
+        {
+          id: "a1",
+          title: "Throttled article",
+          url: "https://example.com/1",
+          rawExcerpt: null,
+          language: "en" as const,
+          sourceName: "Example",
+          sourceLanguage: "en" as const,
+        },
+      ];
+      const client = {
+        chat: {
+          completions: {
+            create: vi.fn(async () => {
+              throw makeError();
+            }),
+          },
+        },
+      } as never;
+      const onClassified = vi.fn(async () => {});
+      const onFailed = vi.fn(async () => {});
+
+      const summary = await runClassify({
+        client,
+        fetchPending: async () => pending,
+        onClassified,
+        onFailed,
+        resolveCategoryId: async () => "cat-id",
+      });
+
+      expect(summary.timedOut).toBe(1);
+      expect(summary.failed).toBe(0);
+      expect(onFailed).not.toHaveBeenCalled();
+      expect(onClassified).not.toHaveBeenCalled();
+    },
+  );
 
   it("stops cleanly when the wall-clock budget is exhausted", async () => {
     // Six pending items, but every classification call sleeps 80ms.

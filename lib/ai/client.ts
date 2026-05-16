@@ -37,7 +37,20 @@ export function getCerebrasClient(): OpenAI {
   const key = `${apiKey}|${baseURL}|${timeout}`;
   if (cachedClient && cachedKey === key) return cachedClient;
 
-  cachedClient = new OpenAI({ apiKey, baseURL, timeout });
+  // `maxRetries: 0` is non-negotiable for the classify cron. The SDK's
+  // default is 2 retries with exponential backoff, which means a single
+  // slow / throttled call can consume up to 3 × 15s = 45s of wall-clock
+  // before the SDK gives up. With limit=8 and delayBetweenMs=3000 the
+  // happy path already spends ~25s; ONE retrying article pushes the
+  // function past Vercel's 60s cap → 504. The wall-clock budget in
+  // `runClassify` only fires BETWEEN articles, so it can't preempt an
+  // SDK retry loop already in flight.
+  //
+  // We have our own retry layer at the article level: any transient
+  // failure (timeout, 429, 5xx) leaves the row in `status='pending'`
+  // and the next cron tick picks it up. Faster + cheaper than letting
+  // the SDK spin on a known-bad call.
+  cachedClient = new OpenAI({ apiKey, baseURL, timeout, maxRetries: 0 });
   cachedKey = key;
   return cachedClient;
 }
