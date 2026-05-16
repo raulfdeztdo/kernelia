@@ -165,3 +165,87 @@ export async function getTokensPerDay(days = 7): Promise<TokensPerDayRow[]> {
   }
   return result;
 }
+
+export interface ClassifiedPerDayRow {
+  /** UTC date in `YYYY-MM-DD` form. */
+  date: string;
+  /** Articles transitioned to `status='classified'` (sum across cron ticks). */
+  classified: number;
+  /** Articles that the LLM failed to classify that day. */
+  failed: number;
+  /** How many classify cron ticks ran on this UTC day. */
+  runs: number;
+}
+
+/**
+ * Output of the classify cron per UTC day over the last `days` (default 30).
+ * Same data source as `getTokensPerDay` (`cron_runs.summary` for
+ * `job='classify'`) — `classified` and `failed` are summed across the day's
+ * ticks. Days with no successful run get a zero row so the chart stays
+ * `days`-long.
+ *
+ * Why cron_runs and not `articles`: there's no `classified_at` column on
+ * `articles`. The cron logs the count per tick which is the operational
+ * truth we care about ("how productive was the classifier today?").
+ */
+export async function getClassifiedPerDay(days = 30): Promise<ClassifiedPerDayRow[]> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({
+      date: sql<string>`to_char(${cronRuns.startedAt} at time zone 'UTC', 'YYYY-MM-DD')`,
+      classified: sql<number>`coalesce(sum(((${cronRuns.summary}->>'classified')::int)), 0)::int`,
+      failed: sql<number>`coalesce(sum(((${cronRuns.summary}->>'failed')::int)), 0)::int`,
+      runs: sql<number>`count(*)::int`,
+    })
+    .from(cronRuns)
+    .where(and(eq(cronRuns.job, "classify"), gte(cronRuns.startedAt, since)))
+    .groupBy(sql`to_char(${cronRuns.startedAt} at time zone 'UTC', 'YYYY-MM-DD')`)
+    .orderBy(desc(sql`to_char(${cronRuns.startedAt} at time zone 'UTC', 'YYYY-MM-DD')`));
+
+  const byDate = new Map(rows.map((r) => [r.date, r]));
+  const result: ClassifiedPerDayRow[] = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().slice(0, 10);
+    const row = byDate.get(key);
+    result.push(row ?? { date: key, classified: 0, failed: 0, runs: 0 });
+  }
+  return result;
+}
+
+export interface SourceVolumeRow {
+  sourceId: string;
+  name: string;
+  /** Articles classified in the last `days` window (the operational signal). */
+  classified: number;
+}
+
+/**
+ * Top-N sources by # of classified articles ingested in the last `days`.
+ * Powers the horizontal bar chart on the dashboard.
+ *
+ * Filter is `status='classified' AND ingestedAt >= now - days`. We use
+ * `ingestedAt` (not `publishedAt`) so a feed that suddenly stops produces
+ * a visible drop in the chart — we want to see operational state, not
+ * publishing dates that may pre-date our existence.
+ *
+ * Sources with zero matching rows are omitted (they'd just add empty bars).
+ */
+export async function getSourceVolume(opts: { days?: number; topN?: number } = {}): Promise<SourceVolumeRow[]> {
+  const days = opts.days ?? 30;
+  const topN = opts.topN ?? 10;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({
+      sourceId: sources.id,
+      name: sources.name,
+      classified: sql<number>`count(${articles.id})::int`,
+    })
+    .from(sources)
+    .innerJoin(articles, eq(articles.sourceId, sources.id))
+    .where(and(eq(articles.status, "classified"), gte(articles.ingestedAt, since)))
+    .groupBy(sources.id, sources.name)
+    .orderBy(desc(sql`count(${articles.id})`))
+    .limit(topN);
+  return rows;
+}

@@ -785,20 +785,31 @@ a usarse SOLO para enviar enlaces de password-reset.
 
 ### Sub-fase 7.H · Graficas (tokens, classified, status, fuentes)
 
-Plan (proximo PR tras 7.G).
-
-- [ ] Recharts (o equivalente ligero). Cuatro gr aficas:
-  1. Tokens consumidos por dia, ultimos 30d. Stacked bar
+- [x] Recharts 3.8.1 instalado. Cuatro graficas, todas client islands
+  (Recharts toca el DOM), envueltas en `ResponsiveContainer`:
+  1. **Tokens consumidos por dia, ultimos 30d** — stacked bar
      prompt+completion. Reusa `getTokensPerDay(30)`.
-  2. Articulos clasificados por dia, ultimos 30d. Line chart.
+  2. **Articulos clasificados por dia, ultimos 30d** — line con dos
+     series: classified (solido accent) + failed (dasheado rojo).
      Nueva query `getClassifiedPerDay(30)`.
-  3. Estado de articulos. Donut: classified / pending / failed /
-     hidden. Reusa `getArticleStatusCounts`.
-  4. Volumen por fuente, ultimos 30d. Bar horizontal top-N.
-     Nueva query `getArticlesPerSource(30)`.
-- [ ] Server-render con datos pre-calculados; client island solo
-  para el SVG (Recharts es client-only). Sin tooltips animados
-  pesados — la pagina sigue siendo sobria.
+  3. **Estado de articulos** — donut: classified / pending / failed
+     / hidden. Reusa `getArticleStatusCounts`. Tooltip con porcentaje;
+     fallback "Sin datos" en DB vacia.
+  4. **Volumen por fuente, ultimos 30d** — bar horizontal top-10.
+     Nueva query `getSourceVolume({days, topN})`. Altura escala con
+     numero de filas. Layout horizontal porque los nombres de fuente
+     son largos.
+- [x] Dashboard re-organizado:
+  - Status: grid 5-up de numeros + donut al lado (2 columnas en lg).
+  - Output del cron 30d: tokens (bar) + classified (line) en 2 columnas.
+  - Volumen por fuente: bar arriba; tabla completa con `<details>`
+    abajo como drill-down.
+  - Categorias: tabla (10 slugs fijos son mas legibles tabular).
+- [x] `components/admin/charts/chart-theme.ts` con paleta y estilos
+  comunes para que las 4 graficas se vean coherentes.
+- [x] Test `admin-metrics-shape.test.ts` pinea los campos que las
+  graficas leen — cualquier rename silencia el SVG, asi que el
+  shape contract es lo que mas importa.
 
 ---
 

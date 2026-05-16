@@ -2,41 +2,62 @@ import Link from "next/link";
 import {
   getArticleStatusCounts,
   getCategoryBreakdown,
+  getClassifiedPerDay,
   getSourceBreakdown,
+  getSourceVolume,
   getTokensPerDay,
 } from "@/db/queries/admin-metrics";
 import { CRON_SCHEDULE } from "@/lib/cron-schedule";
 import { probeHealth } from "@/lib/health";
 import { HealthCard } from "@/components/admin/health-card";
+import { ClassifiedLineChart } from "@/components/admin/charts/classified-line";
+import { SourcesBarChart } from "@/components/admin/charts/sources-bar";
+import { StatusDonut } from "@/components/admin/charts/status-donut";
+import { TokensBarChart } from "@/components/admin/charts/tokens-bar";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Admin dashboard. Server component that fans out the metric queries and
- * the health probe in parallel, then renders them as static HTML.
+ * Admin dashboard. Server component that fans out the metric queries +
+ * the health probe in parallel, then renders charts (client islands via
+ * Recharts) alongside the supporting tables.
  *
- * Phase 7.G shape:
- *   - Health card (`probeHealth`) at the top — same probe `/api/health`
- *     uses, called directly to skip a self-HTTP round-trip.
- *   - Compact 5-up status grid (totals).
- *   - Category and source breakdowns (tables).
- *   - Tokens last 7 days (table). Charts arrive in 7.H.
- *   - Cron schedule reminder + link to the runs monitor.
+ * Phase 7.H layout:
+ *   - Health card.
+ *   - Status section: 5-up Stat grid (numbers) + donut (visual). Side by
+ *     side on desktop, stacked on mobile.
+ *   - Tokens & classified per day, last 30d: two charts side by side.
+ *   - Volume per source, last 30d: horizontal bar of top-10 + the full
+ *     source table below as drill-down (last-ingest column matters).
+ *   - Categories: table (no chart — 10 fixed slugs are easier to scan
+ *     in tabular form).
+ *   - Cron schedule reminder.
  *
- * Navigation (Panel · Artículos · Usuarios · Cron) lives in the sidebar
- * provided by `app/admin/(private)/layout.tsx`, so this page only renders
- * data — no nav cards.
+ * Charts are kept in `components/admin/charts/*` and are all "use client"
+ * because Recharts touches the DOM. The dashboard stays a server component
+ * so the metric queries run in one network hop.
  */
 export default async function AdminDashboardPage() {
-  const [health, statusCounts, byCategory, bySource, tokensPerDay] = await Promise.all([
+  const [
+    health,
+    statusCounts,
+    byCategory,
+    bySource,
+    tokensPerDay30,
+    classifiedPerDay30,
+    sourceVolume,
+  ] = await Promise.all([
     probeHealth(),
     getArticleStatusCounts(),
     getCategoryBreakdown(),
     getSourceBreakdown(),
-    getTokensPerDay(7),
+    getTokensPerDay(30),
+    getClassifiedPerDay(30),
+    getSourceVolume({ days: 30, topN: 10 }),
   ]);
 
-  const totalTokensLast7 = tokensPerDay.reduce((acc, r) => acc + r.totalTokens, 0);
+  const totalTokensLast30 = tokensPerDay30.reduce((acc, r) => acc + r.totalTokens, 0);
+  const totalClassifiedLast30 = classifiedPerDay30.reduce((acc, r) => acc + r.classified, 0);
 
   return (
     <div className="space-y-8">
@@ -54,9 +75,9 @@ export default async function AdminDashboardPage() {
         <HealthCard result={health} />
       </section>
 
-      <section aria-labelledby="totals-heading" className="space-y-3">
+      <section aria-labelledby="status-heading" className="space-y-3">
         <div className="flex items-baseline justify-between">
-          <h2 id="totals-heading" className="text-lg font-medium">
+          <h2 id="status-heading" className="text-lg font-medium">
             Artículos por estado
           </h2>
           <Link
@@ -66,13 +87,69 @@ export default async function AdminDashboardPage() {
             Gestionar artículos →
           </Link>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <Stat label="Total" value={statusCounts.total} />
-          <Stat label="Classified" value={statusCounts.classified} tone="accent" />
-          <Stat label="Pending" value={statusCounts.pending} />
-          <Stat label="Failed" value={statusCounts.failed} tone="warn" />
-          <Stat label="Hidden" value={statusCounts.hidden} tone="muted" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-2 gap-3 self-start sm:grid-cols-3 lg:grid-cols-2">
+            <Stat label="Total" value={statusCounts.total} />
+            <Stat label="Classified" value={statusCounts.classified} tone="accent" />
+            <Stat label="Pending" value={statusCounts.pending} />
+            <Stat label="Failed" value={statusCounts.failed} tone="warn" />
+            <Stat label="Hidden" value={statusCounts.hidden} tone="muted" />
+          </div>
+          <div className="rounded-md border border-border bg-surface p-3">
+            <StatusDonut
+              classified={statusCounts.classified}
+              pending={statusCounts.pending}
+              failed={statusCounts.failed}
+              hidden={statusCounts.hidden}
+            />
+          </div>
         </div>
+      </section>
+
+      <section aria-labelledby="output-heading" className="space-y-3">
+        <h2 id="output-heading" className="text-lg font-medium">
+          Output del cron (últimos 30 días)
+        </h2>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ChartCard
+            title="Tokens consumidos"
+            subtitle={`Total: ${totalTokensLast30.toLocaleString()}`}
+          >
+            <TokensBarChart data={tokensPerDay30} />
+          </ChartCard>
+          <ChartCard
+            title="Artículos clasificados"
+            subtitle={`Total: ${totalClassifiedLast30.toLocaleString()}`}
+          >
+            <ClassifiedLineChart data={classifiedPerDay30} />
+          </ChartCard>
+        </div>
+      </section>
+
+      <section aria-labelledby="sources-heading" className="space-y-3">
+        <h2 id="sources-heading" className="text-lg font-medium">
+          Volumen por fuente
+        </h2>
+        <ChartCard
+          title="Top fuentes (clasificados, últimos 30d)"
+          subtitle="Detecta qué feeds dominan el flujo y cuáles se han quedado en silencio."
+        >
+          <SourcesBarChart data={sourceVolume} />
+        </ChartCard>
+        <details className="rounded-md border border-border bg-surface text-sm">
+          <summary className="cursor-pointer select-none px-4 py-2 font-medium text-muted-foreground hover:text-foreground">
+            Todas las fuentes (último ingest)
+          </summary>
+          <Table
+            headers={["Fuente", "Activa", "Total artículos", "Último ingest"]}
+            rows={bySource.map((s) => [
+              s.name,
+              s.active ? "✓" : "—",
+              String(s.total),
+              s.lastIngestedAt ? formatRelative(s.lastIngestedAt) : "—",
+            ])}
+          />
+        </details>
       </section>
 
       <section aria-labelledby="cats-heading" className="space-y-3">
@@ -91,42 +168,6 @@ export default async function AdminDashboardPage() {
             String(c.pending),
             String(c.failed),
             String(c.total),
-          ])}
-        />
-      </section>
-
-      <section aria-labelledby="sources-heading" className="space-y-3">
-        <h2 id="sources-heading" className="text-lg font-medium">
-          Por fuente
-        </h2>
-        <Table
-          headers={["Fuente", "Activa", "Total artículos", "Último ingest"]}
-          rows={bySource.map((s) => [
-            s.name,
-            s.active ? "✓" : "—",
-            String(s.total),
-            s.lastIngestedAt ? formatRelative(s.lastIngestedAt) : "—",
-          ])}
-        />
-      </section>
-
-      <section aria-labelledby="tokens-heading" className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h2 id="tokens-heading" className="text-lg font-medium">
-            Tokens (clasificación, últimos 7 días)
-          </h2>
-          <span className="text-sm text-muted-foreground">
-            Total: <strong className="text-foreground">{totalTokensLast7.toLocaleString()}</strong>
-          </span>
-        </div>
-        <Table
-          headers={["Día (UTC)", "Prompt", "Completion", "Total", "Ticks"]}
-          rows={tokensPerDay.map((d) => [
-            d.date,
-            d.promptTokens.toLocaleString(),
-            d.completionTokens.toLocaleString(),
-            d.totalTokens.toLocaleString(),
-            String(d.runs),
           ])}
         />
       </section>
@@ -154,6 +195,26 @@ export default async function AdminDashboardPage() {
           </li>
         </ul>
       </section>
+    </div>
+  );
+}
+
+function ChartCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface p-4">
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium">{title}</h3>
+        {subtitle ? <span className="text-xs text-muted-foreground">{subtitle}</span> : null}
+      </div>
+      {children}
     </div>
   );
 }
