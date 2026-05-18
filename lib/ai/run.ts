@@ -8,10 +8,14 @@ import {
 import { getCategoryMap } from "@/db/queries/categories";
 import {
   listPendingArticles,
+  listRecentForDedupe,
   markArticleClassified,
   markArticleFailed,
+  markArticleHiddenAsDuplicate,
   type PendingArticle,
+  type RecentDedupeRow,
 } from "@/db/queries/articles";
+import { findNearDuplicate, type DedupeMatch } from "@/lib/dedupe/shingle";
 import { createLogger } from "@/lib/logger";
 import { classifyArticle, type ClassifyOptions } from "./classify";
 
@@ -39,6 +43,13 @@ export interface ClassifySummary {
    * `pending` status for the next cron tick.
    */
   budgetExhausted: boolean;
+  /**
+   * Articles that classified cleanly but were hidden because their title
+   * near-duplicates a recent article (same event, different source). Not
+   * counted in `classified` — they don't reach the public feed, broadcaster,
+   * or weekly digest. See `lib/dedupe/shingle.ts` for the heuristic.
+   */
+  dedupedHidden: number;
   tokens: {
     prompt: number;
     completion: number;
@@ -82,6 +93,19 @@ export interface RunClassifyOptions extends ClassifyOptions {
   onClassified?: (id: string, update: ClassifiedPayload) => Promise<void>;
   onFailed?: (id: string, reason: string) => Promise<void>;
   resolveCategoryId?: (slug: string) => Promise<string | undefined>;
+  // Dedupe collaborators. Inject in tests to skip the real DB layer.
+  fetchRecentForDedupe?: () => Promise<RecentDedupeRow[]>;
+  onHiddenAsDuplicate?: (
+    id: string,
+    update: ClassifiedPayload,
+    match: DedupeMatch,
+  ) => Promise<void>;
+  /**
+   * Pass `false` to bypass dedupe altogether (the local CLI re-classifier
+   * uses this so a manual reclassify doesn't re-hide the article it just
+   * touched). Defaults to `true` in production.
+   */
+  dedupeEnabled?: boolean;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -101,8 +125,24 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       const map = await getCategoryMap();
       return map.get(slug);
     });
+  const dedupeEnabled = options.dedupeEnabled ?? true;
+  const fetchRecentForDedupe = options.fetchRecentForDedupe ?? (() => listRecentForDedupe());
+  const onHiddenAsDuplicate =
+    options.onHiddenAsDuplicate ??
+    ((id, update, match) =>
+      markArticleHiddenAsDuplicate({
+        id,
+        update: { ...update, id },
+        dupOfId: match.matchedId,
+        similarity: match.similarity,
+      }));
 
   const pending = await fetchPending(limit);
+  // Snapshot of recent classified/hidden articles for content-level dedupe.
+  // Loaded ONCE per cron tick to keep DB pressure flat. We also push every
+  // article we classify this tick into `recents` so a Wired/Ars/TechCrunch
+  // burst arriving in the same tick still dedupes against itself.
+  const recents: RecentDedupeRow[] = dedupeEnabled ? await fetchRecentForDedupe() : [];
   const delayBetweenMs = options.delayBetweenMs ?? 0;
   // `Infinity` disables the budget — used by the local CLI runner.
   const maxWallTimeMs = options.maxWallTimeMs ?? Infinity;
@@ -122,6 +162,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   let classified = 0;
   let failed = 0;
   let timedOut = 0;
+  let dedupedHidden = 0;
   let budgetExhausted = false;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
@@ -165,26 +206,56 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         throw new Error(`Unknown category slug: ${categorySlug}`);
       }
 
-      await onClassified(article.id, {
+      const payload: ClassifiedPayload = {
         categoryId,
         titleEs: result.classification.title_es,
         titleEn: result.classification.title_en,
         summaryEs: result.classification.summary_es,
         summaryEn: result.classification.summary_en,
         relevanceScore: result.classification.relevance_score,
-      });
+      };
 
+      // Always count LLM tokens — the call already happened.
       tokens.prompt += result.usage.promptTokens;
       tokens.completion += result.usage.completionTokens;
       tokens.total += result.usage.totalTokens;
-      classified++;
 
-      log.info("article_classified", {
-        articleId: article.id,
-        slug: categorySlug,
-        latencyMs: result.latencyMs,
-        totalTokens: result.usage.totalTokens,
-      });
+      // Content-level dedupe runs AFTER the LLM (we need the ES title) but
+      // BEFORE marking classified. If the title near-duplicates a recent
+      // article, we hide this one instead of publishing it. The hidden row
+      // still carries the full payload so the operator can un-hide it
+      // from /admin/articles if the heuristic mis-fired.
+      const match = dedupeEnabled
+        ? findNearDuplicate(
+            { id: article.id, title: payload.titleEs },
+            recents.map((r) => ({ id: r.id, title: r.titleEs })),
+          )
+        : null;
+      if (match) {
+        await onHiddenAsDuplicate(article.id, payload, match);
+        // Push the hidden article into `recents` too — so a third source
+        // arriving in the same tick can dedupe against this one even
+        // though it's hidden. The dedupe query already includes hidden
+        // rows from the DB; this keeps in-tick visibility consistent.
+        recents.push({ id: article.id, titleEs: payload.titleEs });
+        dedupedHidden++;
+        log.info("article_deduped_hidden", {
+          articleId: article.id,
+          dupOf: match.matchedId,
+          similarity: match.similarity,
+          slug: categorySlug,
+        });
+      } else {
+        await onClassified(article.id, payload);
+        recents.push({ id: article.id, titleEs: payload.titleEs });
+        classified++;
+        log.info("article_classified", {
+          articleId: article.id,
+          slug: categorySlug,
+          latencyMs: result.latencyMs,
+          totalTokens: result.usage.totalTokens,
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Transient errors leave the row in `pending` so the next cron
@@ -238,10 +309,11 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
     // many we pulled from the DB — important when the budget cuts
     // the loop short. Includes timeouts (we attempted them, they
     // just didn't complete).
-    processed: classified + failed + timedOut,
+    processed: classified + failed + timedOut + dedupedHidden,
     classified,
     failed,
     timedOut,
+    dedupedHidden,
     budgetExhausted,
     tokens,
   };

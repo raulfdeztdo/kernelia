@@ -154,6 +154,9 @@ describe("runClassify", () => {
       onClassified,
       onFailed,
       resolveCategoryId: async () => "cat-id",
+      // These tests exercise the classify pipeline, not dedupe — bypass
+      // the recents fetch so we don't hit the (mocked-out) DB layer.
+      dedupeEnabled: false,
     });
 
     expect(summary.processed).toBe(2);
@@ -197,6 +200,9 @@ describe("runClassify", () => {
       onClassified,
       onFailed,
       resolveCategoryId: async () => "cat-id",
+      // These tests exercise the classify pipeline, not dedupe — bypass
+      // the recents fetch so we don't hit the (mocked-out) DB layer.
+      dedupeEnabled: false,
     });
 
     expect(summary.classified).toBe(0);
@@ -243,6 +249,9 @@ describe("runClassify", () => {
       onClassified,
       onFailed,
       resolveCategoryId: async () => "cat-id",
+      // These tests exercise the classify pipeline, not dedupe — bypass
+      // the recents fetch so we don't hit the (mocked-out) DB layer.
+      dedupeEnabled: false,
     });
 
     expect(summary.timedOut).toBe(1);
@@ -303,6 +312,7 @@ describe("runClassify", () => {
         onClassified,
         onFailed,
         resolveCategoryId: async () => "cat-id",
+        dedupeEnabled: false,
       });
 
       expect(summary.timedOut).toBe(1);
@@ -340,6 +350,7 @@ describe("runClassify", () => {
       onFailed,
       resolveCategoryId: async () => "cat-id",
       maxWallTimeMs: 250,
+      dedupeEnabled: false,
     });
 
     expect(summary.budgetExhausted).toBe(true);
@@ -376,10 +387,206 @@ describe("runClassify", () => {
       onClassified,
       onFailed,
       resolveCategoryId: async () => undefined,
+      dedupeEnabled: false,
     });
 
     expect(summary.classified).toBe(0);
     expect(summary.failed).toBe(1);
     expect(onFailed).toHaveBeenCalledWith("a1", expect.stringMatching(/Unknown category/i));
+  });
+});
+
+describe("runClassify · content-level dedupe", () => {
+  it("marks an article as hidden when its ES title duplicates a recent one", async () => {
+    // First article in the cluster: "Elon Musk pierde el juicio por OpenAI"
+    // (already classified, lives in `recents`). New incoming article from
+    // a different source phrases the same event differently.
+    const pending = [
+      {
+        id: "wired",
+        title: "Elon Musk Loses Historic OpenAI Lawsuit",
+        url: "https://wired.com/x",
+        rawExcerpt: "Same case, different publisher.",
+        language: "en" as const,
+        sourceName: "Wired",
+        sourceLanguage: "en" as const,
+      },
+    ];
+    const newPayload = {
+      ...validPayload,
+      title_es: "Elon Musk pierde un juicio histórico contra OpenAI",
+      title_en: "Elon Musk loses historic OpenAI lawsuit",
+    };
+    const client = makeClient(newPayload);
+    const onClassified = vi.fn(async () => {});
+    const onFailed = vi.fn(async () => {});
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified,
+      onFailed,
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [
+        { id: "ars", titleEs: "Elon Musk pierde el juicio por acusar a OpenAI de robar una caridad" },
+      ],
+      onHiddenAsDuplicate,
+    });
+
+    expect(summary.classified).toBe(0);
+    expect(summary.dedupedHidden).toBe(1);
+    expect(summary.processed).toBe(1);
+    expect(onClassified).not.toHaveBeenCalled();
+    expect(onHiddenAsDuplicate).toHaveBeenCalledOnce();
+    expect(onHiddenAsDuplicate).toHaveBeenCalledWith(
+      "wired",
+      expect.objectContaining({ titleEs: newPayload.title_es }),
+      expect.objectContaining({
+        matchedId: "ars",
+        similarity: expect.any(Number),
+      }),
+    );
+  });
+
+  it("classifies normally when no recent matches above threshold", async () => {
+    const pending = [
+      {
+        id: "unique",
+        title: "Apple Intelligence ships on iPhone 17",
+        url: "https://apple.com/x",
+        rawExcerpt: "...",
+        language: "en" as const,
+        sourceName: "Apple Newsroom",
+        sourceLanguage: "en" as const,
+      },
+    ];
+    const client = makeClient(validPayload);
+    const onClassified = vi.fn(async () => {});
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified,
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [
+        { id: "old", titleEs: "Google DeepMind anuncia un modelo de robótica" },
+      ],
+      onHiddenAsDuplicate,
+    });
+
+    expect(summary.classified).toBe(1);
+    expect(summary.dedupedHidden).toBe(0);
+    expect(onClassified).toHaveBeenCalledOnce();
+    expect(onHiddenAsDuplicate).not.toHaveBeenCalled();
+  });
+
+  it("dedupes the second article of a cluster arriving in the same tick (in-memory recents)", async () => {
+    // No DB-side recents. Two articles in the same batch about the same
+    // event. The first should classify, the second should be hidden
+    // against the first via the in-memory `recents.push(...)` update.
+    const pending = [
+      {
+        id: "first",
+        title: "First headline about Musk losing the OpenAI suit",
+        url: "https://example.com/first",
+        rawExcerpt: "...",
+        language: "en" as const,
+        sourceName: "First",
+        sourceLanguage: "en" as const,
+      },
+      {
+        id: "second",
+        title: "Second headline about the same Musk OpenAI verdict",
+        url: "https://example.com/second",
+        rawExcerpt: "...",
+        language: "en" as const,
+        sourceName: "Second",
+        sourceLanguage: "en" as const,
+      },
+    ];
+    // The LLM "translates" both to near-identical ES titles.
+    const calls = [
+      {
+        ...validPayload,
+        title_es: "Elon Musk pierde su juicio contra OpenAI por una caridad",
+      },
+      {
+        ...validPayload,
+        title_es: "Elon Musk pierde el juicio contra OpenAI",
+      },
+    ];
+    let callIdx = 0;
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => ({
+            choices: [{ message: { content: JSON.stringify(calls[callIdx++]) } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          })),
+        },
+      },
+    } as never;
+    const onClassified = vi.fn(async () => {});
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified,
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [],
+      onHiddenAsDuplicate,
+    });
+
+    expect(summary.classified).toBe(1);
+    expect(summary.dedupedHidden).toBe(1);
+    expect(onClassified).toHaveBeenCalledOnce();
+    expect(onClassified).toHaveBeenCalledWith("first", expect.any(Object));
+    expect(onHiddenAsDuplicate).toHaveBeenCalledOnce();
+    expect(onHiddenAsDuplicate).toHaveBeenCalledWith(
+      "second",
+      expect.any(Object),
+      expect.objectContaining({ matchedId: "first" }),
+    );
+  });
+
+  it("counts LLM tokens for hidden articles too (the call already happened)", async () => {
+    const pending = [
+      {
+        id: "dup",
+        title: "Duplicate",
+        url: "https://example.com/dup",
+        rawExcerpt: "...",
+        language: "en" as const,
+        sourceName: "Source",
+        sourceLanguage: "en" as const,
+      },
+    ];
+    const payload = { ...validPayload, title_es: "Elon Musk pierde el juicio contra OpenAI" };
+    const client = makeClient(payload, {
+      prompt_tokens: 50,
+      completion_tokens: 25,
+      total_tokens: 75,
+    });
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified: vi.fn(async () => {}),
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [
+        { id: "ars", titleEs: "Elon Musk pierde el juicio por acusar a OpenAI de robar una caridad" },
+      ],
+      onHiddenAsDuplicate: vi.fn(async () => {}),
+    });
+
+    // Tokens must always be billed — the LLM call ran regardless of dedupe.
+    expect(summary.tokens.total).toBe(75);
+    expect(summary.dedupedHidden).toBe(1);
   });
 });
