@@ -50,7 +50,7 @@ export async function POST(req: Request): Promise<Response> {
   const password = body.password;
 
   if (!token) {
-    return redirect(req, "/admin/login?error=invalid_reset");
+    return redirectResponse(req, "/admin/login?error=invalid_reset");
   }
   if (typeof password !== "string") {
     return redirectToReset(req, token, "invalid_password");
@@ -69,7 +69,7 @@ export async function POST(req: Request): Promise<Response> {
   } catch (err) {
     if (err instanceof PasswordResetVerificationError) {
       log.warn("token_rejected", { reason: err.reason });
-      return redirect(req, `/admin/login?error=${encodeURIComponent(err.reason)}`);
+      return redirectResponse(req, `/admin/login?error=${encodeURIComponent(err.reason)}`);
     }
     throw err;
   }
@@ -77,7 +77,7 @@ export async function POST(req: Request): Promise<Response> {
   const user = await getUserById(userId);
   if (!user || !user.active) {
     log.warn("user_inactive_or_missing", { userId });
-    return redirect(req, "/admin/login?error=revoked");
+    return redirectResponse(req, "/admin/login?error=revoked");
   }
 
   // 2) Hash the new password. Done before consuming the token so a hash
@@ -96,7 +96,7 @@ export async function POST(req: Request): Promise<Response> {
     await consumePasswordResetToken(token);
   } catch (err) {
     if (err instanceof PasswordResetVerificationError) {
-      return redirect(req, `/admin/login?error=${encodeURIComponent(err.reason)}`);
+      return redirectResponse(req, `/admin/login?error=${encodeURIComponent(err.reason)}`);
     }
     throw err;
   }
@@ -111,7 +111,7 @@ export async function POST(req: Request): Promise<Response> {
   const revoked = await revokeAllSessionsForUser(userId);
   log.info("password_reset_ok", { userId, sessionsRevoked: revoked });
 
-  return redirect(req, "/admin/login?reset=1");
+  return redirectResponse(req, "/admin/login?reset=1");
 }
 
 interface ResetBody {
@@ -152,11 +152,11 @@ function pickOrigin(req: Request): string {
   return `${proto}://${host}`;
 }
 
-function redirect(req: Request, path: string): Response {
+function redirectResponse(req: Request, path: string): Response {
   return NextResponse.redirect(new URL(path, pickOrigin(req)), { status: 303 });
 }
 
 function redirectToReset(req: Request, token: string, errorCode: string): Response {
   const path = `/admin/reset-password?token=${encodeURIComponent(token)}&error=${encodeURIComponent(errorCode)}`;
-  return redirect(req, path);
+  return redirectResponse(req, path);
 }

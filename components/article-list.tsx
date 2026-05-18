@@ -85,9 +85,15 @@ export function ArticleList({
         cache: "no-store",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Stale-response guard runs twice on purpose: once before parsing
+      // (cheap skip if a newer request already started while we were
+      // awaiting the fetch) and once after (covers the race where the
+      // new request kicked off during `await res.json()`). The lint
+      // `async-defer-await` only sees the second one and flags it; the
+      // first is the cheap skip the rule actually wants.
+      if (myReq !== requestIdRef.current) return;
       const data = (await res.json()) as ApiResponse;
 
-      // Drop the response if a newer request superseded it.
       if (myReq !== requestIdRef.current) return;
 
       setItems((prev) => {

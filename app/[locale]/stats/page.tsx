@@ -161,12 +161,24 @@ function Pair({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatTs(ts: string | null, locale: Locale, fallback: string): string {
-  if (!ts) return fallback;
-  const d = new Date(ts);
-  return new Intl.DateTimeFormat(locale === "es" ? "es-ES" : "en-US", {
+// Hoisted at module scope so we don't reinstantiate the formatter on every
+// call (cheap but pointless allocation, and Intl.DateTimeFormat is heavy
+// enough that the linter calls it out). Two preconfigured instances, one
+// per locale.
+const FORMATTERS: Record<Locale, Intl.DateTimeFormat> = {
+  es: new Intl.DateTimeFormat("es-ES", {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: "UTC",
-  }).format(d);
+  }),
+  en: new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }),
+};
+
+function formatTs(ts: string | null, locale: Locale, fallback: string): string {
+  if (!ts) return fallback;
+  return FORMATTERS[locale].format(new Date(ts));
 }

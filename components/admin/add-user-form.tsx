@@ -18,7 +18,7 @@ const ERROR_COPY: Record<string, string> = {
  * below the input — no toast, no banner shift.
  */
 export function AddUserForm() {
-  const router = useRouter();
+  const { refresh } = useRouter();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -41,7 +41,7 @@ export function AddUserForm() {
         return;
       }
       setEmail("");
-      startTransition(() => router.refresh());
+      startTransition(() => refresh());
     } finally {
       setSubmitting(false);
     }

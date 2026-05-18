@@ -43,14 +43,21 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
     redirect("/admin/login?error=invalid_reset");
   }
 
+  // `redirect()` throws a special Next-internal error to perform the
+  // navigation, so calling it inside a try/catch lets the catch swallow
+  // it. We compute the redirect target outside the try and only call
+  // `redirect` after the try block exits cleanly.
+  let redirectTo: string | null = null;
   try {
     await verifyPasswordResetToken(token);
   } catch (err) {
     if (err instanceof PasswordResetVerificationError) {
-      redirect(`/admin/login?error=${encodeURIComponent(err.reason)}`);
+      redirectTo = `/admin/login?error=${encodeURIComponent(err.reason)}`;
+    } else {
+      throw err;
     }
-    throw err;
   }
+  if (redirectTo) redirect(redirectTo);
 
   const ttlMinutes = Math.round(PASSWORD_RESET_TTL_MS / 60_000);
 

@@ -122,7 +122,7 @@ function IconButton({ ariaLabel, title, children, onClick, tone }: IconButtonPro
       aria-label={ariaLabel}
       title={title}
       onClick={onClick}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-md border bg-transparent transition-colors hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40 ${toneClass}`}
+      className={`inline-flex size-7 items-center justify-center rounded-md border bg-transparent transition-colors hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40 ${toneClass}`}
     >
       {children}
     </button>
@@ -143,7 +143,7 @@ function IconButtonLink({ href, target, rel, ariaLabel, title, children }: IconB
       rel={rel}
       aria-label={ariaLabel}
       title={title}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent bg-transparent text-[color:var(--color-muted-foreground)] transition-colors hover:bg-[color:var(--color-surface-2)] hover:text-[color:var(--color-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
+      className="inline-flex size-7 items-center justify-center rounded-md border border-transparent bg-transparent text-[color:var(--color-muted-foreground)] transition-colors hover:bg-[color:var(--color-surface-2)] hover:text-[color:var(--color-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
     >
       {children}
     </a>
