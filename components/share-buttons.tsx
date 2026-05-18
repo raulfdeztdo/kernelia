@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { MastodonIcon } from "@/components/social-icons";
 
 interface Props {
   /** Absolute URL of the article (NOT the kernelia.dev permalink — we want
@@ -87,7 +88,7 @@ export function ShareButtons({ url, title }: Props) {
         ariaLabel={t("mastodon")}
         title={t("mastodon")}
       >
-        <MastodonIcon />
+        <MastodonIcon className="size-3.5" />
       </IconButtonLink>
     </div>
   );
@@ -213,19 +214,3 @@ function MailIcon() {
   );
 }
 
-function MastodonIcon() {
-  // Simplified Mastodon glyph (M shape), traced from the official mark
-  // and reduced to stroke-only so it inherits text color.
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden
-    >
-      <path d="M21.58 13.913c-.29 1.469-2.592 3.121-5.238 3.435-1.379.164-2.737.314-4.185.247-2.368-.108-4.236-.563-4.236-.563 0 .231.014.45.043.656.307 2.332 2.314 2.471 4.215 2.536 1.92.066 3.629-.473 3.629-.473l.079 1.741s-1.343.72-3.74.853c-1.321.072-2.961-.033-4.872-.539C2.107 20.708.392 16.291.131 11.81-.001 9.493-.041 7.31.039 5.49.302 1.04 3.214.103 6.288.103c5.077 0 6.93.103 9.42.103 5.026 0 7.95 1.547 8.292 5.42.094 1.067.115 2.158.115 3.273 0 1.83-.181 3.502-.535 5.014z" />
-    </svg>
-  );
-}
