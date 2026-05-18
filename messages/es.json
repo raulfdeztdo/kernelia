@@ -10,6 +10,7 @@
     "tagline": "Señal IA, sin ruido.",
     "searchPlaceholder": "Buscar en titulares y resúmenes…",
     "searchAria": "Buscar noticias",
+    "socialAria": "Canales sociales",
     "languageLabel": "Idioma",
     "languages": {
       "es": "Español",
@@ -94,9 +95,40 @@
       "body": "Next.js, Supabase, Drizzle, Cerebras Llama 3.1, Tailwind v4 y Vercel. Código abierto."
     }
   },
+  "stats": {
+    "title": "Estadísticas públicas",
+    "intro": "Métricas en abierto del agente y la base de datos. Sin telemetría privada, sin PII. Cualquiera puede graficar Kernelia con estos datos.",
+    "articles": {
+      "title": "Artículos",
+      "classifiedLabel": "Clasificados (total)",
+      "last7dLabel": "Clasificados (últimos 7 días)"
+    },
+    "catalog": {
+      "title": "Catálogo",
+      "sourcesLabel": "Fuentes activas",
+      "categoriesLabel": "Categorías"
+    },
+    "tokens": {
+      "title": "Consumo del agente",
+      "body": "Tokens consumidos por el LLM clasificador en los últimos 30 días. Coste expuesto en transparencia.",
+      "last30dLabel": "Tokens (últimos 30 días)"
+    },
+    "activity": {
+      "title": "Última actividad",
+      "lastIngestLabel": "Último ingest correcto",
+      "lastClassifyLabel": "Último classify correcto",
+      "never": "Sin datos"
+    },
+    "api": {
+      "title": "API pública",
+      "body": "Los mismos datos en JSON están disponibles en <link>/api/stats</link>. CORS abierto, caché de 1 hora, sin auth.",
+      "generatedAt": "Generado: {ts} UTC"
+    }
+  },
   "footer": {
     "source": "Código fuente",
     "about": "Sobre el proyecto",
+    "stats": "Estadísticas",
     "rights": "© {year} Kernelia"
   }
 }

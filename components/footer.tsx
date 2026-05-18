@@ -1,13 +1,12 @@
 import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
-import { getAllPublicChannels } from "@/lib/broadcast-channels";
-import { GitHubIcon, platformIcon } from "@/components/social-icons";
+import { GitHubIcon } from "@/components/social-icons";
 
-function AboutLink({ label }: { label: string }) {
+function FooterLink({ href, label }: { href: "/about" | "/stats"; label: string }) {
   return (
     <Link
-      href="/about"
+      href={href}
       className="rounded transition hover:text-[color:var(--color-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
     >
       {label}
@@ -18,10 +17,6 @@ function AboutLink({ label }: { label: string }) {
 export async function Footer() {
   const t = await getTranslations("footer");
   const year = new Date().getFullYear();
-  // Resolved server-side from the same env vars that drive the broadcaster
-  // bot, so the "Síguenos en…" links can never point at an inactive
-  // channel.
-  const channels = getAllPublicChannels();
 
   return (
     <footer className="mt-16 border-t border-[color:var(--color-border)]">
@@ -59,7 +54,8 @@ export async function Footer() {
           </a>
         </div>
         <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <AboutLink label={t("about")} />
+          <FooterLink href="/about" label={t("about")} />
+          <FooterLink href="/stats" label={t("stats")} />
           <a
             href="https://github.com/raulfdeztdo/kernelia"
             target="_blank"
@@ -68,27 +64,6 @@ export async function Footer() {
           >
             {t("source")}
           </a>
-          {channels.length > 0 ? (
-            <span className="flex items-center gap-2">
-              <span className="text-[color:var(--color-muted-foreground)]/70">·</span>
-              {channels.map((c) => (
-                <a
-                  key={c.platform}
-                  href={c.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  // The icon is the visible cue; the platform name reaches
-                  // assistive tech via aria-label, and hovering shows the
-                  // full handle so the user knows which account it is.
-                  aria-label={c.platform}
-                  title={c.handle}
-                  className="inline-flex size-7 items-center justify-center rounded-md text-[color:var(--color-muted-foreground)] transition hover:bg-[color:var(--color-surface-2)] hover:text-[color:var(--color-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
-                >
-                  {platformIcon(c.platform, "size-4")}
-                </a>
-              ))}
-            </span>
-          ) : null}
           <span>{t("rights", { year })}</span>
         </nav>
       </div>

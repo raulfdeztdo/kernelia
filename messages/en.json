@@ -10,6 +10,7 @@
     "tagline": "AI signal, no noise.",
     "searchPlaceholder": "Search headlines and summaries…",
     "searchAria": "Search articles",
+    "socialAria": "Social channels",
     "languageLabel": "Language",
     "languages": {
       "es": "Spanish",
@@ -94,9 +95,40 @@
       "body": "Next.js, Supabase, Drizzle, Cerebras Llama 3.1, Tailwind v4 and Vercel. Open source."
     }
   },
+  "stats": {
+    "title": "Public stats",
+    "intro": "Open metrics from the agent and the database. No private telemetry, no PII. Anyone can graph Kernelia from these numbers.",
+    "articles": {
+      "title": "Articles",
+      "classifiedLabel": "Classified (total)",
+      "last7dLabel": "Classified (last 7 days)"
+    },
+    "catalog": {
+      "title": "Catalog",
+      "sourcesLabel": "Active sources",
+      "categoriesLabel": "Categories"
+    },
+    "tokens": {
+      "title": "Agent usage",
+      "body": "Tokens consumed by the classifier LLM in the last 30 days. Cost exposed for transparency.",
+      "last30dLabel": "Tokens (last 30 days)"
+    },
+    "activity": {
+      "title": "Latest activity",
+      "lastIngestLabel": "Last successful ingest",
+      "lastClassifyLabel": "Last successful classify",
+      "never": "No data"
+    },
+    "api": {
+      "title": "Public API",
+      "body": "The same data in JSON is available at <link>/api/stats</link>. Open CORS, 1-hour cache, no auth.",
+      "generatedAt": "Generated: {ts} UTC"
+    }
+  },
   "footer": {
     "source": "Source code",
     "about": "About",
+    "stats": "Stats",
     "rights": "© {year} Kernelia"
   }
 }
