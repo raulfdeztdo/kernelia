@@ -164,7 +164,12 @@ export const sessions = pgTable(
   (t) => [index("sessions_user_id_idx").on(t.userId)],
 );
 
-export const cronJobEnum = pgEnum("cron_job", ["ingest", "classify", "broadcast"]);
+export const cronJobEnum = pgEnum("cron_job", [
+  "ingest",
+  "classify",
+  "broadcast",
+  "newsletter",
+]);
 export const cronStatusEnum = pgEnum("cron_run_status", ["ok", "partial", "failed"]);
 
 export const cronRuns = pgTable(
@@ -197,6 +202,8 @@ export type CronJob = (typeof cronJobEnum.enumValues)[number];
 export type CronRunStatus = (typeof cronStatusEnum.enumValues)[number];
 export type ArticleStatus = (typeof articleStatusEnum.enumValues)[number];
 export type UserType = (typeof userTypeEnum.enumValues)[number];
+/** Locale stored alongside an article / subscriber. Matches `i18n/routing.ts`. */
+export type Locale = (typeof languageEnum.enumValues)[number];
 
 // ---------------------------------------------------------------------------
 // Broadcast distribution (Phase 8.A)
@@ -243,3 +250,59 @@ export const articleBroadcasts = pgTable(
 export type ArticleBroadcast = typeof articleBroadcasts.$inferSelect;
 export type NewArticleBroadcast = typeof articleBroadcasts.$inferInsert;
 export type BroadcastPlatform = (typeof broadcastPlatformEnum.enumValues)[number];
+
+// ---------------------------------------------------------------------------
+// Newsletter subscribers (Phase 8.C.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Newsletter mailing list. Double opt-in: a subscriber is "active" only
+ * once `confirmed_at` is set AND `unsubscribed_at` is NULL. The two token
+ * hashes are sha256 of the plaintext tokens delivered by email; the
+ * plaintext is never stored, so a DB leak does not let an attacker
+ * confirm or unsubscribe other people's emails.
+ *
+ * Same approach as `password_reset_tokens`: store the digest, compare via
+ * the helper in `lib/newsletter/tokens.ts`.
+ */
+export const newsletterSubscribers = pgTable(
+  "newsletter_subscribers",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    // Stored lowercase + trim. The query layer normalises before any
+    // insert/select so DB-level uniqueness is meaningful.
+    email: text("email").notNull(),
+    /**
+     * Locale preference at signup time. Drives which language the weekly
+     * digest renders in. Defaults to ES which is the project's default
+     * locale; the subscribe endpoint passes through the request's locale.
+     */
+    locale: languageEnum("locale").notNull().default("es"),
+    /**
+     * sha256 digest of the confirmation token. Cleared (set to NULL) on
+     * confirmation so the link cannot be reused, and so a re-subscribe
+     * issues a fresh token.
+     */
+    confirmTokenHash: text("confirm_token_hash"),
+    /**
+     * Plaintext unsubscribe token, stable for the lifetime of the
+     * subscription. Embedded in every weekly digest so the recipient always
+     * has a one-click way out. NOT hashed: the digest cron needs to put the
+     * literal token in every email, and there's no authentication value
+     * worth defending here (the worst-case is "an attacker with full DB
+     * read can unsubscribe other people from a free newsletter").
+     */
+    unsubscribeToken: text("unsubscribe_token").notNull(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("newsletter_subscribers_email_unique").on(t.email),
+    uniqueIndex("newsletter_subscribers_unsubscribe_token_unique").on(t.unsubscribeToken),
+    index("newsletter_subscribers_confirm_token_idx").on(t.confirmTokenHash),
+  ],
+);
+
+export type NewsletterSubscriber = typeof newsletterSubscribers.$inferSelect;
+export type NewNewsletterSubscriber = typeof newsletterSubscribers.$inferInsert;

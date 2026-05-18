@@ -7,6 +7,7 @@ import { listSourcesPublic } from "@/db/queries/sources";
 import { CATEGORY_SLUGS } from "@/lib/categories";
 import { getAllPublicChannels } from "@/lib/broadcast-channels";
 import { platformIcon } from "@/components/social-icons";
+import { NewsletterForm } from "@/components/newsletter-form";
 import { localeAlternates, localizedUrl } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -131,6 +132,19 @@ export default async function AboutPage({ params }: AboutPageProps) {
             </li>
           ))}
         </ul>
+        {/*
+         * Newsletter signup. Sits below the RSS + social badges because
+         * those are zero-friction (no account, no email left behind). The
+         * newsletter is the highest-commitment channel of the section, so
+         * it earns its own subsection with a heading.
+         */}
+        <div className="mt-6 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4">
+          <h3 className="mb-2 text-base font-medium">{t("newsletter.title")}</h3>
+          <p className="mb-3 text-sm text-[color:var(--color-muted-foreground)]">
+            {t("newsletter.body")}
+          </p>
+          <NewsletterForm locale={locale} />
+        </div>
       </section>
 
       <section className="space-y-3">

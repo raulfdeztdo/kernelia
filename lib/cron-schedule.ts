@@ -24,4 +24,8 @@ export const CRON_SCHEDULE = {
     cron: "15,45 * * * *",
     description: "Cada 30 minutos en :15 y :45 (offset sobre classify).",
   },
+  newsletter: {
+    cron: "0 10 * * 0",
+    description: "Domingos a las 10:00 UTC (digest semanal de la newsletter).",
+  },
 } as const;
