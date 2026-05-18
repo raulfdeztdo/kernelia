@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyStatus, ingestStatus } from "@/lib/cron-logging";
+import { broadcastStatus, classifyStatus, ingestStatus } from "@/lib/cron-logging";
 
 describe("classifyStatus", () => {
   it("returns 'ok' when every article processed cleanly", () => {
@@ -33,5 +33,36 @@ describe("ingestStatus", () => {
 
   it("returns 'ok' when zero inserts but every source succeeded (steady state)", () => {
     expect(ingestStatus({ failedSources: 0, inserted: 0 })).toBe("ok");
+  });
+});
+
+describe("broadcastStatus", () => {
+  it("returns 'ok' when every platform posted cleanly and nothing was skipped", () => {
+    expect(
+      broadcastStatus({ failed: { mastodon: 0, bluesky: 0, telegram: 0 }, skipped: 0 }),
+    ).toBe("ok");
+  });
+
+  it("returns 'ok' on an empty-but-clean tick (no eligible articles)", () => {
+    // The most common steady-state run: nothing new to broadcast. Must NOT
+    // be flagged partial — that would create noise in the admin cron view.
+    expect(
+      broadcastStatus({ failed: { mastodon: 0, bluesky: 0, telegram: 0 }, skipped: 0 }),
+    ).toBe("ok");
+  });
+
+  it("returns 'partial' when any single platform failed", () => {
+    expect(
+      broadcastStatus({ failed: { mastodon: 1, bluesky: 0, telegram: 0 }, skipped: 0 }),
+    ).toBe("partial");
+    expect(
+      broadcastStatus({ failed: { mastodon: 0, bluesky: 3, telegram: 0 }, skipped: 0 }),
+    ).toBe("partial");
+  });
+
+  it("returns 'partial' when articles were skipped (eg. titleEs missing)", () => {
+    expect(
+      broadcastStatus({ failed: { mastodon: 0, bluesky: 0, telegram: 0 }, skipped: 1 }),
+    ).toBe("partial");
   });
 });

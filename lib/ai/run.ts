@@ -52,6 +52,14 @@ export interface ClassifiedPayload {
   titleEn: string;
   summaryEs: string;
   summaryEn: string;
+  /**
+   * LLM relevance signal in [0, 1] passed through to the DB so the
+   * broadcaster (Phase 8.A) can filter to high-relevance articles. We do
+   * NOT use it to gate classification itself — every well-formed article
+   * is classified regardless of score; the score just informs downstream
+   * surfaces.
+   */
+  relevanceScore: number;
 }
 
 export interface RunClassifyOptions extends ClassifyOptions {
@@ -163,6 +171,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         titleEn: result.classification.title_en,
         summaryEs: result.classification.summary_es,
         summaryEn: result.classification.summary_en,
+        relevanceScore: result.classification.relevance_score,
       });
 
       tokens.prompt += result.usage.promptTokens;

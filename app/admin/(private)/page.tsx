@@ -193,6 +193,10 @@ export default async function AdminDashboardPage() {
             <strong>Classify</strong>: <code>{CRON_SCHEDULE.classify.cron}</code> ·{" "}
             <span className="text-muted-foreground">{CRON_SCHEDULE.classify.description}</span>
           </li>
+          <li>
+            <strong>Broadcast</strong>: <code>{CRON_SCHEDULE.broadcast.cron}</code> ·{" "}
+            <span className="text-muted-foreground">{CRON_SCHEDULE.broadcast.description}</span>
+          </li>
         </ul>
       </section>
     </div>
