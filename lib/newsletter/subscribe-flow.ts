@@ -30,7 +30,8 @@ export const SUBSCRIBE_PER_EMAIL_LIMIT = { max: 3, windowMs: 10 * 60 * 1000 };
 export type SubscribeOutcome =
   | { kind: "invalid_email" }
   | { kind: "rate_limited"; reason: "ip" | "email"; retryAfterMs: number }
-  | { kind: "sent"; subscriberId: string; isNew: boolean }
+  | { kind: "sent"; subscriberId: string; status: "new" | "rearmed" }
+  | { kind: "noop_already_active"; subscriberId: string }
   | { kind: "error"; message: string };
 
 export interface SubscribeParams {
@@ -100,6 +101,22 @@ export async function subscribeToNewsletter(params: SubscribeParams): Promise<Su
     return { kind: "error", message };
   }
 
+  // Already-active short-circuit. If the row was confirmed AND not
+  // unsubscribed, we did NOT mutate it (the DB-side `setWhere` guard
+  // refused the update) — see `upsertSubscriber`. We also must NOT send a
+  // confirmation email here: doing so would (a) bother a legitimate
+  // subscriber every time someone POSTs their address and (b) reveal —
+  // by the very existence of an inbox-side email — that the address is
+  // on the list, which is the same enumeration oracle the uniform
+  // HTTP response was designed to close.
+  //
+  // The HTTP layer renders this outcome with the same 200/{ok:true} as a
+  // genuine new subscribe; the caller only sees `kind` for logging.
+  if (row.status === "already_active") {
+    log.info("subscribe_noop_already_active", { email, subscriberId: row.subscriber.id });
+    return { kind: "noop_already_active", subscriberId: row.subscriber.id };
+  }
+
   const origin = params.origin.replace(/\/$/, "");
   const confirmUrl = `${origin}/api/newsletter/confirm?token=${encodeURIComponent(
     confirmTokenPair.plaintext,
@@ -113,8 +130,8 @@ export async function subscribeToNewsletter(params: SubscribeParams): Promise<Su
     return { kind: "error", message };
   }
 
-  log.info("confirmation_sent", { email, subscriberId: row.subscriber.id, isNew: row.isNew });
-  return { kind: "sent", subscriberId: row.subscriber.id, isNew: row.isNew };
+  log.info("confirmation_sent", { email, subscriberId: row.subscriber.id, status: row.status });
+  return { kind: "sent", subscriberId: row.subscriber.id, status: row.status };
 }
 
 // Re-export the hash helper for tests that want to drive the confirm path

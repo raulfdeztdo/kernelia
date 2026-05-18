@@ -18,7 +18,7 @@ import type { NewsletterSubscriber } from "@/db/queries/newsletter";
 
 const VALID_EMAIL = "ada@example.com";
 
-function freshSubscriber(): NewsletterSubscriber {
+function freshSubscriber(overrides: Partial<NewsletterSubscriber> = {}): NewsletterSubscriber {
   return {
     id: "sub-1",
     email: VALID_EMAIL,
@@ -28,6 +28,7 @@ function freshSubscriber(): NewsletterSubscriber {
     confirmedAt: null,
     unsubscribedAt: null,
     createdAt: new Date(),
+    ...overrides,
   };
 }
 
@@ -50,7 +51,7 @@ describe("subscribeToNewsletter", () => {
   let store: { hits: Map<string, number[]> };
 
   beforeEach(() => {
-    upsert = vi.fn().mockResolvedValue({ subscriber: freshSubscriber(), isNew: true });
+    upsert = vi.fn().mockResolvedValue({ subscriber: freshSubscriber(), status: "new" });
     send = vi.fn().mockResolvedValue({ id: "msg-1" });
     store = { hits: new Map() };
   });
@@ -87,6 +88,59 @@ describe("subscribeToNewsletter", () => {
     expect(out.kind).toBe("invalid_email");
     expect(upsert).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("already-active subscriber: no email sent, outcome is noop_already_active (anti-DoS guard)", async () => {
+    // Simulates the case where an attacker POSTs the email of a confirmed,
+    // not-unsubscribed subscriber. Without the DB-side `setWhere` guard +
+    // this flow-side short-circuit, that would silently reset the
+    // subscriber's `confirmed_at` and stop their digests.
+    upsert.mockResolvedValueOnce({
+      subscriber: freshSubscriber({
+        confirmedAt: new Date("2026-01-01T00:00:00Z"),
+        unsubscribedAt: null,
+      }),
+      status: "already_active",
+    });
+    const out = await subscribeToNewsletter({
+      rawEmail: VALID_EMAIL,
+      rawLocale: "es",
+      ip: "1.2.3.4",
+      origin: "https://kernelia.dev",
+      upsert,
+      send,
+      rateLimitStore: store,
+    });
+    expect(out.kind).toBe("noop_already_active");
+    expect(upsert).toHaveBeenCalledOnce();
+    // The critical invariant: no confirmation email leaves the system,
+    // because the subscriber is already active. Sending one would (a)
+    // annoy them and (b) be an enumeration oracle.
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("rearmed (previously unsubscribed): email IS sent so they can re-confirm", async () => {
+    upsert.mockResolvedValueOnce({
+      subscriber: freshSubscriber({
+        // Re-arm wiped these in the upsert query; we model the post-update
+        // state here.
+        confirmedAt: null,
+        unsubscribedAt: null,
+      }),
+      status: "rearmed",
+    });
+    const out = await subscribeToNewsletter({
+      rawEmail: VALID_EMAIL,
+      rawLocale: "es",
+      ip: "1.2.3.4",
+      origin: "https://kernelia.dev",
+      upsert,
+      send,
+      rateLimitStore: store,
+    });
+    expect(out.kind).toBe("sent");
+    if (out.kind === "sent") expect(out.status).toBe("rearmed");
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it("locale defaults to es when missing or invalid", async () => {

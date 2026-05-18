@@ -40,7 +40,11 @@ export async function POST(req: Request): Promise<Response> {
       case "error":
         return NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 });
       case "sent":
-        // Uniform response — never reveals new vs re-arm.
+      case "noop_already_active":
+        // Uniform response across new / re-armed / already-active. The
+        // already-active branch never sent an email and never mutated the
+        // row, but externally it MUST look identical so the endpoint
+        // can't be used to enumerate active subscribers.
         return NextResponse.json({ ok: true });
     }
   }
@@ -54,6 +58,7 @@ export async function POST(req: Request): Promise<Response> {
     case "error":
       return redirectBack(req, "/about?subscribed=error", origin);
     case "sent":
+    case "noop_already_active":
       return redirectBack(req, "/about?subscribed=1", origin);
   }
 }

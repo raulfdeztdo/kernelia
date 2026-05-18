@@ -37,23 +37,43 @@ export interface UpsertSubscriberParams {
   unsubscribeToken: string;
 }
 
+export type UpsertStatus = "new" | "rearmed" | "already_active";
+
+export interface UpsertSubscriberResult {
+  subscriber: NewsletterSubscriber;
+  status: UpsertStatus;
+}
+
 /**
- * Idempotent subscribe: inserts a brand-new row, or — if a row with this
- * email already exists — re-arms it with a fresh confirm token and clears
- * any prior `unsubscribed_at`. The caller is expected to send the confirm
- * email afterwards regardless of which path triggered.
+ * Idempotent subscribe with one critical guard: an already-confirmed,
+ * not-unsubscribed row is NEVER mutated. Three outcomes:
  *
- * The unsubscribe token is left alone on re-arm if the row already has one;
- * we want a subscriber's unsubscribe link in old digest emails to keep
- * working even after a re-subscribe cycle.
+ *  - `new`: no row existed → INSERT.
+ *  - `rearmed`: row existed but was pending OR previously unsubscribed →
+ *    UPDATE with a fresh confirm token, clearing `unsubscribed_at`. The
+ *    long-lived `unsubscribe_token` is intentionally NOT rotated so old
+ *    digest emails' unsubscribe links keep working.
+ *  - `already_active`: row existed and was confirmed + not unsubscribed →
+ *    no mutation. The caller MUST NOT send a confirmation email; doing so
+ *    would (a) annoy a legitimate subscriber and (b) hand attackers an
+ *    enumeration oracle.
  *
- * Returns `{ subscriber, isNew }` so callers can shape logging without
- * leaking the distinction to the user (the API stays idempotent at HTTP
- * level — same 200 either way).
+ * Without the `already_active` short-circuit, anyone could deactivate any
+ * active subscriber by POSTing their email to `/api/newsletter/subscribe`
+ * — `ON CONFLICT DO UPDATE` would reset `confirmed_at` to NULL and they'd
+ * silently stop receiving the digest until they reconfirm.
+ *
+ * Implementation: a single `INSERT … ON CONFLICT DO UPDATE … WHERE` with
+ * the guard predicate on the existing row. When the predicate matches no
+ * row (= already active), the statement returns zero rows; we then fetch
+ * the existing row via SELECT for the caller. Race-safe: a parallel insert
+ * for the same email loses the conflict, falls into UPDATE, and the
+ * predicate still holds because the just-inserted row has
+ * `confirmed_at = NULL`.
  */
 export async function upsertSubscriber(
   params: UpsertSubscriberParams,
-): Promise<{ subscriber: NewsletterSubscriber; isNew: boolean }> {
+): Promise<UpsertSubscriberResult> {
   const email = normaliseEmail(params.email);
   const row: NewNewsletterSubscriber = {
     email,
@@ -62,11 +82,7 @@ export async function upsertSubscriber(
     unsubscribeToken: params.unsubscribeToken,
   };
 
-  // ON CONFLICT (email): set a fresh confirm hash + clear unsubscribed_at +
-  // reset confirmed_at to NULL (the subscriber must re-confirm). Keep the
-  // original unsubscribe token so old digest emails' unsubscribe links
-  // keep working.
-  const [inserted] = await db
+  const upserted = await db
     .insert(newsletterSubscribers)
     .values(row)
     .onConflictDoUpdate({
@@ -77,18 +93,38 @@ export async function upsertSubscriber(
         unsubscribedAt: null,
         locale: params.locale,
       },
+      // Only re-arm pending or unsubscribed rows. A confirmed + active row
+      // is left untouched — security guard, see fn docstring.
+      setWhere: sql`${newsletterSubscribers.confirmedAt} IS NULL OR ${newsletterSubscribers.unsubscribedAt} IS NOT NULL`,
     })
     .returning();
 
-  if (!inserted) throw new Error("upsertSubscriber: insert returned no row");
+  const inserted = upserted[0];
+  if (inserted) {
+    // We can't distinguish INSERT vs UPDATE from the returned row alone.
+    // `createdAt` is the cleanest proxy: a brand-new row's `createdAt` is
+    // basically `now`, an updated row keeps its original `createdAt` from
+    // before this request. 5s window absorbs any clock skew between the
+    // app server and the DB.
+    const status: UpsertStatus =
+      Date.now() - inserted.createdAt.getTime() < 5_000 ? "new" : "rearmed";
+    return { subscriber: inserted, status };
+  }
 
-  // `xmax = 0` in the same statement would tell us insert vs update; without
-  // it we infer from `createdAt` (a fresh row's createdAt equals now, an
-  // updated one keeps its original createdAt from before this request).
-  // Within a few seconds the test is unreliable, so we treat "createdAt
-  // older than 5s" as "existing row was updated".
-  const isNew = Date.now() - inserted.createdAt.getTime() < 5_000;
-  return { subscriber: inserted, isNew };
+  // Conflict happened AND the `setWhere` guard rejected the update — that
+  // means the existing row is `confirmed_at != null AND unsubscribed_at IS
+  // NULL` (already active). Fetch it so we can return a stable shape.
+  const [existing] = await db
+    .select()
+    .from(newsletterSubscribers)
+    .where(eq(newsletterSubscribers.email, email))
+    .limit(1);
+  if (!existing) {
+    // Shouldn't happen: we just hit a unique-key conflict, the row must
+    // exist. Treat as a hard error rather than papering over it.
+    throw new Error("upsertSubscriber: conflict without existing row");
+  }
+  return { subscriber: existing, status: "already_active" };
 }
 
 /**
