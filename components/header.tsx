@@ -3,9 +3,15 @@ import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { SearchBox } from "@/components/search-box";
+import { getAllPublicChannels } from "@/lib/broadcast-channels";
+import { brandColor, platformIcon } from "@/components/social-icons";
 
 export async function Header() {
   const t = await getTranslations("header");
+  // Same resolver the footer used to use — moved up here so the social
+  // links sit alongside the tagline, where they read as part of the brand
+  // identity instead of being buried at the bottom of the page.
+  const channels = getAllPublicChannels();
 
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--color-border)] bg-[color:var(--color-background)]/85 backdrop-blur supports-[backdrop-filter]:bg-[color:var(--color-background)]/65">
@@ -21,7 +27,33 @@ export async function Header() {
           </span>
         </Link>
 
-        <div className="order-3 w-full md:order-2 md:flex-1">
+        {channels.length > 0 ? (
+          <nav
+            aria-label={t("socialAria")}
+            className="order-2 flex shrink-0 items-center gap-0.5 md:order-2"
+          >
+            {channels.map((c) => (
+              // The CSS variable `--brand` carries the platform's official
+              // hex (Mastodon #6364FF, Bluesky #0285FF, Telegram #26A5E4) so
+              // hover paints the icon in the platform color. Resting state
+              // is the same muted tone the footer used to render.
+              <a
+                key={c.platform}
+                href={c.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={c.platform}
+                title={c.handle}
+                style={{ "--brand": brandColor(c.platform) } as React.CSSProperties}
+                className="inline-flex size-8 items-center justify-center rounded-md text-[color:var(--color-muted-foreground)] transition-colors hover:bg-[color:var(--color-surface-2)] hover:text-[var(--brand)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
+              >
+                {platformIcon(c.platform, "size-4")}
+              </a>
+            ))}
+          </nav>
+        ) : null}
+
+        <div className="order-4 w-full md:order-3 md:flex-1">
           {/*
             SearchBox calls useSearchParams(). Wrapping it in Suspense
             means Next can render the rest of the page server-side
@@ -43,7 +75,7 @@ export async function Header() {
           </Suspense>
         </div>
 
-        <div className="order-2 ml-auto shrink-0 md:order-3">
+        <div className="order-3 ml-auto shrink-0 md:order-4">
           <LocaleSwitcher />
         </div>
       </div>
