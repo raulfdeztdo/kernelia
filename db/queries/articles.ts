@@ -31,6 +31,10 @@ export interface PendingArticle {
   title: string;
   url: string;
   rawExcerpt: string | null;
+  /** Image URL ingested from the RSS feed, if any. Used by the dedupe
+   *  branch in `runClassify` to prefer the version with an image when a
+   *  near-duplicate match is found. */
+  imageUrl: string | null;
   language: Article["language"];
   sourceName: string;
   sourceLanguage: Article["language"];
@@ -64,6 +68,7 @@ export async function listPendingArticles(limit: number): Promise<PendingArticle
         title: articles.title,
         url: articles.url,
         rawExcerpt: articles.rawExcerpt,
+        imageUrl: articles.imageUrl,
         // Both `articles.language` and `sources.language` exist; without
         // explicit `.as(...)` aliases Drizzle emits two bare
         // `"X"."language"` columns and Postgres rejects the CTE with
@@ -92,6 +97,7 @@ export async function listPendingArticles(limit: number): Promise<PendingArticle
       title: ranked.title,
       url: ranked.url,
       rawExcerpt: ranked.rawExcerpt,
+      imageUrl: ranked.imageUrl,
       language: ranked.language,
       sourceName: ranked.sourceName,
       sourceLanguage: ranked.sourceLanguage,
@@ -185,10 +191,66 @@ export async function markArticleHiddenAsDuplicate(
     .where(eq(articles.id, params.id));
 }
 
+export interface ClassifyReplacingDuplicateParams {
+  /** The new article that will become the cluster winner. */
+  newId: string;
+  newUpdate: ClassifiedUpdate;
+  /** The previously-classified article that loses the slot. */
+  oldId: string;
+  /** Jaccard similarity for the audit tag. */
+  similarity: number;
+}
+
+/**
+ * Atomic swap: classify the new article AND hide the old one in a single
+ * transaction so the cluster never has 0 or 2 visible winners at any
+ * point. The old row is tagged `dup_replaced_by:<newId>:<similarity>`
+ * so the admin UI / operator can trace why it disappeared.
+ *
+ * Triggered when the new article has an image and the old one doesn't —
+ * see `lib/ai/run.ts`. For all other tie / no-image cases, we fall back
+ * to `markArticleHiddenAsDuplicate` (FIFO, the existing path).
+ */
+export async function classifyReplacingDuplicate(
+  params: ClassifyReplacingDuplicateParams,
+): Promise<void> {
+  const tag = `dup_replaced_by:${params.newId}:${params.similarity.toFixed(3)}`;
+  await db.transaction(async (tx) => {
+    // 1. Hide the old winner first. If this throws (e.g. row gone),
+    //    we bail before touching the new one — better to leave the new
+    //    one pending for the next tick than to publish two duplicates.
+    await tx
+      .update(articles)
+      .set({ status: "hidden", classificationError: tag })
+      .where(eq(articles.id, params.oldId));
+    // 2. Promote the new article to classified.
+    await tx
+      .update(articles)
+      .set({
+        status: "classified",
+        categoryId: params.newUpdate.categoryId,
+        titleEs: params.newUpdate.titleEs,
+        titleEn: params.newUpdate.titleEn,
+        summaryEs: params.newUpdate.summaryEs,
+        summaryEn: params.newUpdate.summaryEn,
+        classificationError: null,
+        relevanceScore: params.newUpdate.relevanceScore ?? null,
+      })
+      .where(eq(articles.id, params.newId));
+  });
+}
+
 export interface RecentDedupeRow {
   id: string;
   /** ES title — the dedupe layer always compares against ES. */
   titleEs: string;
+  /** Image URL of the recent article, if any. Used to decide whether an
+   *  incoming match should REPLACE this one as the cluster winner. */
+  imageUrl: string | null;
+  /** Whether this recent row is the current "winner" (status='classified')
+   *  for its cluster. Replace logic only swaps against classified rows —
+   *  we never resurrect a hidden one. */
+  isClassified: boolean;
 }
 
 /**
@@ -213,6 +275,8 @@ export async function listRecentForDedupe(opts: {
     .select({
       id: articles.id,
       titleEs: articles.titleEs,
+      imageUrl: articles.imageUrl,
+      status: articles.status,
     })
     .from(articles)
     .where(
@@ -225,8 +289,17 @@ export async function listRecentForDedupe(opts: {
     .limit(limit);
   // Narrow: dedupe only uses rows that made it through classification at
   // least once (i.e. have a non-null titleEs).
-  return rows
-    .filter((r): r is { id: string; titleEs: string } => r.titleEs !== null);
+  const out: RecentDedupeRow[] = [];
+  for (const r of rows) {
+    if (r.titleEs === null) continue;
+    out.push({
+      id: r.id,
+      titleEs: r.titleEs,
+      imageUrl: r.imageUrl,
+      isClassified: r.status === "classified",
+    });
+  }
+  return out;
 }
 
 export interface ListedArticle {

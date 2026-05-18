@@ -7,6 +7,7 @@ import {
 } from "openai";
 import { getCategoryMap } from "@/db/queries/categories";
 import {
+  classifyReplacingDuplicate,
   listPendingArticles,
   listRecentForDedupe,
   markArticleClassified,
@@ -50,6 +51,14 @@ export interface ClassifySummary {
    * or weekly digest. See `lib/dedupe/shingle.ts` for the heuristic.
    */
   dedupedHidden: number;
+  /**
+   * Articles that classified cleanly AND replaced a previously-classified
+   * near-duplicate because they had an image and the old winner didn't.
+   * These ARE counted in `classified` (they go on the feed) — the
+   * counter just lets us tell "this tick swapped 2 cluster winners"
+   * from "this tick produced 2 net-new classifications".
+   */
+  dedupedReplaced: number;
   tokens: {
     prompt: number;
     completion: number;
@@ -101,6 +110,18 @@ export interface RunClassifyOptions extends ClassifyOptions {
     match: DedupeMatch,
   ) => Promise<void>;
   /**
+   * Called when the incoming article wins the dedupe contest against an
+   * existing classified one (it has an image, the old winner doesn't).
+   * The implementation must atomically hide `oldId` and classify
+   * `newId` — see `classifyReplacingDuplicate` for the production
+   * impl.
+   */
+  onClassifiedReplacingDuplicate?: (
+    newId: string,
+    update: ClassifiedPayload,
+    match: DedupeMatch,
+  ) => Promise<void>;
+  /**
    * Pass `false` to bypass dedupe altogether (the local CLI re-classifier
    * uses this so a manual reclassify doesn't re-hide the article it just
    * touched). Defaults to `true` in production.
@@ -136,6 +157,15 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         dupOfId: match.matchedId,
         similarity: match.similarity,
       }));
+  const onClassifiedReplacingDuplicate =
+    options.onClassifiedReplacingDuplicate ??
+    ((newId, update, match) =>
+      classifyReplacingDuplicate({
+        newId,
+        newUpdate: { ...update, id: newId },
+        oldId: match.matchedId,
+        similarity: match.similarity,
+      }));
 
   const pending = await fetchPending(limit);
   // Snapshot of recent classified/hidden articles for content-level dedupe.
@@ -163,6 +193,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   let failed = 0;
   let timedOut = 0;
   let dedupedHidden = 0;
+  let dedupedReplaced = 0;
   let budgetExhausted = false;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
@@ -221,10 +252,22 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       tokens.total += result.usage.totalTokens;
 
       // Content-level dedupe runs AFTER the LLM (we need the ES title) but
-      // BEFORE marking classified. If the title near-duplicates a recent
-      // article, we hide this one instead of publishing it. The hidden row
-      // still carries the full payload so the operator can un-hide it
-      // from /admin/articles if the heuristic mis-fired.
+      // BEFORE marking classified. Three outcomes when a match is found:
+      //
+      //   1. **Replace** the existing winner: only when the candidate has
+      //      an image AND the existing winner doesn't (AND the existing
+      //      winner is currently `classified`, not already hidden). The
+      //      image earns the slot in the public feed; the old winner is
+      //      hidden with tag `dup_replaced_by:<newId>`.
+      //   2. **Hide** the candidate (existing behaviour, FIFO): any other
+      //      case — both have images, neither does, the existing match
+      //      was already hidden, etc. The candidate is hidden with tag
+      //      `dup_of:<existingId>`.
+      //   3. **No match**: classify normally.
+      //
+      // In all three the hidden row keeps the full payload so the
+      // operator can un-hide it from /admin/articles if the heuristic
+      // mis-fired.
       const match = dedupeEnabled
         ? findNearDuplicate(
             { id: article.id, title: payload.titleEs },
@@ -232,22 +275,76 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
           )
         : null;
       if (match) {
-        await onHiddenAsDuplicate(article.id, payload, match);
-        // Push the hidden article into `recents` too — so a third source
-        // arriving in the same tick can dedupe against this one even
-        // though it's hidden. The dedupe query already includes hidden
-        // rows from the DB; this keeps in-tick visibility consistent.
-        recents.push({ id: article.id, titleEs: payload.titleEs });
-        dedupedHidden++;
-        log.info("article_deduped_hidden", {
-          articleId: article.id,
-          dupOf: match.matchedId,
-          similarity: match.similarity,
-          slug: categorySlug,
-        });
+        const matchedRow = recents.find((r) => r.id === match.matchedId);
+        const candidateHasImage = !!article.imageUrl;
+        const originalHasImage = !!matchedRow?.imageUrl;
+        const originalIsClassified = matchedRow?.isClassified ?? false;
+        // Replace path: only if the candidate strictly beats the original
+        // on the image criterion AND the original is the current winner
+        // (resurrecting a previously-hidden row would mean two visible
+        // duplicates in the cluster).
+        const shouldReplace =
+          candidateHasImage && !originalHasImage && originalIsClassified;
+
+        if (shouldReplace) {
+          await onClassifiedReplacingDuplicate(article.id, payload, match);
+          // Swap winner in the in-memory `recents`: the new row takes the
+          // classified slot, the old one is hidden but kept (its title
+          // still needs to be visible to subsequent candidates in the
+          // same tick so we don't promote a third near-duplicate behind
+          // it).
+          const idx = recents.findIndex((r) => r.id === match.matchedId);
+          if (idx >= 0) {
+            recents[idx] = {
+              id: match.matchedId,
+              titleEs: matchedRow!.titleEs,
+              imageUrl: matchedRow!.imageUrl,
+              isClassified: false,
+            };
+          }
+          recents.push({
+            id: article.id,
+            titleEs: payload.titleEs,
+            imageUrl: article.imageUrl,
+            isClassified: true,
+          });
+          dedupedReplaced++;
+          classified++;
+          log.info("article_classified_replacing_dup", {
+            articleId: article.id,
+            replaced: match.matchedId,
+            similarity: match.similarity,
+            slug: categorySlug,
+          });
+        } else {
+          await onHiddenAsDuplicate(article.id, payload, match);
+          // Push the hidden article into `recents` too — so a third
+          // source arriving in the same tick can dedupe against this one
+          // even though it's hidden. The dedupe query already includes
+          // hidden rows from the DB; this keeps in-tick visibility
+          // consistent.
+          recents.push({
+            id: article.id,
+            titleEs: payload.titleEs,
+            imageUrl: article.imageUrl,
+            isClassified: false,
+          });
+          dedupedHidden++;
+          log.info("article_deduped_hidden", {
+            articleId: article.id,
+            dupOf: match.matchedId,
+            similarity: match.similarity,
+            slug: categorySlug,
+          });
+        }
       } else {
         await onClassified(article.id, payload);
-        recents.push({ id: article.id, titleEs: payload.titleEs });
+        recents.push({
+          id: article.id,
+          titleEs: payload.titleEs,
+          imageUrl: article.imageUrl,
+          isClassified: true,
+        });
         classified++;
         log.info("article_classified", {
           articleId: article.id,
@@ -314,6 +411,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
     failed,
     timedOut,
     dedupedHidden,
+    dedupedReplaced,
     budgetExhausted,
     tokens,
   };
