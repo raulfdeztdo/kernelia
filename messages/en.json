@@ -95,7 +95,6 @@
     }
   },
   "footer": {
-    "tagline": "Built with Next.js, Supabase, and Cerebras.",
     "source": "Source code",
     "about": "About",
     "rights": "© {year} Kernelia"
