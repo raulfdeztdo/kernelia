@@ -24,7 +24,7 @@ async function main() {
   const dist = new Map<string, number>();
   for (const r of rows) dist.set(r.sourceName, (dist.get(r.sourceName) ?? 0) + 1);
   console.log("\n[spread]");
-  for (const [name, n] of [...dist.entries()].sort((a, b) => b[1] - a[1])) {
+  for (const [name, n] of [...dist.entries()].toSorted((a, b) => b[1] - a[1])) {
     console.log(`  ${name}: ${n}`);
   }
   process.exit(0);

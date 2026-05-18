@@ -101,14 +101,17 @@ export async function POST(req: Request): Promise<Response> {
     throw err;
   }
 
-  // 4) Persist the new hash.
-  await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, userId));
-
-  // 5) Invalidate any other reset tokens for this user.
-  await invalidateAllResetTokensForUser(userId);
-
-  // 6) Drop all active sessions — anyone holding a cookie loses it.
-  const revoked = await revokeAllSessionsForUser(userId);
+  // 4-6) Persist the new hash, invalidate remaining reset tokens for this
+  //      user, and drop every active session. The three operations are
+  //      independent (no data dependency between them) so we run them in
+  //      parallel. We only return to the client after all three settle,
+  //      so there is no observable window where the password is updated
+  //      but the old sessions still work.
+  const [, , revoked] = await Promise.all([
+    db.update(users).set({ passwordHash: newHash }).where(eq(users.id, userId)),
+    invalidateAllResetTokensForUser(userId),
+    revokeAllSessionsForUser(userId),
+  ]);
   log.info("password_reset_ok", { userId, sessionsRevoked: revoked });
 
   return redirectResponse(req, "/admin/login?reset=1");
