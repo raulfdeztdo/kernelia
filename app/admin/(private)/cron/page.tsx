@@ -164,7 +164,7 @@ function summariseRun(run: CronRun): string {
   const s = run.summary as Record<string, unknown>;
   if (run.job === "classify") {
     const tokens = (s["tokens"] as { total?: number } | undefined)?.total ?? 0;
-    return `processed=${s["processed"] ?? 0}  classified=${s["classified"] ?? 0}  failed=${s["failed"] ?? 0}  timedOut=${s["timedOut"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? false}  tokens=${tokens}`;
+    return `processed=${s["processed"] ?? 0}  classified=${s["classified"] ?? 0}  dedupedHidden=${s["dedupedHidden"] ?? 0}  failed=${s["failed"] ?? 0}  timedOut=${s["timedOut"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? false}  tokens=${tokens}`;
   }
   if (run.job === "broadcast") {
     const posted = (s["posted"] as Record<string, number> | undefined) ?? {};

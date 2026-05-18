@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, lte, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, lt, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   articles,
@@ -142,6 +142,91 @@ export async function markArticleFailed(id: string, reason: string): Promise<voi
       classificationError: reason.slice(0, 500),
     })
     .where(eq(articles.id, id));
+}
+
+export interface MarkArticleHiddenAsDuplicateParams {
+  id: string;
+  /** The full classified payload — we want it persisted even though the
+   *  row will be hidden, so the operator can review the duplicate in
+   *  /admin/articles and "un-hide" it if the heuristic mis-fired. */
+  update: ClassifiedUpdate;
+  /** ID of the existing article this one duplicates. */
+  dupOfId: string;
+  /** Jaccard similarity that triggered the match (for audit trail). */
+  similarity: number;
+}
+
+/**
+ * Persists a classified article as `hidden` because it near-duplicates
+ * an earlier article. Stores the full ES/EN translations + relevance
+ * score so the row carries the same data shape as a normal `classified`
+ * one — the only difference is the `status` and a tag in
+ * `classificationError` recording the dedupe reason.
+ *
+ * Tag format: `dup_of:<id>:<similarity>`. Easy to grep and lets the
+ * admin UI render "duplicate of {id}" without a dedicated column.
+ */
+export async function markArticleHiddenAsDuplicate(
+  params: MarkArticleHiddenAsDuplicateParams,
+): Promise<void> {
+  const tag = `dup_of:${params.dupOfId}:${params.similarity.toFixed(3)}`;
+  await db
+    .update(articles)
+    .set({
+      status: "hidden",
+      categoryId: params.update.categoryId,
+      titleEs: params.update.titleEs,
+      titleEn: params.update.titleEn,
+      summaryEs: params.update.summaryEs,
+      summaryEn: params.update.summaryEn,
+      relevanceScore: params.update.relevanceScore ?? null,
+      classificationError: tag,
+    })
+    .where(eq(articles.id, params.id));
+}
+
+export interface RecentDedupeRow {
+  id: string;
+  /** ES title — the dedupe layer always compares against ES. */
+  titleEs: string;
+}
+
+/**
+ * Recent articles available for dedupe comparison. Includes both
+ * `classified` and `hidden` rows so an article that was hidden as
+ * dup_of:X still counts as "we already covered this event" — the next
+ * candidate that matches the hidden one (e.g. third source on the same
+ * story) gets caught too.
+ *
+ * Window defaults to 48h: long enough to span a weekend news cycle,
+ * short enough to keep the comparison list small (~100 rows in
+ * production).
+ */
+export async function listRecentForDedupe(opts: {
+  sinceHours?: number;
+  limit?: number;
+} = {}): Promise<RecentDedupeRow[]> {
+  const sinceHours = opts.sinceHours ?? 48;
+  const limit = Math.min(Math.max(opts.limit ?? 200, 1), 1000);
+  const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
+  const rows = await db
+    .select({
+      id: articles.id,
+      titleEs: articles.titleEs,
+    })
+    .from(articles)
+    .where(
+      and(
+        inArray(articles.status, ["classified", "hidden"]),
+        gte(articles.ingestedAt, since),
+      ),
+    )
+    .orderBy(desc(articles.ingestedAt))
+    .limit(limit);
+  // Narrow: dedupe only uses rows that made it through classification at
+  // least once (i.e. have a non-null titleEs).
+  return rows
+    .filter((r): r is { id: string; titleEs: string } => r.titleEs !== null);
 }
 
 export interface ListedArticle {
