@@ -141,6 +141,12 @@
       "error": "We couldn't process your request. Try again later.",
       "hint": "No spam, your email isn't shared. Unsubscribe from any digest in one click."
     },
+    "confirm": {
+      "title": "Confirm subscription?",
+      "body": "Click the button to activate your subscription to the weekly newsletter. You'll start receiving the Sunday digest from the next delivery onwards.",
+      "cta": "Confirm subscription",
+      "cancel": "Cancel"
+    },
     "confirmed": {
       "title": "Subscription confirmed",
       "body": "Your email is active on the list. Next digest goes out Sunday at 10:00 UTC.",

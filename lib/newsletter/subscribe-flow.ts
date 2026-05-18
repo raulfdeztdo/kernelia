@@ -117,8 +117,13 @@ export async function subscribeToNewsletter(params: SubscribeParams): Promise<Su
     return { kind: "noop_already_active", subscriberId: row.subscriber.id };
   }
 
+  // Link to the confirmation PAGE, not the API endpoint. Email scanners
+  // pre-fetch GET URLs; landing on a page that requires a POST stops
+  // them from silently activating spoofed signups. See the docstring
+  // on `app/api/newsletter/confirm/route.ts`.
   const origin = params.origin.replace(/\/$/, "");
-  const confirmUrl = `${origin}/api/newsletter/confirm?token=${encodeURIComponent(
+  const langPrefix = row.subscriber.locale === "en" ? "/en" : "";
+  const confirmUrl = `${origin}${langPrefix}/newsletter/confirm?token=${encodeURIComponent(
     confirmTokenPair.plaintext,
   )}`;
 

@@ -72,7 +72,10 @@ describe("subscribeToNewsletter", () => {
     const sendCall = send.mock.calls[0]?.[0];
     expect(sendCall.to).toBe(VALID_EMAIL);
     expect(sendCall.locale).toBe("es");
-    expect(sendCall.confirmUrl).toMatch(/^https:\/\/kernelia\.dev\/api\/newsletter\/confirm\?token=/);
+    // Link points to the locale-aware PAGE (`/newsletter/confirm`), not the
+    // API endpoint, so email scanners can't trigger the mutation. The page
+    // renders a POST form whose submit goes to `/api/newsletter/confirm`.
+    expect(sendCall.confirmUrl).toMatch(/^https:\/\/kernelia\.dev\/newsletter\/confirm\?token=/);
   });
 
   it("invalid email → invalid_email, no side effects", async () => {
