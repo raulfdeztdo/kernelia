@@ -67,6 +67,10 @@
       "title": "Suscríbete",
       "body": "Recibe las novedades por el canal que prefieras. Los feeds RSS funcionan en cualquier lector; los canales sociales publican solo lo que el agente marca como más relevante."
     },
+    "newsletter": {
+      "title": "Newsletter semanal",
+      "body": "Cada domingo, un correo con los 10 artículos más relevantes de la semana según el agente. Confirma tu email tras suscribirte y podrás darte de baja con un clic en cualquier momento."
+    },
     "credits": {
       "title": "Créditos",
       "body": "Logo, identidad y código por <author>@raulfdeztdo</author>. El proyecto es de código abierto: cualquier mejora, sugerencia o fuente nueva es bienvenida vía pull request."
@@ -123,6 +127,35 @@
       "title": "API pública",
       "body": "Los mismos datos en JSON están disponibles en <link>/api/stats</link>. CORS abierto, caché de 1 hora, sin auth.",
       "generatedAt": "Generado: {ts} UTC"
+    }
+  },
+  "newsletter": {
+    "form": {
+      "label": "Tu email",
+      "placeholder": "tu@email.com",
+      "submit": "Suscribirme",
+      "submitting": "Enviando…",
+      "success": "Te hemos enviado un email para confirmar la suscripción.",
+      "invalid": "Ese email no parece válido. Revisa el formato.",
+      "rate": "Demasiados intentos. Inténtalo de nuevo en unos minutos.",
+      "error": "No hemos podido procesar tu solicitud. Inténtalo más tarde.",
+      "hint": "Sin spam, sin compartir tu email. Te puedes dar de baja desde cualquier digest."
+    },
+    "confirmed": {
+      "title": "Suscripción confirmada",
+      "body": "Tu email está activo en la lista. Recibirás el próximo digest el domingo a las 10:00 UTC.",
+      "backHome": "Volver al inicio"
+    },
+    "unsubscribe": {
+      "title": "¿Confirmar baja?",
+      "body": "Pulsa el botón para darte de baja de la newsletter semanal. Dejarás de recibir el digest del domingo de inmediato.",
+      "confirm": "Confirmar baja",
+      "cancel": "Cancelar"
+    },
+    "unsubscribed": {
+      "title": "Te has dado de baja",
+      "body": "Hemos retirado tu email de la lista. Si cambias de opinión, puedes volver a suscribirte desde la página \"Sobre el proyecto\".",
+      "backHome": "Volver al inicio"
     }
   },
   "footer": {

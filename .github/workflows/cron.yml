@@ -23,6 +23,10 @@ on:
     # plataformas (Mastodon, Bluesky, Telegram) en paralelo con
     # idempotencia per-plataforma via `article_broadcasts`.
     - cron: "15,45 * * * *"
+    # Newsletter semanal: domingos a las 10:00 UTC. El handler tiene su
+    # propio wall-clock budget (~52s) y un sleep de 600ms entre envios
+    # para no saturar el rate-limit de Resend (2/sec en free tier).
+    - cron: "0 10 * * 0"
   workflow_dispatch:
     inputs:
       job:
@@ -34,6 +38,7 @@ on:
           - ingest
           - classify
           - broadcast
+          - newsletter
 
 concurrency:
   group: cron-${{ github.event.schedule || inputs.job }}
@@ -150,4 +155,37 @@ jobs:
             --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
             --header "Authorization: Bearer ${CRON_SECRET}" \
             "${BASE_URL}/api/cron/broadcast")
+          echo "${response}"
+
+  newsletter:
+    name: Send weekly newsletter digest
+    # Domingos a las 10:00 UTC, o dispatch manual.
+    if: github.event.schedule == '0 10 * * 0' || inputs.job == 'newsletter'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: Production
+    steps:
+      - name: Hit /api/cron/newsletter
+        env:
+          BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
+          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
+          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
+          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
+          BASE_URL="${BASE_URL%/}"
+          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
+            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL})." >&2
+            exit 1
+          fi
+          # Same reasoning as classify/broadcast: the handler has its own
+          # wall-clock budget and reports `budgetExhausted` in the
+          # summary instead of timing out. A 5xx is a real incident.
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 90 \
+            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL}/api/cron/newsletter")
           echo "${response}"

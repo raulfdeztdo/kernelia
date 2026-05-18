@@ -8,6 +8,7 @@ const JOB_LABEL: Record<CronJob, string> = {
   ingest: "Ingest",
   classify: "Classify",
   broadcast: "Broadcast",
+  newsletter: "Newsletter",
 };
 const STATUS_LABEL: Record<CronRunStatus, string> = {
   ok: "OK",
@@ -25,7 +26,7 @@ interface PageProps {
 }
 
 const isJob = (v: unknown): v is CronJob =>
-  v === "ingest" || v === "classify" || v === "broadcast";
+  v === "ingest" || v === "classify" || v === "broadcast" || v === "newsletter";
 const isStatus = (v: unknown): v is CronRunStatus =>
   v === "ok" || v === "partial" || v === "failed";
 
@@ -94,6 +95,7 @@ function FilterBar({ job, status }: { job?: CronJob; status?: CronRunStatus }) {
           <option value="ingest">Ingest</option>
           <option value="classify">Classify</option>
           <option value="broadcast">Broadcast</option>
+          <option value="newsletter">Newsletter</option>
         </select>
       </label>
       <label className="space-y-1 text-xs">
@@ -167,6 +169,10 @@ function summariseRun(run: CronRun): string {
   if (run.job === "broadcast") {
     const posted = (s["posted"] as Record<string, number> | undefined) ?? {};
     return `mastodon=${posted["mastodon"] ?? 0}  bluesky=${posted["bluesky"] ?? 0}  telegram=${posted["telegram"] ?? 0}  failed=${s["failed"] ?? 0}  skipped=${s["skipped"] ?? 0}`;
+  }
+  if (run.job === "newsletter") {
+    const dc = (s["digestCounts"] as { es?: number; en?: number } | undefined) ?? {};
+    return `attempted=${s["attempted"] ?? 0}  sent=${s["sent"] ?? 0}  failed=${s["failed"] ?? 0}  skippedNoArticles=${s["skippedNoArticles"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? 0}  articles[es=${dc.es ?? 0},en=${dc.en ?? 0}]`;
   }
   // ingest
   const totals = (s["totals"] as Record<string, unknown> | undefined) ?? {};

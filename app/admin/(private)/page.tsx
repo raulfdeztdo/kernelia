@@ -7,6 +7,11 @@ import {
   getSourceVolume,
   getTokensPerDay,
 } from "@/db/queries/admin-metrics";
+import {
+  getBroadcastsPerDay,
+  getBroadcastTotals,
+} from "@/db/queries/admin-broadcasts";
+import { getNewsletterCounts } from "@/db/queries/newsletter";
 import { CRON_SCHEDULE } from "@/lib/cron-schedule";
 import { probeHealth } from "@/lib/health";
 import { HealthCard } from "@/components/admin/health-card";
@@ -14,6 +19,7 @@ import { ClassifiedLineChart } from "@/components/admin/charts/classified-line";
 import { SourcesBarChart } from "@/components/admin/charts/sources-bar";
 import { StatusDonut } from "@/components/admin/charts/status-donut";
 import { TokensBarChart } from "@/components/admin/charts/tokens-bar";
+import { BroadcastsStackedBarChart } from "@/components/admin/charts/broadcasts-stacked-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +52,9 @@ export default async function AdminDashboardPage() {
     tokensPerDay30,
     classifiedPerDay30,
     sourceVolume,
+    broadcastsPerDay30,
+    broadcastTotals,
+    newsletterCounts,
   ] = await Promise.all([
     probeHealth(),
     getArticleStatusCounts(),
@@ -54,10 +63,14 @@ export default async function AdminDashboardPage() {
     getTokensPerDay(30),
     getClassifiedPerDay(30),
     getSourceVolume({ days: 30, topN: 10 }),
+    getBroadcastsPerDay(30),
+    getBroadcastTotals(),
+    getNewsletterCounts(),
   ]);
 
   const totalTokensLast30 = tokensPerDay30.reduce((acc, r) => acc + r.totalTokens, 0);
   const totalClassifiedLast30 = classifiedPerDay30.reduce((acc, r) => acc + r.classified, 0);
+  const totalBroadcastsLast30 = broadcastsPerDay30.reduce((acc, r) => acc + r.total, 0);
 
   return (
     <div className="space-y-8">
@@ -172,6 +185,50 @@ export default async function AdminDashboardPage() {
         />
       </section>
 
+      <section aria-labelledby="distribution-heading" className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 id="distribution-heading" className="text-lg font-medium">
+            Distribución
+          </h2>
+          <Link
+            href="/admin/broadcasts"
+            className="text-sm text-accent underline-offset-2 hover:underline"
+          >
+            Ver detalle →
+          </Link>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {broadcastTotals.map((row) => (
+            <div key={row.platform} className="rounded-md border border-border bg-surface p-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                {row.platform}
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-2xl font-semibold tabular-nums text-foreground">
+                  {row.last30d.toLocaleString()}
+                </span>
+                <span className="text-xs text-muted-foreground">posts / 30d</span>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                7d: {row.last7d} · total: {row.allTime}
+              </div>
+            </div>
+          ))}
+        </div>
+        <ChartCard
+          title="Posts por día (30d)"
+          subtitle={`Total: ${totalBroadcastsLast30.toLocaleString()}`}
+        >
+          <BroadcastsStackedBarChart data={broadcastsPerDay30} />
+        </ChartCard>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Stat label="Suscriptores activos" value={newsletterCounts.confirmed} tone="accent" />
+          <Stat label="Pendientes" value={newsletterCounts.pending} />
+          <Stat label="Bajas" value={newsletterCounts.unsubscribed} tone="muted" />
+          <Stat label="Total filas" value={newsletterCounts.total} tone="muted" />
+        </div>
+      </section>
+
       <section aria-labelledby="cron-heading" className="space-y-3">
         <div className="flex items-baseline justify-between">
           <h2 id="cron-heading" className="text-lg font-medium">
@@ -196,6 +253,10 @@ export default async function AdminDashboardPage() {
           <li>
             <strong>Broadcast</strong>: <code>{CRON_SCHEDULE.broadcast.cron}</code> ·{" "}
             <span className="text-muted-foreground">{CRON_SCHEDULE.broadcast.description}</span>
+          </li>
+          <li>
+            <strong>Newsletter</strong>: <code>{CRON_SCHEDULE.newsletter.cron}</code> ·{" "}
+            <span className="text-muted-foreground">{CRON_SCHEDULE.newsletter.description}</span>
           </li>
         </ul>
       </section>

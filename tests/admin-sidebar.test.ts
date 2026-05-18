@@ -14,10 +14,11 @@ import { ADMIN_NAV_ITEMS, isNavItemActive } from "@/components/admin/sidebar";
 
 const panel = ADMIN_NAV_ITEMS.find((i) => i.href === "/admin");
 const articles = ADMIN_NAV_ITEMS.find((i) => i.href === "/admin/articles");
+const broadcasts = ADMIN_NAV_ITEMS.find((i) => i.href === "/admin/broadcasts");
 const users = ADMIN_NAV_ITEMS.find((i) => i.href === "/admin/users");
 const cron = ADMIN_NAV_ITEMS.find((i) => i.href === "/admin/cron");
 
-if (!panel || !articles || !users || !cron) {
+if (!panel || !articles || !broadcasts || !users || !cron) {
   throw new Error("ADMIN_NAV_ITEMS shape changed; update this test");
 }
 
@@ -26,6 +27,7 @@ describe("isNavItemActive", () => {
     expect(isNavItemActive(panel, "/admin")).toBe(true);
     expect(isNavItemActive(panel, "/admin/users")).toBe(false);
     expect(isNavItemActive(panel, "/admin/articles")).toBe(false);
+    expect(isNavItemActive(panel, "/admin/broadcasts")).toBe(false);
     expect(isNavItemActive(panel, "/admin/cron")).toBe(false);
   });
 
@@ -45,7 +47,13 @@ describe("isNavItemActive", () => {
   });
 
   it("only one entry is active for any given path", () => {
-    for (const path of ["/admin", "/admin/articles", "/admin/users", "/admin/cron"]) {
+    for (const path of [
+      "/admin",
+      "/admin/articles",
+      "/admin/broadcasts",
+      "/admin/users",
+      "/admin/cron",
+    ]) {
       const matches = ADMIN_NAV_ITEMS.filter((item) => isNavItemActive(item, path));
       expect(matches).toHaveLength(1);
     }

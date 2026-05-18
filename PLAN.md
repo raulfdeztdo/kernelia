@@ -973,20 +973,78 @@ Dividida en dos PRs:
 
 #### 8.C.2 · Newsletter semanal Resend
 
-- [ ] Migracion: tabla `newsletter_subscribers` (email unique,
-  confirmed_at nullable, unsubscribed_at nullable, created_at).
-  Double opt-in: email de confirmacion via Resend antes de
-  considerar confirmada la suscripcion.
-- [ ] Endpoints publicos: `POST /api/newsletter/subscribe`,
-  `GET /api/newsletter/confirm?token=...`,
-  `GET /api/newsletter/unsubscribe?token=...`.
-  Rate-limit por IP (5/10min) compartiendo el helper de auth.
-- [ ] Cron `weekly-digest`: domingos a las 10:00 UTC, top 10
-  articulos de la semana (orden por `relevance_score desc` filtrado
-  por fecha). Email via Resend a todos los `confirmed_at != null
-  AND unsubscribed_at = null`.
-- [ ] Formulario de suscripcion dentro de la seccion "Suscribete"
-  del /about (junto a los badges de RSS + canales sociales).
+- [x] Migracion `0006_newsletter.sql`: tabla `newsletter_subscribers`
+  (email unique, locale, `confirm_token_hash` nullable,
+  `unsubscribe_token` no-hash long-lived, `confirmed_at`,
+  `unsubscribed_at`, `created_at`). `ALTER TYPE cron_job ADD VALUE
+  'newsletter'`.
+- [x] `db/queries/newsletter.ts`: `upsertSubscriber` con re-arm en
+  conflict (fresh confirm hash, clear unsubscribed_at, mantiene
+  unsubscribe_token para que digests antiguos sigan funcionando),
+  `confirmByTokenHash` (single-use; el hash se borra al usarse),
+  `unsubscribeByToken` (idempotente), `listActiveSubscribers`,
+  `getNewsletterCounts` (admin metrics).
+- [x] `lib/newsletter/tokens.ts` — 32-byte randomBytes base64url +
+  sha256 (mismo patron que `password-reset.ts`). El confirm token
+  se hashea; el unsubscribe token se guarda en plaintext porque se
+  embebe en cada digest y no defiende nada autenticable.
+- [x] `lib/newsletter/digest.ts` — top N por
+  `relevance_score desc, ingestedAt desc`, ventana 7d, locale-aware
+  (titulo/resumen ES/EN segun preferencia del suscriptor).
+- [x] `lib/email/send.ts` extendido con `sendNewsletterConfirmation`
+  (double opt-in) y `sendWeeklyDigest` (HTML + text branch, copy
+  ES/EN inline, sin SDK Resend). Reusa la API key + EMAIL_FROM que
+  ya existian para password-reset desde 7.F.
+- [x] Endpoints: `POST /api/newsletter/subscribe` (JSON + form
+  fallback, redirect locale-aware), `GET /api/newsletter/confirm`,
+  `GET /api/newsletter/unsubscribe`. Rate-limit 5/IP, 3/email en
+  ventana 10min via `lib/auth/rate-limit.ts`. Respuesta uniforme
+  (anti-enumeracion).
+- [x] Paginas `/[locale]/newsletter/confirmed` y
+  `/[locale]/newsletter/unsubscribed` (server, robots `noindex`).
+- [x] Cron `weekly-digest`: `app/api/cron/newsletter/route.ts` con
+  `CRON_SECRET` + maxDuration 60s + wall-clock budget 52s. Loop
+  serie con `sleep(600ms)` entre envios para no saturar Resend
+  free-tier (2/sec). `runNewsletter` cache de digest por locale
+  (1 query por locale, no por suscriptor). Logs estructurados.
+- [x] `.github/workflows/cron.yml` con nuevo step `newsletter` para
+  `0 10 * * 0` (domingos 10:00 UTC) + dispatch manual.
+- [x] `lib/cron-schedule.ts` con la entrada `newsletter`.
+- [x] Formulario `components/newsletter-form.tsx` (client island)
+  dentro de la seccion "Suscribete" de `/about`. Estados loading /
+  ok / invalid / rate / error con copy localizada.
+- [x] Tests Vitest:
+  - `tests/newsletter-tokens.test.ts` — generacion, hash deterministico,
+    plaintext aleatorio.
+  - `tests/newsletter-subscribe-flow.test.ts` — invalid email,
+    rate-limit por IP y por email independientes, upsert-failure
+    no llama al sender.
+  - `tests/newsletter-run.test.ts` — happy path, skip si locale
+    sin articulos, fallos parciales, budget exhaustion con fake
+    timers, `newsletterStatus` mapping.
+
+#### 8.D · Admin broadcast analytics
+
+- [x] `db/queries/admin-broadcasts.ts`:
+  - `getBroadcastsPerDay(days=30)` — count per platform per dia con
+    zero-fill.
+  - `getBroadcastTotals()` — 7d/30d/all-time + lastPostedAt por
+    plataforma en una sola pasada.
+  - `listAdminBroadcasts({ platform, limit })` — JOIN con articles
+    y categories, filtrable.
+- [x] `components/admin/charts/broadcasts-stacked-bar.tsx` —
+  Recharts stacked bar por plataforma, 30d. Reusa el palette del
+  resto del admin.
+- [x] Pagina `/admin/broadcasts`: totales por plataforma + chart
+  stacked + tabla 100 ultimos posts filtrables por plataforma.
+- [x] Sidebar (`components/admin/sidebar.tsx`): nueva entrada
+  "Broadcasts" entre Articulos y Usuarios + test actualizado.
+- [x] Dashboard `/admin`: nueva seccion "Distribucion" con totales
+  per-plataforma, chart 30d y mini-tiles de suscriptores
+  (activos/pendientes/bajas/total). Schedule del cron incluye
+  ahora `newsletter`.
+- [x] `app/admin/(private)/cron/page.tsx` extendido: label,
+  filter option y resumen string para el job `newsletter`.
 
 ### Criterio de cierre Fase 8
 
