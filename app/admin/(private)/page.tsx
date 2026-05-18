@@ -44,29 +44,23 @@ export const dynamic = "force-dynamic";
  * so the metric queries run in one network hop.
  */
 export default async function AdminDashboardPage() {
-  const [
-    health,
-    statusCounts,
-    byCategory,
-    bySource,
-    tokensPerDay30,
-    classifiedPerDay30,
-    sourceVolume,
-    broadcastsPerDay30,
-    broadcastTotals,
-    newsletterCounts,
-  ] = await Promise.all([
-    probeHealth(),
-    getArticleStatusCounts(),
-    getCategoryBreakdown(),
-    getSourceBreakdown(),
-    getTokensPerDay(30),
-    getClassifiedPerDay(30),
-    getSourceVolume({ days: 30, topN: 10 }),
-    getBroadcastsPerDay(30),
-    getBroadcastTotals(),
-    getNewsletterCounts(),
-  ]);
+  // Sequential, not Promise.all. With 10+ parallel queries against Supabase
+  // pgbouncer (transaction mode, `prepare: false`), Vercel's serverless
+  // function intermittently hangs past the 60s cap → 504. Reproduced
+  // locally as well: same 10 queries took ~660ms in parallel on one run
+  // and never resolved on the next. Serial total is ~1.5s locally, well
+  // inside the platform cap, with zero pool contention. Plenty of
+  // headroom for a dashboard that's hit rarely.
+  const health = await probeHealth();
+  const statusCounts = await getArticleStatusCounts();
+  const byCategory = await getCategoryBreakdown();
+  const bySource = await getSourceBreakdown();
+  const tokensPerDay30 = await getTokensPerDay(30);
+  const classifiedPerDay30 = await getClassifiedPerDay(30);
+  const sourceVolume = await getSourceVolume({ days: 30, topN: 10 });
+  const broadcastsPerDay30 = await getBroadcastsPerDay(30);
+  const broadcastTotals = await getBroadcastTotals();
+  const newsletterCounts = await getNewsletterCounts();
 
   const totalTokensLast30 = tokensPerDay30.reduce((acc, r) => acc + r.totalTokens, 0);
   const totalClassifiedLast30 = classifiedPerDay30.reduce((acc, r) => acc + r.classified, 0);
