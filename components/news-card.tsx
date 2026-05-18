@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { categoryColorVar, isCategorySlug } from "@/lib/categories";
 import { formatRelative } from "@/lib/format";
+import { ShareButtons } from "@/components/share-buttons";
 
 /**
  * Wire-shape of an article as consumed by the card. Mirrors
@@ -110,19 +111,28 @@ export function NewsCard({ article, locale }: NewsCardProps) {
           </p>
         )}
 
-        <div className="mt-auto flex items-center gap-2 pt-2 text-xs text-[color:var(--color-muted-foreground)]">
-          <span className="truncate">{article.sourceName}</span>
-          <span aria-hidden>·</span>
+        <div className="mt-auto flex items-end justify-between gap-2 pt-2 text-xs text-[color:var(--color-muted-foreground)]">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{article.sourceName}</span>
+            <span aria-hidden>·</span>
+            {/*
+             * The relative timestamp is computed against `new Date()` on both
+             * server and client. Between SSR and hydration a few seconds can
+             * pass, so the formatted string may drift by one unit. Suppress
+             * the warning rather than locking the SSR value, which would
+             * then look stale forever on long client sessions.
+             */}
+            <time dateTime={article.publishedAt} suppressHydrationWarning>
+              {formatRelative(article.publishedAt, locale)}
+            </time>
+          </div>
           {/*
-           * The relative timestamp is computed against `new Date()` on both
-           * server and client. Between SSR and hydration a few seconds can
-           * pass, so the formatted string may drift by one unit. Suppress
-           * the warning rather than locking the SSR value, which would
-           * then look stale forever on long client sessions.
+           * Share buttons sit on the same baseline as the source/date row
+           * but above the card's stretched-link via `relative z-10` (set
+           * inside the component). Clicks here don't fall through to the
+           * title `<a>`'s after:absolute overlay.
            */}
-          <time dateTime={article.publishedAt} suppressHydrationWarning>
-            {formatRelative(article.publishedAt, locale)}
-          </time>
+          <ShareButtons url={article.url} title={article.title} />
         </div>
       </div>
     </article>

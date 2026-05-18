@@ -41,6 +41,12 @@
     "openInNewTab": "Se abre en una pestaña nueva",
     "noImage": "Sin imagen"
   },
+  "share": {
+    "copy": "Copiar enlace",
+    "copied": "¡Copiado!",
+    "email": "Compartir por email",
+    "mastodon": "Compartir en Mastodon"
+  },
   "categories": {
     "llm": "Modelos de lenguaje",
     "agents": "Agentes",
@@ -56,6 +62,14 @@
   "about": {
     "title": "Sobre Kernelia",
     "intro": "Kernelia agrupa lo que se publica sobre Inteligencia Artificial, lo clasifica con un agente y te lo muestra resumido en español y en inglés. Sin opiniones, sin ruido.",
+    "subscribe": {
+      "title": "Suscríbete",
+      "body": "Recibe las novedades por el canal que prefieras. Los feeds RSS funcionan en cualquier lector; los canales sociales publican solo lo que el agente marca como más relevante."
+    },
+    "credits": {
+      "title": "Créditos",
+      "body": "Logo, identidad y código por <author>@raulfdeztdo</author>. El proyecto es de código abierto: cualquier mejora, sugerencia o fuente nueva es bienvenida vía pull request."
+    },
     "howItWorks": {
       "title": "Cómo funciona",
       "step1": "Cada pocas horas leemos los feeds RSS de fuentes seleccionadas.",
