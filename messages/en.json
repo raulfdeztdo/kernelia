@@ -67,6 +67,10 @@
       "title": "Subscribe",
       "body": "Get the updates through the channel you prefer. The RSS feeds work in any reader; the social channels only post what the agent flags as most relevant."
     },
+    "newsletter": {
+      "title": "Weekly newsletter",
+      "body": "Every Sunday, one email with the 10 most relevant articles of the week as picked by the agent. Confirm your email after subscribing — you can unsubscribe with one click any time."
+    },
     "credits": {
       "title": "Credits",
       "body": "Logo, identity and code by <author>@raulfdeztdo</author>. The project is open source: any improvement, suggestion, or new source is welcome via pull request."
@@ -123,6 +127,35 @@
       "title": "Public API",
       "body": "The same data in JSON is available at <link>/api/stats</link>. Open CORS, 1-hour cache, no auth.",
       "generatedAt": "Generated: {ts} UTC"
+    }
+  },
+  "newsletter": {
+    "form": {
+      "label": "Your email",
+      "placeholder": "you@email.com",
+      "submit": "Subscribe",
+      "submitting": "Sending…",
+      "success": "Check your inbox — we sent a confirmation email.",
+      "invalid": "That email doesn't look valid. Check the format.",
+      "rate": "Too many attempts. Try again in a few minutes.",
+      "error": "We couldn't process your request. Try again later.",
+      "hint": "No spam, your email isn't shared. Unsubscribe from any digest in one click."
+    },
+    "confirmed": {
+      "title": "Subscription confirmed",
+      "body": "Your email is active on the list. Next digest goes out Sunday at 10:00 UTC.",
+      "backHome": "Back to home"
+    },
+    "unsubscribe": {
+      "title": "Confirm unsubscribe?",
+      "body": "Click the button to unsubscribe from the weekly newsletter. You'll stop receiving the Sunday digest immediately.",
+      "confirm": "Confirm unsubscribe",
+      "cancel": "Cancel"
+    },
+    "unsubscribed": {
+      "title": "You've unsubscribed",
+      "body": "We've removed your email from the list. If you change your mind, you can subscribe again from the About page.",
+      "backHome": "Back to home"
     }
   },
   "footer": {
