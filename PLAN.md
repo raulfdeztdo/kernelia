@@ -895,21 +895,43 @@ publicacion son a nombre del producto, no del autor.
 
 ### Sub-fase 8.B · Share-buttons + /about ampliada
 
-Plan (proximo PR tras 8.A).
-
-- [ ] `components/share-buttons.tsx` (client island chiquita) en
-  cada `news-card`: copiar link al portapapeles, abrir mailto,
-  Mastodon share-intent (`?text=&url=`). Sin botones de redes
-  propietarias (Twitter/Meta) — no encaja con la postura del
-  operador.
-- [ ] `app/[locale]/about/page.tsx` ampliada:
-  - Badges con enlace a RSS por idioma (ya existen los feeds).
-  - Bloque "Suscribete" con los 3 canales del broadcaster (links
-    publicos al perfil de Mastodon/Bluesky/Telegram).
-  - "Como funciona" — explicacion publica del flujo
-    (ingest → classify → broadcast) sin secretos.
+- [x] `components/share-buttons.tsx` (client island) en cada
+  `news-card`: copiar link al portapapeles con feedback "Copied!"
+  durante 1.5s, abrir mailto con subject+body precargados, Mastodon
+  share-intent (`mastodon.social/share?text=&url=`) que respeta la
+  instancia del usuario. Sin botones de redes propietarias
+  (Twitter/Meta) — no encaja con la postura del operador.
+  - Posicionado con `relative z-10` para sentarse por encima del
+    `after:absolute inset-0` del titulo (que vuelve toda la card
+    clickable hacia el articulo); `e.stopPropagation()` defensivo.
+- [x] `lib/broadcast-channels.ts`: resuelve los perfiles publicos de
+  Mastodon / Bluesky / Telegram desde las MISMAS env vars que usa el
+  bot broadcaster (`MASTODON_INSTANCE_URL`, `BLUESKY_IDENTIFIER`,
+  `TELEGRAM_CHAT_ID` — privado o numerico devuelve null). Asi los
+  links "Siguenos en..." nunca apuntan a un canal sin configurar.
+- [x] `app/[locale]/about/page.tsx` ampliada:
+  - **Hero**: logo de Kernelia (88x88, rounded) al lado del titulo
+    e intro. Sirve para Open Graph mas adelante.
+  - **Suscribete**: badges con RSS·ES, RSS·EN y los 3 canales del
+    broadcaster (links publicos al perfil de Mastodon/Bluesky/
+    Telegram, resueltos via `lib/broadcast-channels.ts`).
+  - **Creditos**: bloque al pie con credit al logo + identidad +
+    codigo via @raulfdeztdo, link a su GitHub. Mismo bloque
+    explica que el proyecto es open-source y aceptamos PRs.
+- [x] `components/footer.tsx`: logo (28x28) a la izquierda del
+  tagline; lista de los canales configurados a la derecha (mismo
+  helper, misma fuente de verdad).
+- [x] i18n: claves nuevas en `share.*` (copy/copied/email/mastodon),
+  `about.subscribe.*` (title/body), `about.credits.*` (title/body
+  con `t.rich` para inyectar el link al autor). Sin emojis en
+  copy — no esta en la convencion del proyecto.
+- [x] Tests: `tests/broadcast-channels.test.ts` con 11 specs que
+  cubren la resolucion env-driven, fallback al username por
+  defecto, strip del trailing slash, y el corner del Telegram
+  numerico (private channel → null para no romper t.me/).
 - [ ] Listar Kernelia en awesome-lists relevantes via PR upstream.
-  Doc paso a paso en `context-docs/distribution.md` (nuevo).
+  Doc paso a paso en `context-docs/distribution.md` (pendiente —
+  posible sub-PR o cierre dentro de 8.C).
 
 ### Sub-fase 8.C · Newsletter semanal + /api/stats publico
 

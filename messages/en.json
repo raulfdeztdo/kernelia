@@ -41,6 +41,12 @@
     "openInNewTab": "Opens in a new tab",
     "noImage": "No image"
   },
+  "share": {
+    "copy": "Copy link",
+    "copied": "Copied!",
+    "email": "Share by email",
+    "mastodon": "Share on Mastodon"
+  },
   "categories": {
     "llm": "Language models",
     "agents": "Agents",
@@ -56,6 +62,14 @@
   "about": {
     "title": "About Kernelia",
     "intro": "Kernelia gathers what's published about Artificial Intelligence, classifies it with an agent, and shows it to you summarized in Spanish and English. No opinions, no noise.",
+    "subscribe": {
+      "title": "Subscribe",
+      "body": "Get the updates through the channel you prefer. The RSS feeds work in any reader; the social channels only post what the agent flags as most relevant."
+    },
+    "credits": {
+      "title": "Credits",
+      "body": "Logo, identity and code by <author>@raulfdeztdo</author>. The project is open source: any improvement, suggestion, or new source is welcome via pull request."
+    },
     "howItWorks": {
       "title": "How it works",
       "step1": "Every few hours we read the RSS feeds of hand-picked sources.",
