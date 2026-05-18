@@ -935,7 +935,43 @@ publicacion son a nombre del producto, no del autor.
 
 ### Sub-fase 8.C · Newsletter semanal + /api/stats publico
 
-Plan (proximo PR tras 8.B).
+Dividida en dos PRs:
+
+- **8.C.1** — `/api/stats` + pagina `/stats` + doc de distribucion
+  upstream. Sin dependencias externas.
+- **8.C.2** — Newsletter completa (migracion + endpoints + cron
+  weekly-digest + UI en /about). Bloqueada hasta tener Resend
+  configurado.
+
+#### 8.C.1 · Stats publico + doc distribution
+
+- [x] `lib/stats.ts` — `getPublicStats()` server-shared entre
+  endpoint y pagina. Una sola fan-out con `Promise.all` de 7
+  agregados (clasificados total, clasificados 7d, fuentes activas,
+  categorias, tokens 30d, lastIngestAt y lastClassifyAt). Lee
+  `cron_runs.summary->tokens.total` para tokens, y `cron_runs`
+  filtrado por job + `status='ok'` para los timestamps (asi un tick
+  que no encontro nada sigue contando como "el sistema esta vivo").
+- [x] `app/api/stats/route.ts` — runtime nodejs, `Cache-Control:
+  public, s-maxage=3600, stale-while-revalidate=86400`, CORS abierto
+  con `OPTIONS` preflight. Sin auth. Devuelve 503 si la DB cae.
+- [x] `app/[locale]/stats/page.tsx` — server component bilingue.
+  Stats cards con el mismo lenguaje visual del admin (border +
+  surface + tabular-nums), enlace al endpoint JSON, timestamp de
+  generacion. Metadata con canonical + alternates.
+- [x] i18n keys nuevas: namespace `stats.*` + `footer.stats` en
+  ambos locales. Enlace `Estadisticas / Stats` en el footer junto a
+  `Sobre el proyecto`.
+- [x] `tests/stats.test.ts` — contrato de tipos para `PublicStats`
+  (top-level keys, nullables, invariante 7d <= total). Misma
+  filosofia que `tests/health.test.ts` y `tests/admin-metrics-shape.test.ts`:
+  shape-tests; behavioural coverage en smoke contra Supabase.
+- [x] `context-docs/distribution.md` — awesome-lists tier 1/2/3,
+  plantilla de entrada, reglas de PRs (uno por entrada,
+  alfabetico, sin marketing-speak), seguimiento `[merged]` /
+  `[declined]`.
+
+#### 8.C.2 · Newsletter semanal Resend
 
 - [ ] Migracion: tabla `newsletter_subscribers` (email unique,
   confirmed_at nullable, unsubscribed_at nullable, created_at).
@@ -949,17 +985,8 @@ Plan (proximo PR tras 8.B).
   articulos de la semana (orden por `relevance_score desc` filtrado
   por fecha). Email via Resend a todos los `confirmed_at != null
   AND unsubscribed_at = null`.
-- [ ] `app/api/stats/route.ts` publico (no auth, cache 1h):
-  - Total articulos clasificados.
-  - Articulos clasificados ultimos 7d.
-  - Numero de fuentes activas.
-  - Numero de categorias.
-  - `lastIngestAt`, `lastClassifyAt`.
-  - Suma de tokens consumidos ultimo mes (transparencia de coste).
-  Nada de PII; el endpoint es para que cualquiera pueda graficar
-  Kernelia o usarlo de credibilidad.
-- [ ] UI: pagina `/stats` server-rendered que pinta el JSON con
-  el mismo lenguaje visual del admin (sin auth).
+- [ ] Formulario de suscripcion dentro de la seccion "Suscribete"
+  del /about (junto a los badges de RSS + canales sociales).
 
 ### Criterio de cierre Fase 8
 

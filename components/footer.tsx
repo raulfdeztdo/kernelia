@@ -4,10 +4,10 @@ import { Link } from "@/i18n/navigation";
 import { getAllPublicChannels } from "@/lib/broadcast-channels";
 import { GitHubIcon, platformIcon } from "@/components/social-icons";
 
-function AboutLink({ label }: { label: string }) {
+function FooterLink({ href, label }: { href: "/about" | "/stats"; label: string }) {
   return (
     <Link
-      href="/about"
+      href={href}
       className="rounded transition hover:text-[color:var(--color-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
     >
       {label}
@@ -59,7 +59,8 @@ export async function Footer() {
           </a>
         </div>
         <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <AboutLink label={t("about")} />
+          <FooterLink href="/about" label={t("about")} />
+          <FooterLink href="/stats" label={t("stats")} />
           <a
             href="https://github.com/raulfdeztdo/kernelia"
             target="_blank"
