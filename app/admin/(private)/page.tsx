@@ -15,11 +15,13 @@ import { getNewsletterCounts } from "@/db/queries/newsletter";
 import { CRON_SCHEDULE } from "@/lib/cron-schedule";
 import { probeHealth } from "@/lib/health";
 import { HealthCard } from "@/components/admin/health-card";
-import { ClassifiedLineChart } from "@/components/admin/charts/classified-line";
-import { SourcesBarChart } from "@/components/admin/charts/sources-bar";
-import { StatusDonut } from "@/components/admin/charts/status-donut";
-import { TokensBarChart } from "@/components/admin/charts/tokens-bar";
-import { BroadcastsStackedBarChart } from "@/components/admin/charts/broadcasts-stacked-bar";
+import {
+  BroadcastsStackedBarChart,
+  ClassifiedLineChart,
+  SourcesBarChart,
+  StatusDonut,
+  TokensBarChart,
+} from "@/components/admin/charts";
 
 export const dynamic = "force-dynamic";
 

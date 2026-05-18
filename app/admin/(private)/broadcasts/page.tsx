@@ -5,7 +5,7 @@ import {
   listAdminBroadcasts,
   type BroadcastPlatformValue,
 } from "@/db/queries/admin-broadcasts";
-import { BroadcastsStackedBarChart } from "@/components/admin/charts/broadcasts-stacked-bar";
+import { BroadcastsStackedBarChart } from "@/components/admin/charts";
 
 export const dynamic = "force-dynamic";
 
