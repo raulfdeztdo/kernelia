@@ -73,15 +73,21 @@ export interface BroadcastTotalsRow {
  */
 export async function getBroadcastTotals(): Promise<BroadcastTotalsRow[]> {
   const now = Date.now();
-  const since30 = new Date(now - 30 * 24 * 60 * 60 * 1000);
-  const since7 = new Date(now - 7 * 24 * 60 * 60 * 1000);
+  // ISO strings, not Date objects: the `postgres.js` driver doesn't accept
+  // Date as a bind parameter inside a raw `sql` template (it expects
+  // string/Buffer/ArrayBuffer). Drizzle's relational helpers like `gte()`
+  // serialise Date themselves, but here we're filtering inside a
+  // `count(*) filter (where ...)` aggregate, which has to live in a `sql`
+  // template. Cast on the SQL side to keep types unambiguous.
+  const since30 = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const since7 = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const rows = await db
     .select({
       platform: articleBroadcasts.platform,
       allTime: sql<number>`count(*)::int`,
-      last30d: sql<number>`count(*) filter (where ${articleBroadcasts.postedAt} >= ${since30})::int`,
-      last7d: sql<number>`count(*) filter (where ${articleBroadcasts.postedAt} >= ${since7})::int`,
+      last30d: sql<number>`count(*) filter (where ${articleBroadcasts.postedAt} >= ${since30}::timestamptz)::int`,
+      last7d: sql<number>`count(*) filter (where ${articleBroadcasts.postedAt} >= ${since7}::timestamptz)::int`,
       lastPostedAt: sql<Date | null>`max(${articleBroadcasts.postedAt})`,
     })
     .from(articleBroadcasts)
