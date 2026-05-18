@@ -127,6 +127,7 @@ describe("runClassify", () => {
         title: "GPT-5 lands",
         url: "https://example.com/1",
         rawExcerpt: "Some content",
+        imageUrl: null,
         language: "en" as const,
         sourceName: "Example",
         sourceLanguage: "en" as const,
@@ -136,6 +137,7 @@ describe("runClassify", () => {
         title: "Nuevo modelo open source",
         url: "https://example.com/2",
         rawExcerpt: "Texto en español",
+        imageUrl: null,
         language: "es" as const,
         sourceName: "Xataka",
         sourceLanguage: "es" as const,
@@ -184,6 +186,7 @@ describe("runClassify", () => {
         title: "T",
         url: "https://example.com/1",
         rawExcerpt: null,
+        imageUrl: null,
         language: "en" as const,
         sourceName: "Example",
         sourceLanguage: "en" as const,
@@ -224,6 +227,7 @@ describe("runClassify", () => {
         title: "Slow",
         url: "https://example.com/1",
         rawExcerpt: null,
+        imageUrl: null,
         language: "en" as const,
         sourceName: "Example",
         sourceLanguage: "en" as const,
@@ -289,6 +293,7 @@ describe("runClassify", () => {
           title: "Throttled article",
           url: "https://example.com/1",
           rawExcerpt: null,
+          imageUrl: null,
           language: "en" as const,
           sourceName: "Example",
           sourceLanguage: "en" as const,
@@ -334,6 +339,7 @@ describe("runClassify", () => {
       title: `T${i}`,
       url: `https://example.com/${i}`,
       rawExcerpt: null,
+      imageUrl: null,
       language: "en" as const,
       sourceName: "Example",
       sourceLanguage: "en" as const,
@@ -370,6 +376,7 @@ describe("runClassify", () => {
         title: "T",
         url: "https://example.com/1",
         rawExcerpt: null,
+        imageUrl: null,
         language: "en" as const,
         sourceName: "Example",
         sourceLanguage: "en" as const,
@@ -407,6 +414,7 @@ describe("runClassify · content-level dedupe", () => {
         title: "Elon Musk Loses Historic OpenAI Lawsuit",
         url: "https://wired.com/x",
         rawExcerpt: "Same case, different publisher.",
+        imageUrl: null,
         language: "en" as const,
         sourceName: "Wired",
         sourceLanguage: "en" as const,
@@ -429,7 +437,7 @@ describe("runClassify · content-level dedupe", () => {
       onFailed,
       resolveCategoryId: async () => "cat-id",
       fetchRecentForDedupe: async () => [
-        { id: "ars", titleEs: "Elon Musk pierde el juicio por acusar a OpenAI de robar una caridad" },
+        { id: "ars", titleEs: "Elon Musk pierde el juicio por acusar a OpenAI de robar una caridad", imageUrl: null, isClassified: true },
       ],
       onHiddenAsDuplicate,
     });
@@ -456,6 +464,7 @@ describe("runClassify · content-level dedupe", () => {
         title: "Apple Intelligence ships on iPhone 17",
         url: "https://apple.com/x",
         rawExcerpt: "...",
+        imageUrl: null,
         language: "en" as const,
         sourceName: "Apple Newsroom",
         sourceLanguage: "en" as const,
@@ -472,7 +481,7 @@ describe("runClassify · content-level dedupe", () => {
       onFailed: vi.fn(async () => {}),
       resolveCategoryId: async () => "cat-id",
       fetchRecentForDedupe: async () => [
-        { id: "old", titleEs: "Google DeepMind anuncia un modelo de robótica" },
+        { id: "old", titleEs: "Google DeepMind anuncia un modelo de robótica", imageUrl: null, isClassified: true },
       ],
       onHiddenAsDuplicate,
     });
@@ -493,6 +502,7 @@ describe("runClassify · content-level dedupe", () => {
         title: "First headline about Musk losing the OpenAI suit",
         url: "https://example.com/first",
         rawExcerpt: "...",
+        imageUrl: null,
         language: "en" as const,
         sourceName: "First",
         sourceLanguage: "en" as const,
@@ -502,6 +512,7 @@ describe("runClassify · content-level dedupe", () => {
         title: "Second headline about the same Musk OpenAI verdict",
         url: "https://example.com/second",
         rawExcerpt: "...",
+        imageUrl: null,
         language: "en" as const,
         sourceName: "Second",
         sourceLanguage: "en" as const,
@@ -561,6 +572,7 @@ describe("runClassify · content-level dedupe", () => {
         title: "Duplicate",
         url: "https://example.com/dup",
         rawExcerpt: "...",
+        imageUrl: null,
         language: "en" as const,
         sourceName: "Source",
         sourceLanguage: "en" as const,
@@ -580,7 +592,7 @@ describe("runClassify · content-level dedupe", () => {
       onFailed: vi.fn(async () => {}),
       resolveCategoryId: async () => "cat-id",
       fetchRecentForDedupe: async () => [
-        { id: "ars", titleEs: "Elon Musk pierde el juicio por acusar a OpenAI de robar una caridad" },
+        { id: "ars", titleEs: "Elon Musk pierde el juicio por acusar a OpenAI de robar una caridad", imageUrl: null, isClassified: true },
       ],
       onHiddenAsDuplicate: vi.fn(async () => {}),
     });
@@ -588,5 +600,162 @@ describe("runClassify · content-level dedupe", () => {
     // Tokens must always be billed — the LLM call ran regardless of dedupe.
     expect(summary.tokens.total).toBe(75);
     expect(summary.dedupedHidden).toBe(1);
+  });
+});
+
+describe("runClassify · prefer near-duplicates that carry an image", () => {
+  // Shared cluster fixture: the candidate's ES title is similar enough
+  // to the existing winner's that Jaccard ≥ 0.4 fires regardless of
+  // the image criterion. The four specs only differ in who has the
+  // image, so they exercise the image branch in isolation.
+  const candidateLlmPayload = {
+    ...validPayload,
+    title_es: "Elon Musk pierde un juicio histórico contra OpenAI",
+  };
+  const ORIGINAL_TITLE_ES =
+    "Elon Musk pierde el juicio por acusar a OpenAI de robar una caridad";
+
+  function buildPendingCandidate(imageUrl: string | null) {
+    return [
+      {
+        id: "wired",
+        title: "Elon Musk Loses Historic OpenAI Lawsuit",
+        url: "https://wired.com/x",
+        rawExcerpt: "Same case, different publisher.",
+        imageUrl,
+        language: "en" as const,
+        sourceName: "Wired",
+        sourceLanguage: "en" as const,
+      },
+    ];
+  }
+
+  it("REPLACE: candidate has image, original doesn't → swap winner", async () => {
+    const onClassified = vi.fn(async () => {});
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+    const onClassifiedReplacingDuplicate = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client: makeClient(candidateLlmPayload),
+      fetchPending: async () => buildPendingCandidate("https://cdn.example/cover.jpg"),
+      onClassified,
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [
+        { id: "ars", titleEs: ORIGINAL_TITLE_ES, imageUrl: null, isClassified: true },
+      ],
+      onHiddenAsDuplicate,
+      onClassifiedReplacingDuplicate,
+    });
+
+    // Swap fired: dedupedReplaced=1, dedupedHidden=0, classified=1.
+    expect(summary.dedupedReplaced).toBe(1);
+    expect(summary.dedupedHidden).toBe(0);
+    expect(summary.classified).toBe(1);
+    expect(onClassified).not.toHaveBeenCalled();
+    expect(onHiddenAsDuplicate).not.toHaveBeenCalled();
+    expect(onClassifiedReplacingDuplicate).toHaveBeenCalledOnce();
+    expect(onClassifiedReplacingDuplicate).toHaveBeenCalledWith(
+      "wired",
+      expect.objectContaining({ titleEs: candidateLlmPayload.title_es }),
+      expect.objectContaining({ matchedId: "ars" }),
+    );
+  });
+
+  it("HIDE: original has image, candidate doesn't → existing FIFO path", async () => {
+    const onClassified = vi.fn(async () => {});
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+    const onClassifiedReplacingDuplicate = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client: makeClient(candidateLlmPayload),
+      fetchPending: async () => buildPendingCandidate(null),
+      onClassified,
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [
+        { id: "ars", titleEs: ORIGINAL_TITLE_ES, imageUrl: "https://cdn.example/ars.jpg", isClassified: true },
+      ],
+      onHiddenAsDuplicate,
+      onClassifiedReplacingDuplicate,
+    });
+
+    expect(summary.dedupedReplaced).toBe(0);
+    expect(summary.dedupedHidden).toBe(1);
+    expect(summary.classified).toBe(0);
+    expect(onHiddenAsDuplicate).toHaveBeenCalledOnce();
+    expect(onClassifiedReplacingDuplicate).not.toHaveBeenCalled();
+  });
+
+  it("HIDE: both have images → FIFO (original wins)", async () => {
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+    const onClassifiedReplacingDuplicate = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client: makeClient(candidateLlmPayload),
+      fetchPending: async () => buildPendingCandidate("https://cdn.example/wired.jpg"),
+      onClassified: vi.fn(async () => {}),
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [
+        { id: "ars", titleEs: ORIGINAL_TITLE_ES, imageUrl: "https://cdn.example/ars.jpg", isClassified: true },
+      ],
+      onHiddenAsDuplicate,
+      onClassifiedReplacingDuplicate,
+    });
+
+    expect(summary.dedupedReplaced).toBe(0);
+    expect(summary.dedupedHidden).toBe(1);
+    expect(onClassifiedReplacingDuplicate).not.toHaveBeenCalled();
+  });
+
+  it("HIDE: neither has images → FIFO (original wins)", async () => {
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+    const onClassifiedReplacingDuplicate = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client: makeClient(candidateLlmPayload),
+      fetchPending: async () => buildPendingCandidate(null),
+      onClassified: vi.fn(async () => {}),
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [
+        { id: "ars", titleEs: ORIGINAL_TITLE_ES, imageUrl: null, isClassified: true },
+      ],
+      onHiddenAsDuplicate,
+      onClassifiedReplacingDuplicate,
+    });
+
+    expect(summary.dedupedReplaced).toBe(0);
+    expect(summary.dedupedHidden).toBe(1);
+    expect(onClassifiedReplacingDuplicate).not.toHaveBeenCalled();
+  });
+
+  it("HIDE: candidate has image but the existing match is already hidden → do NOT resurrect", async () => {
+    // Edge case: the dedupe query returns hidden rows too (so a third
+    // source can match the previous duplicate of the same cluster).
+    // We must NOT promote a candidate over a *hidden* row — that would
+    // leave the cluster with two visible rows (the original classified
+    // winner AND the new one) once the hidden's predecessor is taken
+    // into account.
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+    const onClassifiedReplacingDuplicate = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client: makeClient(candidateLlmPayload),
+      fetchPending: async () => buildPendingCandidate("https://cdn.example/wired.jpg"),
+      onClassified: vi.fn(async () => {}),
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      fetchRecentForDedupe: async () => [
+        { id: "ars-hidden", titleEs: ORIGINAL_TITLE_ES, imageUrl: null, isClassified: false },
+      ],
+      onHiddenAsDuplicate,
+      onClassifiedReplacingDuplicate,
+    });
+
+    expect(summary.dedupedReplaced).toBe(0);
+    expect(summary.dedupedHidden).toBe(1);
+    expect(onClassifiedReplacingDuplicate).not.toHaveBeenCalled();
   });
 });
