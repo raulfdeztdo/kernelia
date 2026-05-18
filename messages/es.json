@@ -146,6 +146,12 @@
       "body": "Tu email está activo en la lista. Recibirás el próximo digest el domingo a las 10:00 UTC.",
       "backHome": "Volver al inicio"
     },
+    "unsubscribe": {
+      "title": "¿Confirmar baja?",
+      "body": "Pulsa el botón para darte de baja de la newsletter semanal. Dejarás de recibir el digest del domingo de inmediato.",
+      "confirm": "Confirmar baja",
+      "cancel": "Cancelar"
+    },
     "unsubscribed": {
       "title": "Te has dado de baja",
       "body": "Hemos retirado tu email de la lista. Si cambias de opinión, puedes volver a suscribirte desde la página \"Sobre el proyecto\".",

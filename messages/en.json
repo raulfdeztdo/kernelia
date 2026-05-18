@@ -146,6 +146,12 @@
       "body": "Your email is active on the list. Next digest goes out Sunday at 10:00 UTC.",
       "backHome": "Back to home"
     },
+    "unsubscribe": {
+      "title": "Confirm unsubscribe?",
+      "body": "Click the button to unsubscribe from the weekly newsletter. You'll stop receiving the Sunday digest immediately.",
+      "confirm": "Confirm unsubscribe",
+      "cancel": "Cancel"
+    },
     "unsubscribed": {
       "title": "You've unsubscribed",
       "body": "We've removed your email from the list. If you change your mind, you can subscribe again from the About page.",

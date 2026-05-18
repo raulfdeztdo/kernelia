@@ -112,9 +112,14 @@ export async function runNewsletter(
       continue;
     }
 
-    const unsubscribeUrl = `${origin.replace(/\/$/, "")}/api/newsletter/unsubscribe?token=${encodeURIComponent(
+    // Link to the confirmation PAGE, not the API endpoint. Email scanners
+    // pre-fetch GET URLs; landing on a page that requires a POST stops
+    // them from accidentally unsubscribing the recipient. See the docstring
+    // on `app/api/newsletter/unsubscribe/route.ts`.
+    const langPrefix = subscriber.locale === "en" ? "/en" : "";
+    const unsubscribeUrl = `${origin.replace(/\/$/, "")}${langPrefix}/newsletter/unsubscribe?token=${encodeURIComponent(
       subscriber.unsubscribeToken,
-    )}&lang=${subscriber.locale}`;
+    )}`;
 
     try {
       await send({
