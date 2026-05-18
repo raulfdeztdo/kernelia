@@ -141,6 +141,12 @@
       "error": "No hemos podido procesar tu solicitud. Inténtalo más tarde.",
       "hint": "Sin spam, sin compartir tu email. Te puedes dar de baja desde cualquier digest."
     },
+    "confirm": {
+      "title": "¿Confirmar suscripción?",
+      "body": "Pulsa el botón para activar tu suscripción a la newsletter semanal. Empezarás a recibir el digest del domingo desde la próxima entrega.",
+      "cta": "Confirmar suscripción",
+      "cancel": "Cancelar"
+    },
     "confirmed": {
       "title": "Suscripción confirmada",
       "body": "Tu email está activo en la lista. Recibirás el próximo digest el domingo a las 10:00 UTC.",
