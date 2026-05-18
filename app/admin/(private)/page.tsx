@@ -321,15 +321,17 @@ function Table({ headers, rows }: { headers: string[]; rows: React.ReactNode[][]
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td className="px-3 py-3 text-muted-foreground" colSpan={headers.length}>
+              <td className="p-3 text-muted-foreground" colSpan={headers.length}>
                 Sin datos.
               </td>
             </tr>
           ) : (
-            rows.map((cells, i) => (
-              <tr key={i} className="border-t border-border last:border-b">
-                {cells.map((c, j) => (
-                  <td key={j} className="px-3 py-2 tabular-nums">
+            rows.map((cells, rowIndex) => (
+              // The categories table is render-only with no add/remove or
+              // sort; index-as-key is safe here.
+              <tr key={`cat-row-${rowIndex}`} className="border-t border-border last:border-b">
+                {cells.map((c, colIndex) => (
+                  <td key={`cat-cell-${rowIndex}-${colIndex}`} className="px-3 py-2 tabular-nums">
                     {c}
                   </td>
                 ))}

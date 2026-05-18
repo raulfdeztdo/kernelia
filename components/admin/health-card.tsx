@@ -23,7 +23,7 @@ export function HealthCard({ result }: Props) {
         className="rounded-md border border-red-500/40 bg-red-500/10 p-4 text-sm"
       >
         <div className="flex items-center gap-2">
-          <span className="inline-flex h-2 w-2 rounded-full bg-red-400" aria-hidden />
+          <span className="inline-flex size-2 rounded-full bg-red-400" aria-hidden />
           <span className="font-medium text-red-300">503 — health check falló</span>
         </div>
         <p className="mt-2 text-muted-foreground">
@@ -42,7 +42,7 @@ export function HealthCard({ result }: Props) {
     <div className="rounded-md border border-border bg-surface p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
+          <span className="inline-flex size-2 rounded-full bg-emerald-400" aria-hidden />
           <span className="font-medium text-emerald-300">200 — healthy</span>
         </div>
         <span className="text-xs text-muted-foreground">

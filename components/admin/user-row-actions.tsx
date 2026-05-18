@@ -38,7 +38,7 @@ const ERROR_COPY: Record<string, string> = {
 };
 
 export function UserRowActions({ userId, email, active, isSelf }: Props) {
-  const router = useRouter();
+  const { refresh } = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +55,7 @@ export function UserRowActions({ userId, email, active, isSelf }: Props) {
       setError(ERROR_COPY[code] ?? `Error (${res.status}).`);
       return;
     }
-    startTransition(() => router.refresh());
+    startTransition(() => refresh());
   }
 
   if (isSelf) {

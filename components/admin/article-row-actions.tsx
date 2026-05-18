@@ -45,7 +45,7 @@ export function ArticleRowActions({
   canBeClassified,
   categories,
 }: Props) {
-  const router = useRouter();
+  const { refresh } = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +73,7 @@ export function ArticleRowActions({
       setError(payload.error ?? `Error HTTP ${res.status}.`);
       return;
     }
-    startTransition(() => router.refresh());
+    startTransition(() => refresh());
   }
 
   return (

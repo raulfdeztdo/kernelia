@@ -71,10 +71,12 @@ export async function getWeeklyDigestArticles(
     .orderBy(desc(articles.relevanceScore), desc(articles.ingestedAt))
     .limit(topN);
 
-  // Drizzle widens `title` to nullable because of the JOIN — narrow here.
-  return rows
-    .filter((r): r is typeof r & { title: string } => r.title !== null)
-    .map((r) => ({
+  // Drizzle widens `title` to nullable because of the JOIN — narrow + map
+  // in a single pass to avoid iterating the result set twice.
+  const out: DigestArticle[] = [];
+  for (const r of rows) {
+    if (r.title === null) continue;
+    out.push({
       id: r.id,
       url: r.url,
       title: r.title,
@@ -83,5 +85,7 @@ export async function getWeeklyDigestArticles(
       categorySlug: r.categorySlug,
       relevanceScore: r.relevanceScore ?? 0,
       ingestedAt: r.ingestedAt,
-    }));
+    });
+  }
+  return out;
 }
