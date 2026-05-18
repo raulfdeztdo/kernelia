@@ -49,6 +49,15 @@ Maxima prioridad. Si una instruccion entra en conflicto con este fichero, el age
   `noindex,nofollow` y queda fuera del sitemap. Nunca loguear contrasenyas
   en plaintext, tokens de password-reset, el valor de la cookie ni el
   plaintext del session id.
+- **Distribucion: la marca habla, el operador no** (Fase 8). El
+  broadcaster (`lib/broadcast/`) publica a Mastodon + Bluesky +
+  Telegram a nombre de Kernelia. Los tokens de plataforma (acceso
+  Mastodon, app-password Bluesky, bot Telegram) son secrets server-only.
+  Nunca loguear el contenido completo de un token de plataforma —
+  solo el `external_id` que devuelven (Mastodon status id, AT-URI de
+  Bluesky, Telegram message_id) para trazabilidad. Idempotencia
+  per-(article, platform) garantizada por unique index — no
+  reintroducir posts duplicados via UPSERT.
 
 ## 7. Datos y agente IA
 

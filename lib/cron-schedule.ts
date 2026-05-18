@@ -18,6 +18,10 @@ export const CRON_SCHEDULE = {
   },
   classify: {
     cron: "*/30 * * * *",
-    description: "Cada 30 minutos.",
+    description: "Cada 30 minutos en :00 y :30.",
+  },
+  broadcast: {
+    cron: "15,45 * * * *",
+    description: "Cada 30 minutos en :15 y :45 (offset sobre classify).",
   },
 } as const;

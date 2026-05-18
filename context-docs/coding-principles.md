@@ -32,6 +32,10 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
   - `lib/auth/` — hash de contrasenya (bcrypt), tokens de password-reset,
     sesiones HMAC, rate-limit, helpers de cookie. **Server-only**; nunca
     importar desde componentes cliente.
+  - `lib/broadcast/` — distribucion automatica a Mastodon + Bluesky +
+    Telegram. Per-plataforma: cliente HTTP + format. Orquestador
+    common (`run.ts`) que llama a `db/queries/article-broadcasts.ts`
+    para idempotencia. **Server-only**.
   - `lib/email/` — wrapper minimo sobre Resend (`sendPasswordReset`).
   - `db/` — schema Drizzle, migraciones, queries.
   - `db/queries/` — unico punto de acceso a la DB. Incluye

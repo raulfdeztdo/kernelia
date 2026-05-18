@@ -21,7 +21,8 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 4 | Web: listado, filtros, busqueda, i18n | **done** | 2026-05-14 | UI bilingue real (titulos+resumenes en ES y EN almacenados por articulo). Card con filo lateral por categoria, imagen, fuente, fecha relativa. Filtros, busqueda con debounce, paginacion cursor. Cerebras free tier protegido con delay configurable. |
 | 5 | Pulido, SEO, accesibilidad | **done** | 2026-05-14 | Metadata por locale (OG, canonical, hreflang+x-default). `sitemap.ts`, `robots.ts`, RSS `/rss.xml?lang=es|en`. Pagina `/about` bilingue con fuentes en vivo. `/api/health` con ping DB + counts. Cron via GitHub Actions (Vercel Hobby restringe a 1/dia). Skip-link, focus-visible global y `prefers-reduced-motion`. |
 | 6 | Release v0.1.0 a produccion | **done** | 2026-05-14 | Dominio kernelia.dev con SSL, brand logo, paginacion append-style, cap por fuente=10, cola de clasificacion round-robin, cron en GHA verde, SEO consistente en produccion (canonical/og/robots/sitemap/RSS apuntan a kernelia.dev). `v0.1.0` taggeado y publicado. |
-| 7 | Backoffice admin (auth + panel) | **done** | 2026-05-15 | Cinco sub-fases (7.A→7.E) entregadas en PRs separados (#19 schema+auth backend, #20 login UI, #21 dashboard+cron monitor, #22 gestion de articulos, #23 gestion de usuarios). Login `/admin` por magic-link (Resend, dominio kernelia.dev verificado, rate-limit 5/10min IP+email), cookie `__Host-` HMAC, session TTL 7d. Panel con metricas de articulos/categorias/fuentes/tokens, monitor `/admin/cron` ultimas 50 ejecuciones, gestion de articulos con guard de 5-columnas para `→ classified`, `hidden` distinto de `failed`, re-clasificar one-click, gestion de usuarios con guardrails (no self-target, never zero active admins). Audit via `console.log` estructurado. `/admin/*` excluido de sitemap/robots/middleware i18n. |
+| 7 | Backoffice admin (auth + panel) | **done** | 2026-05-15 | Cinco sub-fases (7.A→7.E) entregadas en PRs separados (#19 schema+auth backend, #20 login UI, #21 dashboard+cron monitor, #22 gestion de articulos, #23 gestion de usuarios). Login `/admin` por magic-link (Resend, dominio kernelia.dev verificado, rate-limit 5/10min IP+email), cookie `__Host-` HMAC, session TTL 7d. Panel con metricas de articulos/categorias/fuentes/tokens, monitor `/admin/cron` ultimas 50 ejecuciones, gestion de articulos con guard de 5-columnas para `→ classified`, `hidden` distinto de `failed`, re-clasificar one-click, gestion de usuarios con guardrails (no self-target, never zero active admins). Audit via `console.log` estructurado. `/admin/*` excluido de sitemap/robots/middleware i18n. Posteriormente extendido en 7.F-H (PRs #24-26) con login por contrasenya+bcrypt, sidebar+health card, y 4 graficas Recharts en el dashboard. |
+| 8 | Distribucion y propagacion del portal | **pending** | — | Suite completa de distribucion sin exigir presencia personal en redes. Tres sub-fases: 8.A broadcaster bot multiplataforma (Mastodon + Bluesky + Telegram, espanol, filtro `relevance_score >= 0.75`); 8.B share-buttons en cards publicas + `/about` ampliada con badges de RSS; 8.C newsletter opt-in semanal via Resend + endpoint `/api/stats` publico para transparencia. La marca habla, el operador no. |
 
 ---
 
@@ -810,6 +811,152 @@ a usarse SOLO para enviar enlaces de password-reset.
 - [x] Test `admin-metrics-shape.test.ts` pinea los campos que las
   graficas leen — cualquier rename silencia el SVG, asi que el
   shape contract es lo que mas importa.
+
+---
+
+## Fase 8 — Distribucion y propagacion del portal · `pending`
+
+**Objetivo:** poner Kernelia a la vista sin obligar al operador a
+mantener presencia personal en redes. La marca habla por si misma —
+cuentas bot, share-buttons, newsletter — y todas las superficies de
+publicacion son a nombre del producto, no del autor.
+
+### Decisiones cerradas (2026-05-18)
+
+- **Plataformas** del broadcaster: Mastodon (fosstodon.org) +
+  Bluesky (kernelia.dev) + Telegram channel "Kernelia". Discord
+  out-of-scope hasta que haya comunidad real.
+- **Estrategia de publicacion**: per-articulo con filtro
+  `relevance_score >= 0.75`. Volumen objetivo ~10-20/dia frente a
+  ~50 sin filtro. Articulos pre-migracion 8.A (sin `relevance_score`
+  poblado) quedan NULL y no se broadcastean → cero flood de backlog.
+- **Idioma**: solo espanol. Una voz por plataforma, audiencia
+  principal ES, simple. Si en el futuro se quiere EN se abriran
+  cuentas paralelas (`@kernelia_en`).
+- **Alcance Fase 8**: suite completa en 3 sub-fases (8.A
+  broadcaster / 8.B share-buttons + /about / 8.C newsletter +
+  /api/stats). Misma cadencia de entrega que Fase 7 — PR por
+  sub-fase.
+
+### Sub-fase 8.A · Broadcaster bot multiplataforma
+
+- [ ] Migracion `0005_broadcast_distribution.sql`:
+  - `articles.relevance_score real` (nullable). Pre-migracion = NULL.
+  - `broadcast_platform` enum (`mastodon | bluesky | telegram`).
+  - `article_broadcasts` (id, article_id FK CASCADE, platform,
+    posted_at, external_id, created_at). Unique (article_id,
+    platform) para idempotencia per-plataforma.
+  - `ALTER TYPE cron_job ADD VALUE 'broadcast'`.
+- [ ] Persistir `relevance_score` en `markArticleClassified` y
+  propagarlo desde `runClassify` (`ClassifiedPayload` actualizado).
+  Articulos clasificados a partir de aqui llevan score; los antiguos
+  se quedan NULL hasta que un re-classify los toque.
+- [ ] `lib/broadcast/format.ts`: format-per-platform con truncado
+  duro (Mastodon 500, Bluesky 300, Telegram 4096). Incluye titulo
+  ES + resumen ES + URL + `#categoria` (Mastodon/Telegram).
+- [ ] Clientes HTTP por plataforma:
+  - `lib/broadcast/mastodon.ts` → `POST /api/v1/statuses` con
+    `Authorization: Bearer MASTODON_ACCESS_TOKEN`. Devuelve `{id}`
+    para guardar como `external_id`.
+  - `lib/broadcast/bluesky.ts` → `com.atproto.repo.createRecord`.
+    Login con app-password, sesion en memoria por proceso.
+    Construye `richtext facets` para que el link sea clickeable.
+  - `lib/broadcast/telegram.ts` → `sendMessage` con `parse_mode:
+    MarkdownV2`. Bot API token + `chat_id` (channel @kernelia).
+- [ ] `db/queries/article-broadcasts.ts`:
+  - `listPendingForBroadcast(platform, {minScore, limit})` — JOIN
+    articles donde `status='classified' AND relevance_score >= ?`
+    y no exista fila en `article_broadcasts` para esa platforma.
+  - `recordBroadcast({articleId, platform, externalId})`.
+- [ ] `lib/broadcast/run.ts`: `runBroadcast(opts)` orquestador.
+  Plataformas en `Promise.all` (independientes); articulos serial
+  por plataforma con `sleep(2000)` entre posts. Wall-clock budget
+  52s (mismo que classify). Devuelve summary
+  `{posted: { mastodon, bluesky, telegram }, failed, skipped}`.
+- [ ] `app/api/cron/broadcast/route.ts` — `GET` protegido por
+  `CRON_SECRET`, `maxDuration = 60`, logging a `cron_runs` (status
+  ok / partial / failed via mismo helper que classify).
+- [ ] `.github/workflows/cron.yml`: nuevo step "broadcast" cada
+  30min en `*:15` y `*:45` (offset 15min sobre classify a `*:00` y
+  `*:30` para que classify termine antes de que broadcast empiece).
+- [ ] Env vars nuevas en `.env.example`, `non-negotiable.md`,
+  `AGENTS.md`:
+  - `MASTODON_INSTANCE_URL`, `MASTODON_ACCESS_TOKEN`
+  - `BLUESKY_IDENTIFIER`, `BLUESKY_APP_PASSWORD`
+  - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+  - `BROADCAST_ENABLED` (boolean; pausar sin redeploy)
+  - `BROADCAST_MIN_RELEVANCE_SCORE` (default `0.75`)
+- [ ] Tests Vitest:
+  - `format.test.ts` — truncado preserva URL + handles emoji.
+  - `run-broadcast.test.ts` — orchestrador con clientes mock:
+    happy path, una plataforma falla (otras posean), idempotencia
+    (articulo ya en `article_broadcasts` para Mastodon pero no
+    Bluesky → solo Bluesky se publica).
+
+### Sub-fase 8.B · Share-buttons + /about ampliada
+
+Plan (proximo PR tras 8.A).
+
+- [ ] `components/share-buttons.tsx` (client island chiquita) en
+  cada `news-card`: copiar link al portapapeles, abrir mailto,
+  Mastodon share-intent (`?text=&url=`). Sin botones de redes
+  propietarias (Twitter/Meta) — no encaja con la postura del
+  operador.
+- [ ] `app/[locale]/about/page.tsx` ampliada:
+  - Badges con enlace a RSS por idioma (ya existen los feeds).
+  - Bloque "Suscribete" con los 3 canales del broadcaster (links
+    publicos al perfil de Mastodon/Bluesky/Telegram).
+  - "Como funciona" — explicacion publica del flujo
+    (ingest → classify → broadcast) sin secretos.
+- [ ] Listar Kernelia en awesome-lists relevantes via PR upstream.
+  Doc paso a paso en `context-docs/distribution.md` (nuevo).
+
+### Sub-fase 8.C · Newsletter semanal + /api/stats publico
+
+Plan (proximo PR tras 8.B).
+
+- [ ] Migracion: tabla `newsletter_subscribers` (email unique,
+  confirmed_at nullable, unsubscribed_at nullable, created_at).
+  Double opt-in: email de confirmacion via Resend antes de
+  considerar confirmada la suscripcion.
+- [ ] Endpoints publicos: `POST /api/newsletter/subscribe`,
+  `GET /api/newsletter/confirm?token=...`,
+  `GET /api/newsletter/unsubscribe?token=...`.
+  Rate-limit por IP (5/10min) compartiendo el helper de auth.
+- [ ] Cron `weekly-digest`: domingos a las 10:00 UTC, top 10
+  articulos de la semana (orden por `relevance_score desc` filtrado
+  por fecha). Email via Resend a todos los `confirmed_at != null
+  AND unsubscribed_at = null`.
+- [ ] `app/api/stats/route.ts` publico (no auth, cache 1h):
+  - Total articulos clasificados.
+  - Articulos clasificados ultimos 7d.
+  - Numero de fuentes activas.
+  - Numero de categorias.
+  - `lastIngestAt`, `lastClassifyAt`.
+  - Suma de tokens consumidos ultimo mes (transparencia de coste).
+  Nada de PII; el endpoint es para que cualquiera pueda graficar
+  Kernelia o usarlo de credibilidad.
+- [ ] UI: pagina `/stats` server-rendered que pinta el JSON con
+  el mismo lenguaje visual del admin (sin auth).
+
+### Criterio de cierre Fase 8
+
+1. Un articulo nuevo `classified` con `relevance_score >= 0.75`
+   aparece automaticamente en las 3 plataformas del broadcaster
+   dentro de los 30min siguientes al classify, sin intervencion.
+2. Si Mastodon esta caido, Bluesky y Telegram siguen publicando.
+   Al volver Mastodon, el siguiente tick recoge los pendientes.
+3. Las 3 cuentas del producto (`@kernelia` en cada plataforma)
+   tienen al menos 5 posts publicados y se ven coherentes.
+4. Cualquier card del feed publico tiene botones de compartir
+   funcionales sin requerir cuentas en redes propietarias.
+5. Un visitante puede suscribirse a la newsletter desde `/about`
+   y recibe el digest del domingo siguiente sin pasos manuales.
+6. `/api/stats` devuelve JSON consistente en <1s y es scrapeable
+   por terceros (CORS abierto, sin auth).
+7. PLAN.md actualizado, fila #8 marcada `done`, env vars
+   documentadas en `.env.example` y configuradas en Vercel
+   Production.
 
 ---
 

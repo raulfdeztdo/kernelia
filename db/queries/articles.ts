@@ -109,6 +109,13 @@ export interface ClassifiedUpdate {
   titleEn: string;
   summaryEs: string;
   summaryEn: string;
+  /**
+   * LLM relevance signal in [0, 1] (see `classificationSchema`). Persisted
+   * from Phase 8.A onward so the broadcaster can filter. Optional for
+   * callers that don't have it (eg. legacy back-fills); the DB column is
+   * nullable and articles without a score stay out of broadcast.
+   */
+  relevanceScore?: number;
 }
 
 export async function markArticleClassified(update: ClassifiedUpdate): Promise<void> {
@@ -122,6 +129,7 @@ export async function markArticleClassified(update: ClassifiedUpdate): Promise<v
       summaryEs: update.summaryEs,
       summaryEn: update.summaryEn,
       classificationError: null,
+      relevanceScore: update.relevanceScore ?? null,
     })
     .where(eq(articles.id, update.id));
 }

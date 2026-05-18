@@ -49,3 +49,19 @@ export function ingestStatus(totals: { failedSources: number; inserted: number }
   if (totals.failedSources > 0) return "partial";
   return "ok";
 }
+
+/**
+ * Maps a broadcast-cron summary into a `cron_run_status`. Partial = at
+ * least one platform had a failed post or formatting skip; ok =
+ * everything that was eligible posted cleanly (or there was nothing to
+ * post, which is also fine).
+ */
+export function broadcastStatus(summary: {
+  failed: { mastodon: number; bluesky: number; telegram: number };
+  skipped: number;
+}): CronRunStatus {
+  const totalFailed =
+    summary.failed.mastodon + summary.failed.bluesky + summary.failed.telegram;
+  if (totalFailed > 0 || summary.skipped > 0) return "partial";
+  return "ok";
+}

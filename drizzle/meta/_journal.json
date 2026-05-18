@@ -36,6 +36,13 @@
       "when": 1778889377426,
       "tag": "0004_admin_passwords",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779097127180,
+      "tag": "0005_broadcast_distribution",
+      "breakpoints": true
     }
   ]
 }

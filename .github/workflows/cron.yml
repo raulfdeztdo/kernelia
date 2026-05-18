@@ -11,17 +11,18 @@ on:
   schedule:
     # Ingesta cada 3 horas en punto.
     - cron: "0 */3 * * *"
-    # Clasificacion cada 30 minutos. `limit=8` es un techo: el handler
-    # arranca con un wall-clock budget (~52s, ver WALL_TIME_BUDGET_MS en
-    # app/api/cron/classify/route.ts) y sale limpio devolviendo 200
-    # antes del cap de 60s de Vercel Hobby, aunque eso signifique
-    # procesar menos articulos en un tick lento. En condiciones
-    # nominales caben los 8 (7 huecos x 3s + 8 LLM ~3-4s = ~45-55s);
-    # si Cerebras esta lento ese tick procesa ~5-6 y los demas
-    # quedan pendientes para el siguiente.
-    # 6-8 art/tick x 48 ticks/dia = ~290-380 art/dia, suficiente para
-    # drenar un backlog de ~900 en ~3 dias.
+    # Clasificacion cada 30 minutos en `:00` y `:30`. `limit=8` es un techo:
+    # el handler arranca con un wall-clock budget (~52s, ver
+    # WALL_TIME_BUDGET_MS en app/api/cron/classify/route.ts) y sale limpio
+    # devolviendo 200 antes del cap de 60s de Vercel Hobby. Bandwidth real:
+    # ~6-8 articulos/tick x 48 ticks/dia = ~290-380 art/dia.
     - cron: "*/30 * * * *"
+    # Broadcast cada 30 minutos en `:15` y `:45` — 15min offset sobre
+    # classify para darle tiempo a terminar antes de que publiquemos.
+    # El handler tiene su propio budget (~52s) y publica en las 3
+    # plataformas (Mastodon, Bluesky, Telegram) en paralelo con
+    # idempotencia per-plataforma via `article_broadcasts`.
+    - cron: "15,45 * * * *"
   workflow_dispatch:
     inputs:
       job:
@@ -32,6 +33,7 @@ on:
         options:
           - ingest
           - classify
+          - broadcast
 
 concurrency:
   group: cron-${{ github.event.schedule || inputs.job }}
@@ -114,4 +116,38 @@ jobs:
             --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
             --header "Authorization: Bearer ${CRON_SECRET}" \
             "${BASE_URL}/api/cron/classify?limit=8")
+          echo "${response}"
+
+  broadcast:
+    name: Broadcast classified articles
+    # `15,45 * * * *` for scheduled runs, or explicit dispatch.
+    if: github.event.schedule == '15,45 * * * *' || inputs.job == 'broadcast'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: Production
+    steps:
+      - name: Hit /api/cron/broadcast
+        env:
+          BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
+          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
+          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
+          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
+          BASE_URL="${BASE_URL%/}"
+          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
+            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL})." >&2
+            exit 1
+          fi
+          # Same reasoning as classify: the handler has its own
+          # wall-clock budget and never returns 5xx for "I ran out of
+          # time". A 5xx from here is a real incident, not something
+          # to paper over with --retry.
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 90 \
+            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL}/api/cron/broadcast")
           echo "${response}"

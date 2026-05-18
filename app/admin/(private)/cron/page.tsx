@@ -4,7 +4,11 @@ import type { CronJob, CronRun, CronRunStatus } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
-const JOB_LABEL: Record<CronJob, string> = { ingest: "Ingest", classify: "Classify" };
+const JOB_LABEL: Record<CronJob, string> = {
+  ingest: "Ingest",
+  classify: "Classify",
+  broadcast: "Broadcast",
+};
 const STATUS_LABEL: Record<CronRunStatus, string> = {
   ok: "OK",
   partial: "Parcial",
@@ -20,7 +24,8 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-const isJob = (v: unknown): v is CronJob => v === "ingest" || v === "classify";
+const isJob = (v: unknown): v is CronJob =>
+  v === "ingest" || v === "classify" || v === "broadcast";
 const isStatus = (v: unknown): v is CronRunStatus =>
   v === "ok" || v === "partial" || v === "failed";
 
@@ -88,6 +93,7 @@ function FilterBar({ job, status }: { job?: CronJob; status?: CronRunStatus }) {
           <option value="">Todos</option>
           <option value="ingest">Ingest</option>
           <option value="classify">Classify</option>
+          <option value="broadcast">Broadcast</option>
         </select>
       </label>
       <label className="space-y-1 text-xs">
@@ -157,6 +163,10 @@ function summariseRun(run: CronRun): string {
   if (run.job === "classify") {
     const tokens = (s["tokens"] as { total?: number } | undefined)?.total ?? 0;
     return `processed=${s["processed"] ?? 0}  classified=${s["classified"] ?? 0}  failed=${s["failed"] ?? 0}  timedOut=${s["timedOut"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? false}  tokens=${tokens}`;
+  }
+  if (run.job === "broadcast") {
+    const posted = (s["posted"] as Record<string, number> | undefined) ?? {};
+    return `mastodon=${posted["mastodon"] ?? 0}  bluesky=${posted["bluesky"] ?? 0}  telegram=${posted["telegram"] ?? 0}  failed=${s["failed"] ?? 0}  skipped=${s["skipped"] ?? 0}`;
   }
   // ingest
   const totals = (s["totals"] as Record<string, unknown> | undefined) ?? {};

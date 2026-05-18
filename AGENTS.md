@@ -100,9 +100,11 @@ backend-agent  ⟂  frontend-agent     ← parallel where possible
 | `app/admin/` | Admin backoffice (Fase 7). No locale segment, ES copy, `noindex,nofollow`. Requires session. |
 | `app/api/` | Route handlers: `cron/{ingest,classify}`, `articles`, `health`, `rss.xml`. |
 | `app/api/admin/` | Admin endpoints: `login`, `logout`, `forgot-password`, `reset-password`, `articles/*`, `users/*`. |
+| `app/api/cron/` | Cron endpoints: `ingest`, `classify`, `broadcast`. Bearer-auth via `CRON_SECRET`. |
 | `components/` | UI; `components/ui/` is shadcn primitives. |
 | `lib/ai/` | Cerebras client, prompts, Zod schemas, `classifyArticle`, `runClassify`. |
 | `lib/ingest/` | RSS parser, dedupe, normalisation. |
+| `lib/broadcast/` | Auto-publication to Mastodon + Bluesky + Telegram. Per-platform clients + orchestrator + text formatter. Server-only. |
 | `lib/auth/` | Password hashing (bcrypt), password-reset tokens, HMAC-signed session cookie, in-memory rate-limit. Server-only. |
 | `lib/email/` | Minimal Resend wrapper (`sendPasswordReset`). |
 | `db/` | Drizzle schema, migrations, queries. `db/queries/*` is the only DB surface. |

@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -73,6 +74,12 @@ export const articles = pgTable(
     ingestedAt: timestamp("ingested_at", { withTimezone: true }).notNull().defaultNow(),
     status: articleStatusEnum("status").notNull().default("pending"),
     classificationError: text("classification_error"),
+    // LLM-emitted "is this worth surfacing" signal in [0, 1]. Persisted from
+    // Phase 8.A onward so the broadcaster can filter to high-relevance
+    // articles. NULL for any article classified before that migration ran —
+    // those stay out of broadcast naturally and never flood the channels
+    // with backlog.
+    relevanceScore: real("relevance_score"),
   },
   (t) => [
     uniqueIndex("articles_url_hash_unique").on(t.urlHash),
@@ -157,7 +164,7 @@ export const sessions = pgTable(
   (t) => [index("sessions_user_id_idx").on(t.userId)],
 );
 
-export const cronJobEnum = pgEnum("cron_job", ["ingest", "classify"]);
+export const cronJobEnum = pgEnum("cron_job", ["ingest", "classify", "broadcast"]);
 export const cronStatusEnum = pgEnum("cron_run_status", ["ok", "partial", "failed"]);
 
 export const cronRuns = pgTable(
@@ -190,3 +197,49 @@ export type CronJob = (typeof cronJobEnum.enumValues)[number];
 export type CronRunStatus = (typeof cronStatusEnum.enumValues)[number];
 export type ArticleStatus = (typeof articleStatusEnum.enumValues)[number];
 export type UserType = (typeof userTypeEnum.enumValues)[number];
+
+// ---------------------------------------------------------------------------
+// Broadcast distribution (Phase 8.A)
+// ---------------------------------------------------------------------------
+
+/**
+ * Platforms the broadcaster bot posts to. Tracked per (article, platform)
+ * so a Mastodon outage doesn't permanently block Bluesky/Telegram for the
+ * same article — each platform is its own idempotency boundary.
+ */
+export const broadcastPlatformEnum = pgEnum("broadcast_platform", [
+  "mastodon",
+  "bluesky",
+  "telegram",
+]);
+
+export const articleBroadcasts = pgTable(
+  "article_broadcasts",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    articleId: uuid("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    platform: broadcastPlatformEnum("platform").notNull(),
+    /** When the platform accepted the post (server-side wall-clock). */
+    postedAt: timestamp("posted_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Provider-side id (Mastodon status id, Bluesky AT-URI, Telegram
+     * message id as text). Optional — kept for traceability and for a
+     * future "delete from platform" admin action.
+     */
+    externalId: text("external_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The unique index is the idempotency contract: at most one row per
+    // (article, platform). The orchestrator relies on a clean INSERT here
+    // failing with a unique violation if a parallel tick races us.
+    uniqueIndex("article_broadcasts_article_platform_unique").on(t.articleId, t.platform),
+    index("article_broadcasts_platform_posted_at_idx").on(t.platform, t.postedAt.desc()),
+  ],
+);
+
+export type ArticleBroadcast = typeof articleBroadcasts.$inferSelect;
+export type NewArticleBroadcast = typeof articleBroadcasts.$inferInsert;
+export type BroadcastPlatform = (typeof broadcastPlatformEnum.enumValues)[number];
