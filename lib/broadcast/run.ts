@@ -9,6 +9,7 @@ import { formatPost } from "./format";
 import { postMastodon } from "./mastodon";
 import { postBluesky } from "./bluesky";
 import { postTelegram } from "./telegram";
+import { isWithinBroadcastWindow } from "./window";
 
 const log = createLogger("broadcast");
 
@@ -27,10 +28,16 @@ export const DEFAULT_MIN_RELEVANCE_SCORE = 0.75;
  * caught up automatically.
  */
 export const DEFAULT_LOOKBACK_MS = 3 * 24 * 60 * 60 * 1000;
-/** Articles per platform per tick. With 3 platforms in parallel + 2s
- *  inter-post sleep, 8 articles = ~16s of platform-side latency. Well
- *  under the 52s Vercel budget. */
-export const DEFAULT_LIMIT_PER_PLATFORM = 8;
+/** Articles per platform per tick.
+ *
+ *  Product rule: ONE article per hour per platform during waking hours
+ *  in Spain (see `./window.ts`). A higher limit would burst-publish
+ *  several items the moment a window opens — exactly the "saturating
+ *  notification" pattern we want to avoid. The cron now ticks hourly
+ *  and skips out-of-window hours, so 1/hour spreads the day cleanly
+ *  across 14 windows.
+ */
+export const DEFAULT_LIMIT_PER_PLATFORM = 1;
 /** Sleep between consecutive posts on the SAME platform. */
 const POST_DELAY_MS = 2_000;
 
@@ -47,6 +54,13 @@ export interface BroadcastSummary {
   durationMs: number;
   /** Bool from `BROADCAST_ENABLED` env. When false, no DB reads either. */
   enabled: boolean;
+  /**
+   * `true` when the tick was outside the Europe/Madrid publishing window
+   * (see `./window.ts`) and bailed before touching the DB or any
+   * platform. Always `false` on a normal in-window run, and on
+   * `respectWindow: false` (manual dispatch) regardless of clock.
+   */
+  skippedWindow: boolean;
   minRelevanceScore: number;
   /** Per-platform counters. Keys are always present, even on disabled-run. */
   posted: Record<BroadcastPlatform, number>;
@@ -68,6 +82,14 @@ export interface RunBroadcastOptions {
   lookbackMs?: number;
   /** Wall-clock budget in ms; loop bails cleanly before going over. */
   maxWallTimeMs?: number;
+  /**
+   * When `true` (the default for scheduled cron ticks), the run bails
+   * out before doing any work if the current Europe/Madrid hour is not
+   * in `BROADCAST_LOCAL_HOURS`. Set to `false` for manual dispatches
+   * from `/admin/cron` so admins can publish on demand outside the
+   * window.
+   */
+  respectWindow?: boolean;
   // Injectables (defaults wired to the real DB + HTTP clients).
   listPending?: (params: {
     platform: BroadcastPlatform;
@@ -147,6 +169,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   const limitPerPlatform = options.limitPerPlatform ?? DEFAULT_LIMIT_PER_PLATFORM;
   const lookbackMs = options.lookbackMs ?? DEFAULT_LOOKBACK_MS;
   const maxWallTimeMs = options.maxWallTimeMs ?? Infinity;
+  const respectWindow = options.respectWindow ?? true;
   const sleep = options.sleep ?? defaultSleep;
   const listPending = options.listPending ?? listPendingForBroadcast;
   const record = options.record ?? recordBroadcast;
@@ -171,6 +194,27 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
       finishedAt: finishedAt.toISOString(),
       durationMs: finishedAt.getTime() - startedAt.getTime(),
       enabled: false,
+      skippedWindow: false,
+      minRelevanceScore: minScore,
+      posted,
+      failed,
+      skipped,
+    };
+  }
+
+  // Out-of-window short-circuit. We bail BEFORE the DB read so an
+  // hourly tick at 03:00 local is essentially free — no Supabase
+  // round-trip, no LLM call, no platform fetch. Manual dispatches from
+  // /admin/cron pass `respectWindow: false` to override.
+  if (respectWindow && !isWithinBroadcastWindow(new Date(now()))) {
+    log.info("tick_skipped_window");
+    const finishedAt = new Date();
+    return {
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+      enabled: true,
+      skippedWindow: true,
       minRelevanceScore: minScore,
       posted,
       failed,
@@ -251,6 +295,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     enabled: true,
+    skippedWindow: false,
     minRelevanceScore: minScore,
     posted,
     failed,

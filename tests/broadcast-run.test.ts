@@ -50,6 +50,7 @@ describe("runBroadcast", () => {
     const capture = makeCapture();
     const summary = await runBroadcast({
       enabled: false,
+      respectWindow: false,
       sleep: noSleep,
       listPending: async (p) => {
         capture.listPendingCalls.push({
@@ -79,6 +80,7 @@ describe("runBroadcast", () => {
 
     const summary = await runBroadcast({
       enabled: true,
+      respectWindow: false,
       sleep: noSleep,
       listPending: async () => articles,
       record: async (p) => {
@@ -104,6 +106,7 @@ describe("runBroadcast", () => {
     // Mastodon throws on every post; Bluesky + Telegram complete cleanly.
     const summary = await runBroadcast({
       enabled: true,
+      respectWindow: false,
       sleep: noSleep,
       listPending: async () => [article("a1"), article("a2")],
       record: async () => true,
@@ -129,6 +132,7 @@ describe("runBroadcast", () => {
     // false → we don't increment `posted` (it's not "our" post).
     const summary = await runBroadcast({
       enabled: true,
+      respectWindow: false,
       sleep: noSleep,
       listPending: async () => [article("a1")],
       record: async () => false,
@@ -147,6 +151,7 @@ describe("runBroadcast", () => {
     const capture = makeCapture();
     await runBroadcast({
       enabled: true,
+      respectWindow: false,
       minRelevanceScore: 0.85,
       limitPerPlatform: 3,
       sleep: noSleep,
@@ -174,6 +179,7 @@ describe("runBroadcast", () => {
     // lets one through we want it counted in `skipped` not as a crash.
     const summary = await runBroadcast({
       enabled: true,
+      respectWindow: false,
       sleep: noSleep,
       listPending: async (p) =>
         p.platform === "mastodon" ? [article("bad", { titleEs: "" })] : [],
@@ -188,5 +194,88 @@ describe("runBroadcast", () => {
     expect(summary.skipped).toBe(1);
     expect(summary.posted.mastodon).toBe(0);
     expect(summary.failed.mastodon).toBe(0);
+  });
+
+  it("bails out before any DB read when current local hour is outside the window", async () => {
+    // 2026-05-19T01:30:00Z → 03:30 Europe/Madrid (CEST). Outside the
+    // 08-13 / 16-23 publishing window: must short-circuit cleanly with
+    // `skippedWindow: true` and zero counters everywhere.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-19T01:30:00Z"));
+    try {
+      const capture = makeCapture();
+      const summary = await runBroadcast({
+        enabled: true,
+        respectWindow: true,
+        sleep: noSleep,
+        listPending: async (p) => {
+          capture.listPendingCalls.push({
+            platform: p.platform,
+            minScore: p.minScore,
+            limit: p.limit,
+          });
+          return [];
+        },
+        record: async () => true,
+      });
+      expect(summary.skippedWindow).toBe(true);
+      expect(summary.posted).toEqual({ mastodon: 0, bluesky: 0, telegram: 0 });
+      // The cheap check is BEFORE the DB read — proves we did not even
+      // touch Supabase for an out-of-window tick.
+      expect(capture.listPendingCalls).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("runs normally during a valid Madrid hour", async () => {
+    // 2026-05-19T08:30:00Z → 10:30 Europe/Madrid (CEST). Inside the
+    // morning window — we expect the loop to execute and `skippedWindow`
+    // to be false.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-19T08:30:00Z"));
+    try {
+      const summary = await runBroadcast({
+        enabled: true,
+        respectWindow: true,
+        sleep: noSleep,
+        listPending: async () => [article("a1")],
+        record: async () => true,
+        platformPosters: {
+          mastodon: async (a) => ({ externalId: `m-${a.id}` }),
+          bluesky: async (a) => ({ externalId: `b-${a.id}` }),
+          telegram: async (a) => ({ externalId: `t-${a.id}` }),
+        },
+      });
+      expect(summary.skippedWindow).toBe(false);
+      expect(summary.posted).toEqual({ mastodon: 1, bluesky: 1, telegram: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("respectWindow:false ignores the clock (manual dispatch path)", async () => {
+    // Same out-of-window instant as the first window test, but with
+    // `respectWindow: false`. Proves the admin-panel force flag works.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-19T01:30:00Z"));
+    try {
+      const summary = await runBroadcast({
+        enabled: true,
+        respectWindow: false,
+        sleep: noSleep,
+        listPending: async () => [article("a1")],
+        record: async () => true,
+        platformPosters: {
+          mastodon: async (a) => ({ externalId: `m-${a.id}` }),
+          bluesky: async (a) => ({ externalId: `b-${a.id}` }),
+          telegram: async (a) => ({ externalId: `t-${a.id}` }),
+        },
+      });
+      expect(summary.skippedWindow).toBe(false);
+      expect(summary.posted.mastodon).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
