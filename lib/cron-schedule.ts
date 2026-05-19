@@ -21,8 +21,9 @@ export const CRON_SCHEDULE = {
     description: "Cada 30 minutos en :00 y :30.",
   },
   broadcast: {
-    cron: "15,45 * * * *",
-    description: "Cada 30 minutos en :15 y :45 (offset sobre classify).",
+    cron: "5 * * * *",
+    description:
+      "Cada hora en :05 UTC. El handler aplica la ventana Europe/Madrid (08-13 y 16-23) en runtime; fuera de ventana hace bail-out sin tocar DB. :05 evita la colision con classify (:00, :30) e ingest (:00 cada 3h) — GitHub deduplica triggers que coinciden en el mismo minuto.",
   },
   newsletter: {
     cron: "0 10 * * 0",
