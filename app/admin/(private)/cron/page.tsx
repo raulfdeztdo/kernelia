@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listCronRuns } from "@/db/queries/cron-runs";
 import type { CronJob, CronRun, CronRunStatus } from "@/db/schema";
+import { CronDispatchButtons } from "@/components/admin/cron-dispatch-buttons";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,8 @@ export default async function CronMonitorPage({ searchParams }: PageProps) {
           ← Panel
         </Link>
       </header>
+
+      <CronDispatchButtons />
 
       <FilterBar job={jobFilter} status={statusFilter} />
 
