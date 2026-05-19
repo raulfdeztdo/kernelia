@@ -26,6 +26,8 @@
     <a href="https://github.com/raulfdeztdo/kernelia/issues">Solicitar Funcionalidad</a>
   </p>
 
+  <img src="./media/banner2.png" alt="Kernelia banner" width="100%" style="border-radius:8px; margin-bottom:12px;" />
+
   <p align="center">
     <img src="https://img.shields.io/badge/Next.js-15-000000?style=flat&logo=nextdotjs&logoColor=white" alt="Next.js" />
     <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript" />
@@ -240,10 +242,12 @@ En construcción. El plan de ejecución vivo está en [`PLAN.md`](./PLAN.md).
 | 0 — Limpieza y rebranding | ✅ done |
 | 1 — Bootstrap Next.js | ✅ done |
 | 2 — Modelo de datos e ingesta RSS | ✅ done |
-| 3 — Agente IA (Cerebras) | ⏳ pending |
-| 4 — Web: listado, filtros, búsqueda | ⏳ pending |
-| 5 — Pulido, SEO, accesibilidad | ⏳ pending |
-| 6 — Release v0.1.0 a producción | ⏳ pending |
+| 3 — Agente IA (Cerebras) | ✅ done |
+| 4 — Web: listado, filtros, búsqueda | ✅ done |
+| 5 — Pulido, SEO, accesibilidad | ✅ done |
+| 6 — Release v0.1.0 a producción | ✅ done |
+| 7 — Backoffice admin (auth + panel) | ✅ done |
+| 8 — Distribución y propagación | ⏳ in progress |
 
 ## Licencia
 
