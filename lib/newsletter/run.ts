@@ -1,5 +1,10 @@
 import { getWeeklyDigestArticles } from "@/lib/newsletter/digest";
 import { listActiveSubscribers } from "@/db/queries/newsletter";
+import {
+  attachResendId as defaultAttachResendId,
+  deleteNewsletterSend as defaultDeleteSend,
+  recordNewsletterSend as defaultRecordSend,
+} from "@/db/queries/newsletter-sends";
 import { sendWeeklyDigest } from "@/lib/email/send";
 import { createLogger } from "@/lib/logger";
 import { getSiteUrl } from "@/lib/site";
@@ -48,11 +53,22 @@ export interface NewsletterRunOptions {
   /** Inject sleep. */
   sleep?: (ms: number) => Promise<void>;
   /**
-   * Phase 8.D: cron-run id. Threaded through so PR 4 can persist
-   * per-subscriber send rows pointing back at the run. For PR 3 this
-   * is plumbed end-to-end but unused inside the loop.
+   * Phase 8.D / 8.E: cron-run id threaded into every
+   * `newsletter_sends` row this tick creates. `null` (the default
+   * for manual `runNewsletter()` calls from tests) skips the FK.
    */
   cronRunId?: string | null;
+  /**
+   * Phase 8.E injectables. Production wires these to the real
+   * `db/queries/newsletter-sends.ts` helpers; tests pass spies to
+   * assert the call shape without touching the DB.
+   */
+  recordSend?: (params: {
+    subscriberId: string;
+    cronRunId: string | null;
+  }) => Promise<string>;
+  attachResendId?: (sendId: string, resendId: string) => Promise<void>;
+  deleteSend?: (sendId: string) => Promise<void>;
 }
 
 export interface NewsletterRunSummary {
@@ -81,6 +97,10 @@ export async function runNewsletter(
   const fetchDigest = opts.fetchDigest ?? ((locale, now) => getWeeklyDigestArticles(locale, { now }));
   const send = opts.send ?? sendWeeklyDigest;
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const cronRunId = opts.cronRunId ?? null;
+  const recordSend = opts.recordSend ?? defaultRecordSend;
+  const attachResendId = opts.attachResendId ?? defaultAttachResendId;
+  const deleteSend = opts.deleteSend ?? defaultDeleteSend;
 
   // Subscribers list + both locales' digests are independent queries;
   // race them so the slow one sets the floor instead of stacking. If a
@@ -134,21 +154,63 @@ export async function runNewsletter(
       subscriber.unsubscribeToken,
     )}`;
 
+    // Phase 8.E: pre-create the `newsletter_sends` row so the
+    // tracking pixel URL we embed in the email can target it. If
+    // this insert fails (DB hiccup), fall back to a send WITHOUT
+    // tracking — we still want the digest to go out, we just lose
+    // this one open metric.
+    let sendId: string | null = null;
     try {
-      await send({
+      sendId = await recordSend({ subscriberId: subscriber.id, cronRunId });
+    } catch (err) {
+      log.warn("send_record_failed", {
+        subscriberId: subscriber.id,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+    const trackingPixelUrl = sendId
+      ? `${origin.replace(/\/$/, "")}/api/track/open?id=${sendId}`
+      : undefined;
+
+    try {
+      const result = await send({
         to: subscriber.email,
         locale: subscriber.locale,
         unsubscribeUrl,
         articles,
         weekLabel,
+        trackingPixelUrl,
       });
       summary.sent += 1;
+      // Best-effort attach of the Resend id so the admin UI can
+      // show "Resend message <abc>" alongside the open status. If
+      // this fails the send still counts — we already have the row
+      // from `recordSend`.
+      if (sendId) {
+        await attachResendId(sendId, result.id).catch((err: unknown) => {
+          log.warn("send_attach_resend_id_failed", {
+            sendId,
+            error: err instanceof Error ? err.message : "unknown",
+          });
+        });
+      }
     } catch (err) {
       summary.failed += 1;
       log.error("digest_send_failed", {
         subscriberId: subscriber.id,
         error: err instanceof Error ? err.message : "unknown",
       });
+      // Roll back the placeholder row: Resend rejected the email,
+      // so there's no "send" to attribute. Without this the admin
+      // listing would over-count delivery history.
+      if (sendId) {
+        await deleteSend(sendId).catch((rollbackErr: unknown) => {
+          log.warn("send_rollback_failed", {
+            sendId,
+            error: rollbackErr instanceof Error ? rollbackErr.message : "unknown",
+          });
+        });
+      }
     }
 
     // Throttle between sends regardless of success: the next iteration's

@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { getCronRunById } from "@/db/queries/cron-runs";
 import { listArticlesByCronRun } from "@/db/queries/articles";
 import { listBroadcastsByCronRun } from "@/db/queries/article-broadcasts";
+import { listSendsByCronRun } from "@/db/queries/newsletter-sends";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ export async function GET(
     const broadcasts = await listBroadcastsByCronRun(run.id);
     return NextResponse.json({ kind: "broadcasts", broadcasts });
   }
-  // newsletter: PR 4 will return per-subscriber sends; for now the
-  // summary itself is the only detail we have.
-  return NextResponse.json({ kind: "newsletter_pending", summary: run.summary });
+  // newsletter: list of per-subscriber sends with open status (Phase 8.E).
+  const sends = await listSendsByCronRun(run.id);
+  return NextResponse.json({ kind: "newsletter_sends", sends });
 }

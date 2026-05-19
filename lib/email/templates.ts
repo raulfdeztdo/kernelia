@@ -67,6 +67,19 @@ interface EmailShellParams {
   unsubscribeLabel?: string;
   /** Translated tagline shown under the logo. */
   tagline?: string;
+  /**
+   * Phase 8.E open tracking. When set, the shell appends a 1x1
+   * transparent pixel at the END of the body — anchored as far down
+   * as possible so the open is only counted when the reader actually
+   * scrolls through the content (best-effort: many clients
+   * pre-render everything). It also adds a one-line privacy notice
+   * to the footer telling the recipient that opens are measured.
+   *
+   * URL must be ABSOLUTE (e.g. `${siteUrl}/api/track/open?id=<sendId>`)
+   * because the email runs in the recipient's mail client, not on
+   * kernelia.dev.
+   */
+  trackingPixelUrl?: string;
 }
 
 /**
@@ -85,6 +98,7 @@ export function emailShell(params: EmailShellParams): string {
     unsubscribeUrl,
     unsubscribeLabel,
     tagline,
+    trackingPixelUrl,
   } = params;
 
   const origin = siteUrl.replace(/\/$/, "");
@@ -101,6 +115,24 @@ export function emailShell(params: EmailShellParams): string {
 
   const footerUnsub = unsubscribeUrl
     ? ` · <a href="${escapeHtml(unsubscribeUrl)}" style="color:${BRAND.muted};text-decoration:underline">${escapeHtml(unsubLabel)}</a>`
+    : "";
+
+  const trackingNotice = trackingPixelUrl
+    ? `<div style="margin-top:8px;font-size:11px;color:${BRAND.mutedFaint};line-height:1.5;">${
+        locale === "en"
+          ? "This email contains a tiny tracking pixel that lets us measure opens. You can review our privacy notice on the site."
+          : "Este correo incluye un pixel de seguimiento para medir aperturas. Puedes consultar el aviso de privacidad en la web."
+      }</div>`
+    : "";
+  // Place the pixel as the very last visual element. Most clients
+  // render it on first display so the open is timestamped close to
+  // the actual reading moment. Width/height are zero pixels visible
+  // (1x1 transparent PNG) and alt is empty to avoid screen-reader
+  // noise.
+  const trackingPixelHtml = trackingPixelUrl
+    ? `<tr><td align="center" style="padding:0;line-height:0;font-size:0;">
+        <img src="${escapeHtml(trackingPixelUrl)}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;outline:none;opacity:0.01;">
+      </td></tr>`
     : "";
 
   return `<!doctype html>
@@ -132,10 +164,12 @@ ${content}
     <!-- Footer -->
     <tr><td align="center" style="padding:24px 16px 8px;font-size:12px;color:${BRAND.muted};line-height:1.6;">
       <a href="${escapeHtml(origin)}" style="color:${BRAND.accent};text-decoration:none;">kernelia.dev</a>${footerUnsub}
+      ${trackingNotice}
     </td></tr>
     <tr><td align="center" style="padding:0 16px 16px;font-size:11px;color:${BRAND.mutedFaint};">
       © ${new Date().getFullYear()} Kernelia
     </td></tr>
+    ${trackingPixelHtml}
   </table>
 </td></tr>
 </table>

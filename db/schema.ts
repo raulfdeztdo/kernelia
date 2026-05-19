@@ -337,3 +337,59 @@ export const newsletterSubscribers = pgTable(
 
 export type NewsletterSubscriber = typeof newsletterSubscribers.$inferSelect;
 export type NewNewsletterSubscriber = typeof newsletterSubscribers.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Newsletter sends + open tracking (Phase 8.E)
+// ---------------------------------------------------------------------------
+
+/**
+ * One row per (subscriber, weekly digest tick). Powers two things in
+ * the admin panel:
+ *
+ *   1. Per-subscriber delivery history — "has Alice received the last
+ *      three digests, or did Resend bounce one of them?".
+ *   2. Open tracking via a 1x1 transparent pixel hosted at
+ *      `/api/track/open?id=<send_id>`. The first GET sets
+ *      `opened_at`; subsequent loads are no-ops (idempotent).
+ *
+ * Privacy: the email's footer carries a one-line notice telling the
+ * recipient that opens are measured. Apple Mail Privacy (and similar
+ * pre-fetchers) inflate the open rate, so we use it as a directional
+ * signal — never as a deliverability gate.
+ *
+ * `cron_run_id` is the FK back to the broadcast tick that produced
+ * the send, mirroring `article_broadcasts` (Phase 8.D). Nullable
+ * because a future ad-hoc resend from /admin might not have a cron
+ * tick to attribute.
+ */
+export const newsletterSends = pgTable(
+  "newsletter_sends",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    subscriberId: uuid("subscriber_id")
+      .notNull()
+      .references(() => newsletterSubscribers.id, { onDelete: "cascade" }),
+    cronRunId: uuid("cron_run_id").references(() => cronRuns.id, {
+      onDelete: "set null",
+    }),
+    /** When we handed the email to Resend (server-side wall-clock). */
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Resend message id, returned by their HTTP API. Optional for back-compat with manual replays. */
+    resendId: text("resend_id"),
+    /**
+     * First open timestamp, set by `/api/track/open` the first time
+     * the pixel is fetched. NULL until then. Updates are
+     * `WHERE opened_at IS NULL` so a re-open doesn't overwrite the
+     * first one — that's the metric most providers report.
+     */
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("newsletter_sends_subscriber_id_idx").on(t.subscriberId),
+    index("newsletter_sends_cron_run_id_idx").on(t.cronRunId),
+    index("newsletter_sends_sent_at_desc_idx").on(t.sentAt.desc()),
+  ],
+);
+
+export type NewsletterSend = typeof newsletterSends.$inferSelect;
+export type NewNewsletterSend = typeof newsletterSends.$inferInsert;
