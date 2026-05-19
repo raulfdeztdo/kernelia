@@ -8,7 +8,7 @@
  *   08, 09, 10, 11, 12, 13,        ← morning
  *   16, 17, 18, 19, 20, 21, 22, 23 ← afternoon-evening
  *
- * GitHub Actions cron only understands UTC. We schedule it `30 * * * *`
+ * GitHub Actions cron only understands UTC. We schedule it `5 * * * *`
  * (every hour at :30 UTC, 24 ticks/day) and let the broadcast handler
  * decide whether to actually run by checking the LOCAL clock here. This
  * is the only sane way to honour DST: `Europe/Madrid` swings between

@@ -17,13 +17,23 @@ on:
     # devolviendo 200 antes del cap de 60s de Vercel Hobby. Bandwidth real:
     # ~6-8 articulos/tick x 48 ticks/dia = ~290-380 art/dia.
     - cron: "*/30 * * * *"
-    # Broadcast cada hora a `:30` UTC. El handler decide en runtime
+    # Broadcast cada hora a `:05` UTC. El handler decide en runtime
     # si el reloj local Europe/Madrid esta en una ventana valida
     # (08-13 y 16-23, ver lib/broadcast/window.ts) y publica
     # exactamente 1 articulo/plataforma/tick. Si no esta en ventana
     # bail-out limpio antes de tocar DB. DST se respeta porque la
     # conversion UTC->local se hace via `Intl.DateTimeFormat`.
-    - cron: "30 * * * *"
+    #
+    # IMPORTANTE — por que `:05` y no `:30`: GitHub Actions deduplica
+    # los cron triggers que coinciden en el mismo minuto. Antes este
+    # cron era `30 * * * *` y colisionaba con `*/30 * * * *` (classify)
+    # a las :30 de cada hora — solo uno de los dos jobs corria, y
+    # perdiamos aprox la mitad de los broadcasts esperados. Mover el
+    # broadcast a :05 elimina la colision con classify (:00 y :30) y
+    # con ingest (:00 cada 3h). Como el `if:` del job filtra por el
+    # string exacto del cron, el patron debe quedar igual aqui y en
+    # el job (linea ~129).
+    - cron: "5 * * * *"
     # Newsletter semanal: domingos a las 10:00 UTC. El handler tiene su
     # propio wall-clock budget (~52s) y un sleep de 600ms entre envios
     # para no saturar el rate-limit de Resend (2/sec en free tier).
@@ -126,8 +136,9 @@ jobs:
 
   broadcast:
     name: Broadcast classified articles
-    # `30 * * * *` for scheduled runs, or explicit dispatch.
-    if: github.event.schedule == '30 * * * *' || inputs.job == 'broadcast'
+    # `5 * * * *` for scheduled runs, or explicit dispatch. See the
+    # schedule block above for why this is `:05` and not `:30`.
+    if: github.event.schedule == '5 * * * *' || inputs.job == 'broadcast'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: Production
