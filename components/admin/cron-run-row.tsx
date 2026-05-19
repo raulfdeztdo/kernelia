@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { CronJob, CronRun, CronRunStatus } from "@/db/schema";
+import type { CronJob, CronRunStatus } from "@/db/schema";
 import type { CronRunArticle } from "@/db/queries/articles";
 import type { CronRunBroadcast } from "@/db/queries/article-broadcasts";
 
@@ -292,27 +292,9 @@ function BroadcastsTable({ rows }: { rows: CronRunBroadcast[] }) {
   );
 }
 
-/**
- * Identical to the legacy server-side summariser in `page.tsx` —
- * exported so the page can keep rendering the one-liner with the same
- * shape it always had.
- */
-export function summariseRun(run: CronRun): string {
-  const s = run.summary as Record<string, unknown>;
-  if (run.job === "classify") {
-    const tokens = (s["tokens"] as { total?: number } | undefined)?.total ?? 0;
-    return `processed=${s["processed"] ?? 0}  classified=${s["classified"] ?? 0}  dedupedHidden=${s["dedupedHidden"] ?? 0}  dedupedReplaced=${s["dedupedReplaced"] ?? 0}  hiddenNonAi=${s["hiddenNonAi"] ?? 0}  failed=${s["failed"] ?? 0}  timedOut=${s["timedOut"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? false}  tokens=${tokens}`;
-  }
-  if (run.job === "broadcast") {
-    if (s["skippedWindow"]) return "skippedWindow=true (fuera de ventana Europe/Madrid)";
-    const posted = (s["posted"] as Record<string, number> | undefined) ?? {};
-    return `mastodon=${posted["mastodon"] ?? 0}  bluesky=${posted["bluesky"] ?? 0}  telegram=${posted["telegram"] ?? 0}  failed=${s["failed"] ?? 0}  skipped=${s["skipped"] ?? 0}`;
-  }
-  if (run.job === "newsletter") {
-    const dc = (s["digestCounts"] as { es?: number; en?: number } | undefined) ?? {};
-    return `attempted=${s["attempted"] ?? 0}  sent=${s["sent"] ?? 0}  failed=${s["failed"] ?? 0}  skippedNoArticles=${s["skippedNoArticles"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? 0}  articles[es=${dc.es ?? 0},en=${dc.en ?? 0}]`;
-  }
-  // ingest
-  const totals = (s["totals"] as Record<string, unknown> | undefined) ?? {};
-  return `fetched=${totals["fetched"] ?? 0}  inserted=${totals["inserted"] ?? 0}  failedSources=${totals["failedSources"] ?? 0}`;
-}
+// `summariseRun` lives in `lib/admin/cron-run-summary.ts` so the
+// server component (`/admin/cron/page.tsx`) can call it directly.
+// Re-exporting it from this client-tagged module would inherit the
+// boundary and trigger the runtime error
+// "Attempted to call summariseRun() from the server but
+// summariseRun is on the client".

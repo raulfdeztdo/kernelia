@@ -2,7 +2,8 @@ import Link from "next/link";
 import { listCronRuns } from "@/db/queries/cron-runs";
 import type { CronJob, CronRunStatus } from "@/db/schema";
 import { CronDispatchButtons } from "@/components/admin/cron-dispatch-buttons";
-import { CronRunRow, summariseRun } from "@/components/admin/cron-run-row";
+import { CronRunRow } from "@/components/admin/cron-run-row";
+import { summariseRun } from "@/lib/admin/cron-run-summary";
 
 export const dynamic = "force-dynamic";
 
