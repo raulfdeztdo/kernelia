@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
@@ -97,31 +98,30 @@ export default async function AboutPage({ params }: AboutPageProps) {
           {/*
            * RSS badges first: the longest-lived format and the only one
            * that requires zero account on a third-party. One per locale so
-           * a Spanish reader gets a Spanish-titled feed. We use raw `<a>`
-           * (not `<Link>`) on purpose: the target is a Route Handler that
-           * returns `application/xml`, not a Next page, so prefetching
-           * would only waste a request and client-side nav would fall
-           * back to a full reload anyway.
+           * a Spanish reader gets a Spanish-titled feed. The targets are
+           * Route Handlers that return `application/xml`, so we use
+           * `<Link prefetch={false}>` to skip the wasted prefetch round-
+           * trip while keeping the html-side anchor and accessibility.
            */}
           <li>
-            {/* eslint-disable-next-line react-review/nextjs-no-a-element */}
-            <a
+            <Link
               href="/rss.xml?lang=es"
+              prefetch={false}
               className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1.5 text-xs font-medium transition hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
             >
               <RssIcon />
               RSS · ES
-            </a>
+            </Link>
           </li>
           <li>
-            {/* eslint-disable-next-line react-review/nextjs-no-a-element */}
-            <a
+            <Link
               href="/rss.xml?lang=en"
+              prefetch={false}
               className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1.5 text-xs font-medium transition hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
             >
               <RssIcon />
               RSS · EN
-            </a>
+            </Link>
           </li>
           {channels.map((c) => (
             <li key={c.platform}>
