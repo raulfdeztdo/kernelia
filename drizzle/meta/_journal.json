@@ -85,6 +85,13 @@
       "when": 1779220737986,
       "tag": "0011_subscriber_preferred_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779222297886,
+      "tag": "0012_deleted_urls_tombstones",
+      "breakpoints": true
     }
   ]
 }

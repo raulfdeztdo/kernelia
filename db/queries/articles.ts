@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   articles,
   categories,
+  deletedUrls,
   sources,
   type Article,
   type NewArticle,
@@ -29,14 +30,57 @@ const PER_SOURCE_CAP = 10;
  */
 export const PUBLIC_HIDDEN_CATEGORY_SLUG = "other";
 
-export async function insertPendingArticles(rows: NewArticle[]): Promise<number> {
-  if (rows.length === 0) return 0;
+/**
+ * Phase 8.I: which of these `urlHash`es are tombstoned?
+ *
+ * Used by `insertPendingArticles` to drop rows the cleanup already
+ * decided to nuke, even if their source feed surfaces them again
+ * later. The unique-constraint on `articles.url_hash` alone can't
+ * cover this — once we hard-delete a row the constraint stops firing,
+ * and the next ingest would happily re-insert. The tombstone table is
+ * the only durable record of "we decided this URL doesn't belong here".
+ *
+ * Returns a Set for O(1) membership tests in the caller's filter step.
+ */
+export async function listTombstonedHashes(urlHashes: string[]): Promise<Set<string>> {
+  if (urlHashes.length === 0) return new Set();
+  const rows = await db
+    .select({ urlHash: deletedUrls.urlHash })
+    .from(deletedUrls)
+    .where(inArray(deletedUrls.urlHash, urlHashes));
+  return new Set(rows.map((r) => r.urlHash));
+}
+
+export interface InsertPendingArticlesResult {
+  /** Rows that actually made it to the table (excludes both unique-key conflicts and tombstoned URLs). */
+  inserted: number;
+  /** How many of the input rows were rejected because their URL is tombstoned. Pure observability — surfaces in the ingest summary. */
+  skippedTombstoned: number;
+}
+
+export async function insertPendingArticles(
+  rows: NewArticle[],
+): Promise<InsertPendingArticlesResult> {
+  if (rows.length === 0) return { inserted: 0, skippedTombstoned: 0 };
+
+  // Pre-filter against tombstones BEFORE the INSERT so a re-published
+  // URL doesn't even reach the unique-key check. The lookup is one
+  // round-trip but pays for itself by avoiding a bunch of
+  // INSERT … ON CONFLICT DO NOTHING calls that would otherwise burn
+  // sequence ids on rejected rows.
+  const tombstoned = await listTombstonedHashes(rows.map((r) => r.urlHash));
+  const cleaned = tombstoned.size === 0 ? rows : rows.filter((r) => !tombstoned.has(r.urlHash));
+
+  if (cleaned.length === 0) {
+    return { inserted: 0, skippedTombstoned: tombstoned.size };
+  }
+
   const result = await db
     .insert(articles)
-    .values(rows)
+    .values(cleaned)
     .onConflictDoNothing({ target: articles.urlHash })
     .returning({ id: articles.id });
-  return result.length;
+  return { inserted: result.length, skippedTombstoned: tombstoned.size };
 }
 
 export interface PendingArticle {
@@ -603,22 +647,104 @@ export interface CategoryFacet {
  * The `RETURNING id` shape gives us a deterministic count without a
  * separate SELECT round-trip.
  */
+export interface HardDeleteResult {
+  deleted: number;
+  /** First 10 ids — a breadcrumb the admin sees in the cron-run summary. */
+  sample: string[];
+  /** Number of tombstones written (= `deleted` minus any inserts that the tombstone table already had). */
+  tombstoned: number;
+}
+
+/**
+ * Phase 8.I: shared "delete-then-tombstone" primitive.
+ *
+ * Every hard-delete in this codebase has to also leave a tombstone, or
+ * the next ingest will undo our work. We factor that pairing into one
+ * helper that takes the WHERE expression, runs the DELETE with `RETURNING
+ * id, url, url_hash`, and then INSERTs every (hash, url) into
+ * `deleted_urls` with the caller's reason tag.
+ *
+ * The insert uses `ON CONFLICT DO NOTHING` because a previous delete
+ * might already have tombstoned the same hash (e.g. a re-ingested URL
+ * was tombstoned, slipped through somehow, then hard-deleted again).
+ * In that case the `tombstoned` count under-reports by 1; that's only
+ * a metric, never a correctness signal.
+ *
+ * Doing this in two statements (DELETE then INSERT) rather than one
+ * data-modifying CTE is on purpose: the postgres-js driver pipelines
+ * them in the same connection so the latency cost is one round-trip,
+ * and the two-statement shape stays readable in straight Drizzle.
+ */
+async function hardDeleteWithTombstone(
+  whereExpr: ReturnType<typeof and> | undefined,
+  reason: string,
+  cronRunId: string | null,
+): Promise<HardDeleteResult> {
+  const deletedRows = await db
+    .delete(articles)
+    .where(whereExpr)
+    .returning({ id: articles.id, url: articles.url, urlHash: articles.urlHash });
+
+  if (deletedRows.length === 0) {
+    return { deleted: 0, sample: [], tombstoned: 0 };
+  }
+
+  const tombstoneRows = deletedRows.map((r) => ({
+    urlHash: r.urlHash,
+    url: r.url,
+    reason,
+    deletedInRun: cronRunId,
+  }));
+  const tombstoneInserts = await db
+    .insert(deletedUrls)
+    .values(tombstoneRows)
+    .onConflictDoNothing({ target: deletedUrls.urlHash })
+    .returning({ urlHash: deletedUrls.urlHash });
+
+  return {
+    deleted: deletedRows.length,
+    sample: deletedRows.slice(0, 10).map((r) => r.id),
+    tombstoned: tombstoneInserts.length,
+  };
+}
+
 export async function hardDeleteOldNonClassifiedArticles(
   cutoff: Date,
-): Promise<{ deleted: number; sample: string[] }> {
-  const rows = await db
-    .delete(articles)
-    .where(
-      and(
-        inArray(articles.status, ["failed", "hidden"]),
-        lt(articles.ingestedAt, cutoff),
-      ),
-    )
-    .returning({ id: articles.id });
-  // First 10 ids as a debugging breadcrumb — surfaces in the cron
-  // summary so an operator can audit "what got nuked" without paging
-  // through the full delete log.
-  return { deleted: rows.length, sample: rows.slice(0, 10).map((r) => r.id) };
+  options: { cronRunId?: string | null } = {},
+): Promise<HardDeleteResult> {
+  return hardDeleteWithTombstone(
+    and(
+      inArray(articles.status, ["failed", "hidden"]),
+      lt(articles.ingestedAt, cutoff),
+    ),
+    "retention_failed_or_hidden",
+    options.cronRunId ?? null,
+  );
+}
+
+/**
+ * Phase 8.I: hard-deletes any article whose `published_at` predates the
+ * cutoff, regardless of status. Used to enforce the calendar-year
+ * retention rule (`< currentYear - 2`).
+ *
+ * Unlike `hardDeleteOldNonClassifiedArticles` this DOES delete
+ * `status = 'classified'` rows — a legitimate article from 2022 that's
+ * been in the feed for two+ years is exactly what we want to purge.
+ * CASCADE on `article_broadcasts.article_id` takes the broadcast
+ * history with it (we discussed the trade-off and accepted it).
+ *
+ * The tombstones make sure a source that re-publishes an old URL
+ * doesn't drag it back into the feed during the next ingest tick.
+ */
+export async function hardDeleteArticlesPublishedBefore(
+  cutoff: Date,
+  options: { cronRunId?: string | null } = {},
+): Promise<HardDeleteResult> {
+  return hardDeleteWithTombstone(
+    and(lt(articles.publishedAt, cutoff)),
+    "retention_published_year",
+    options.cronRunId ?? null,
+  );
 }
 
 export interface CronRunArticle {

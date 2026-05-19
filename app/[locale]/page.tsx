@@ -4,13 +4,15 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { ArticleList } from "@/components/article-list";
 import type { ArticleCardView } from "@/components/news-card";
 import { CategoryFilter } from "@/components/category-filter";
+import { NewsletterForm } from "@/components/newsletter-form";
 import {
   countClassifiedArticles,
   getCategoryFacets,
   listClassifiedArticles,
+  PUBLIC_HIDDEN_CATEGORY_SLUG,
   type ListedArticle,
 } from "@/db/queries/articles";
-import { parseCategoryParam } from "@/lib/categories";
+import { CATEGORY_SLUGS, parseCategoryParam } from "@/lib/categories";
 import { createLogger } from "@/lib/logger";
 import { isLocale } from "@/i18n/routing";
 import { localeAlternates, localizedUrl } from "@/lib/site";
@@ -85,9 +87,10 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 
   // searchParams and the home-namespace translations are independent —
   // race them so the page doesn't waterfall before the DB query starts.
-  const [sp, t] = await Promise.all([
+  const [sp, t, tCategories] = await Promise.all([
     searchParams,
     getTranslations("home"),
+    getTranslations("categories"),
   ]);
 
   const selectedCategories = parseCategoryParam(sp.category);
@@ -139,11 +142,52 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
   // state (appended cards, cursor) doesn't bleed across filter changes.
   const listKey = `${locale}|${q ?? ""}|${selectedCategories.join(",")}`;
 
+  // Same visible-categories list the about-page form uses — the LLM
+  // catch-all `other` is excluded so subscribers can't filter by it.
+  // Computed here (server side) so the i18n labels resolve inside a
+  // server component and the client form stays presentational.
+  const visibleSlugs = CATEGORY_SLUGS.filter((s) => s !== PUBLIC_HIDDEN_CATEGORY_SLUG);
+  const categoryLabels = Object.fromEntries(
+    CATEGORY_SLUGS.map((slug) => [slug, tCategories(slug)]),
+  );
+
   return (
     <section className="space-y-8">
-      <div className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{t("heading")}</h1>
-        <p className="max-w-2xl text-[color:var(--color-muted-foreground)]">{t("subheading")}</p>
+      {/*
+       * Header band. Two-column on `lg` (title block + newsletter
+       * callout side by side) and stacked everywhere else. The
+       * callout intentionally lives at the SAME LEVEL as the heading
+       * — the about-page card was a quieter second home for it, and
+       * we want the highest-conversion surface (the feed) to push
+       * the digest signup too. The `items-start` keeps the heading
+       * top-aligned with the card so they read as a pair on desktop.
+       */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_24rem] lg:items-start">
+        <div className="space-y-3">
+          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{t("heading")}</h1>
+          <p className="max-w-2xl text-[color:var(--color-muted-foreground)]">
+            {t("subheading")}
+          </p>
+        </div>
+        <aside
+          aria-labelledby="home-newsletter-heading"
+          className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4"
+        >
+          <h2
+            id="home-newsletter-heading"
+            className="mb-1 text-base font-medium"
+          >
+            {t("newsletterCallout.title")}
+          </h2>
+          <p className="mb-3 text-sm text-[color:var(--color-muted-foreground)]">
+            {t("newsletterCallout.body")}
+          </p>
+          <NewsletterForm
+            locale={locale as "es" | "en"}
+            categorySlugs={visibleSlugs}
+            categoryLabels={categoryLabels}
+          />
+        </aside>
       </div>
 
       {/*

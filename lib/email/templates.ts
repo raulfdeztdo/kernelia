@@ -136,11 +136,17 @@ export function emailShell(params: EmailShellParams): string {
     ? ` · <a href="${escapeHtml(preferencesUrl)}" style="color:${BRAND.muted};text-decoration:underline">${escapeHtml(prefsLabel)}</a>`
     : "";
 
+  // The privacy notice now points at a real page. We build the URL
+  // from the same site origin we already use for the logo so the
+  // link works whether the email is opened from a webmail or a
+  // native client. Locale-prefixed for ES/EN.
+  const privacyLangPrefix = locale === "en" ? "/en" : "";
+  const privacyUrl = `${origin}${privacyLangPrefix}/privacy`;
   const trackingNotice = trackingPixelUrl
     ? `<div style="margin-top:8px;font-size:11px;color:${BRAND.mutedFaint};line-height:1.5;">${
         locale === "en"
-          ? "This email contains a tiny tracking pixel that lets us measure opens. You can review our privacy notice on the site."
-          : "Este correo incluye un pixel de seguimiento para medir aperturas. Puedes consultar el aviso de privacidad en la web."
+          ? `This email contains a tiny tracking pixel that lets us measure opens. See our <a href="${escapeHtml(privacyUrl)}" style="color:${BRAND.muted};text-decoration:underline">privacy notice</a> for details.`
+          : `Este correo incluye un pixel de seguimiento para medir aperturas. Consulta el <a href="${escapeHtml(privacyUrl)}" style="color:${BRAND.muted};text-decoration:underline">aviso de privacidad</a> para más detalle.`
       }</div>`
     : "";
   // Place the pixel as the very last visual element. Most clients

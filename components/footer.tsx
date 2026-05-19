@@ -3,7 +3,13 @@ import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { GitHubIcon } from "@/components/social-icons";
 
-function FooterLink({ href, label }: { href: "/about" | "/stats"; label: string }) {
+function FooterLink({
+  href,
+  label,
+}: {
+  href: "/about" | "/stats" | "/privacy";
+  label: string;
+}) {
   return (
     <Link
       href={href}
@@ -56,6 +62,7 @@ export async function Footer() {
         <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <FooterLink href="/about" label={t("about")} />
           <FooterLink href="/stats" label={t("stats")} />
+          <FooterLink href="/privacy" label={t("privacy")} />
           <a
             href="https://github.com/raulfdeztdo/kernelia"
             target="_blank"
