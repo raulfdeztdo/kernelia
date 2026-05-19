@@ -57,6 +57,13 @@
       "when": 1779205054305,
       "tag": "0007_cron_run_traceability",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779206874996,
+      "tag": "0008_newsletter_sends",
+      "breakpoints": true
     }
   ]
 }

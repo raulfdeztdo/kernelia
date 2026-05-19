@@ -5,6 +5,7 @@ import {
   listAdminBroadcasts,
   type BroadcastPlatformValue,
 } from "@/db/queries/admin-broadcasts";
+import { listSubscribersWithStats } from "@/db/queries/newsletter-sends";
 import { BroadcastsStackedBarChart } from "@/components/admin/charts";
 
 export const dynamic = "force-dynamic";
@@ -34,10 +35,11 @@ export default async function AdminBroadcastsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const platformFilter = isPlatform(sp.platform) ? sp.platform : undefined;
 
-  const [totals, perDay, recent] = await Promise.all([
+  const [totals, perDay, recent, subscribers] = await Promise.all([
     getBroadcastTotals(),
     getBroadcastsPerDay(30),
     listAdminBroadcasts({ platform: platformFilter, limit: 100 }),
+    listSubscribersWithStats(),
   ]);
 
   const total30 = perDay.reduce((acc, r) => acc + r.total, 0);
@@ -168,7 +170,113 @@ export default async function AdminBroadcastsPage({ searchParams }: PageProps) {
           Mostrando los 100 posts más recientes que coincidan con el filtro.
         </p>
       </section>
+
+      <SubscribersSection subscribers={subscribers} />
     </div>
+  );
+}
+
+function SubscribersSection({
+  subscribers,
+}: {
+  subscribers: Awaited<ReturnType<typeof listSubscribersWithStats>>;
+}) {
+  const active = subscribers.filter((s) => s.confirmedAt && !s.unsubscribedAt).length;
+  const pending = subscribers.filter((s) => !s.confirmedAt && !s.unsubscribedAt).length;
+  const unsubscribed = subscribers.filter((s) => s.unsubscribedAt).length;
+
+  return (
+    <section aria-labelledby="subs-heading" className="space-y-3">
+      <div className="flex items-baseline justify-between">
+        <h2 id="subs-heading" className="text-lg font-medium">
+          Suscriptores de la newsletter
+        </h2>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {active} activos · {pending} pendientes · {unsubscribed} baja
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded-md border border-border">
+        <table className="w-full text-sm">
+          <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 font-medium">Email</th>
+              <th className="px-3 py-2 font-medium">Idioma</th>
+              <th className="px-3 py-2 font-medium">Estado</th>
+              <th className="px-3 py-2 font-medium">Envios</th>
+              <th className="px-3 py-2 font-medium">Ultimo envio</th>
+              <th className="px-3 py-2 font-medium">Aperturas</th>
+              <th className="px-3 py-2 font-medium">Ultima apertura</th>
+              <th className="px-3 py-2 font-medium">Alta / Baja</th>
+            </tr>
+          </thead>
+          <tbody>
+            {subscribers.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-3 py-4 text-muted-foreground">
+                  Aun no hay suscriptores.
+                </td>
+              </tr>
+            ) : (
+              subscribers.map((s) => <SubscriberRow key={s.id} sub={s} />)
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Las aperturas se cuentan via un pixel 1x1 en el correo. Apple Mail
+        Privacy y otros clientes que pre-cargan imagenes inflan el numero —
+        tomalo como senal directional, no como deliverability gate.
+      </p>
+    </section>
+  );
+}
+
+type SubscriberStatusTone = "active" | "pending" | "unsubscribed";
+
+function subscriberStatus(sub: {
+  confirmedAt: Date | null;
+  unsubscribedAt: Date | null;
+}): { label: string; tone: SubscriberStatusTone } {
+  if (sub.unsubscribedAt) return { label: "Baja", tone: "unsubscribed" };
+  if (sub.confirmedAt) return { label: "Activo", tone: "active" };
+  return { label: "Pendiente", tone: "pending" };
+}
+
+const SUB_TONE_CLASS: Record<SubscriberStatusTone, string> = {
+  active: "text-accent",
+  pending: "text-amber-400",
+  unsubscribed: "text-muted-foreground",
+};
+
+function formatStamp(d: Date | null): string {
+  if (!d) return "—";
+  return d.toISOString().replace("T", " ").slice(0, 16);
+}
+
+function SubscriberRow({
+  sub,
+}: {
+  sub: Awaited<ReturnType<typeof listSubscribersWithStats>>[number];
+}) {
+  const status = subscriberStatus(sub);
+  return (
+    <tr className="border-t border-border align-top last:border-b">
+      <td className="px-3 py-2 break-all">{sub.email}</td>
+      <td className="px-3 py-2 uppercase tracking-wide text-muted-foreground">{sub.locale}</td>
+      <td className={`px-3 py-2 font-medium ${SUB_TONE_CLASS[status.tone]}`}>{status.label}</td>
+      <td className="px-3 py-2 tabular-nums">{sub.sentCount}</td>
+      <td className="px-3 py-2 tabular-nums text-muted-foreground">
+        {formatStamp(sub.lastSentAt)}
+      </td>
+      <td className="px-3 py-2 tabular-nums">{sub.openedCount}</td>
+      <td className="px-3 py-2 tabular-nums text-muted-foreground">
+        {formatStamp(sub.lastOpenedAt)}
+      </td>
+      <td className="px-3 py-2 text-xs text-muted-foreground">
+        <div>Alta: {formatStamp(sub.createdAt)}</div>
+        {sub.unsubscribedAt ? <div>Baja: {formatStamp(sub.unsubscribedAt)}</div> : null}
+      </td>
+    </tr>
   );
 }
 

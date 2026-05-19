@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import type { CronJob, CronRunStatus } from "@/db/schema";
 import type { CronRunArticle } from "@/db/queries/articles";
 import type { CronRunBroadcast } from "@/db/queries/article-broadcasts";
+import type { CronRunNewsletterSend } from "@/db/queries/newsletter-sends";
 
 /**
  * Expandable row for /admin/cron. The server pre-renders the
@@ -69,12 +70,12 @@ interface BroadcastsPayload {
   broadcasts: CronRunBroadcast[];
 }
 
-interface NewsletterPayload {
-  kind: "newsletter_pending";
-  summary: Record<string, unknown>;
+interface NewsletterSendsPayload {
+  kind: "newsletter_sends";
+  sends: CronRunNewsletterSend[];
 }
 
-type DetailPayload = ArticlesPayload | BroadcastsPayload | NewsletterPayload;
+type DetailPayload = ArticlesPayload | BroadcastsPayload | NewsletterSendsPayload;
 
 export function CronRunRow({ run, summaryOneLiner }: CronRunRowProps) {
   const [open, setOpen] = useState(false);
@@ -165,18 +166,7 @@ function DetailPanel({ job, data }: { job: CronJob; data: DetailPayload }) {
   if (data.kind === "broadcasts") {
     return <BroadcastsTable rows={data.broadcasts} />;
   }
-  // newsletter_pending
-  return (
-    <div className="space-y-2 text-sm">
-      <p className="text-muted-foreground">
-        El detalle por suscriptor llega en la siguiente entrega (PR 4: lista de
-        suscriptores con apertura y bajas). Por ahora el resumen del envio:
-      </p>
-      <pre className="overflow-x-auto rounded border border-border bg-surface-2 p-2 text-xs">
-        {JSON.stringify(data.summary, null, 2)}
-      </pre>
-    </div>
-  );
+  return <NewsletterSendsTable rows={data.sends} />;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -284,6 +274,55 @@ function BroadcastsTable({ rows }: { rows: CronRunBroadcast[] }) {
                 {new Date(r.postedAt).toISOString().replace("T", " ").slice(0, 19)}
               </td>
               <td className="px-2 py-1 text-muted-foreground">{r.externalId ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function NewsletterSendsTable({ rows }: { rows: CronRunNewsletterSend[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Este tick no envio ninguna newsletter (sin suscriptores activos, o el
+        digest semanal corresponde a otro tick).
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead className="text-left uppercase tracking-wide text-muted-foreground">
+          <tr>
+            <th className="px-2 py-1 font-medium">Email</th>
+            <th className="px-2 py-1 font-medium">Idioma</th>
+            <th className="px-2 py-1 font-medium">Enviado (UTC)</th>
+            <th className="px-2 py-1 font-medium">Apertura</th>
+            <th className="px-2 py-1 font-medium">Resend ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className="border-t border-border align-top">
+              <td className="px-2 py-1 break-all">{r.subscriberEmail}</td>
+              <td className="px-2 py-1 uppercase tracking-wide text-muted-foreground">
+                {r.subscriberLocale}
+              </td>
+              <td className="px-2 py-1 tabular-nums text-muted-foreground">
+                {new Date(r.sentAt).toISOString().replace("T", " ").slice(0, 19)}
+              </td>
+              <td className="px-2 py-1 tabular-nums">
+                {r.openedAt ? (
+                  <span className="text-accent">
+                    {new Date(r.openedAt).toISOString().replace("T", " ").slice(0, 19)}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
+              <td className="px-2 py-1 text-muted-foreground">{r.resendId ?? "—"}</td>
             </tr>
           ))}
         </tbody>

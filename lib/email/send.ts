@@ -255,6 +255,14 @@ export interface SendWeeklyDigestParams {
   articles: DigestArticle[];
   /** Human-readable week label for the subject line (e.g. "18 May 2026"). */
   weekLabel: string;
+  /**
+   * Phase 8.E: absolute URL of the 1x1 tracking pixel, including the
+   * `?id=<sendId>` query param. When set, the digest renders the
+   * pixel + a privacy notice in the footer. `runNewsletter`
+   * pre-creates the `newsletter_sends` row and constructs this URL
+   * before calling us.
+   */
+  trackingPixelUrl?: string;
   from?: string;
   fetchImpl?: typeof fetch;
 }
@@ -288,6 +296,7 @@ export async function sendWeeklyDigest(
       copy,
       locale: params.locale,
       siteUrl,
+      trackingPixelUrl: params.trackingPixelUrl,
     }),
     text: digestText(params.articles, params.unsubscribeUrl, copy),
   };
@@ -337,6 +346,7 @@ interface DigestHtmlParams {
   copy: NewsletterCopy;
   locale: Locale;
   siteUrl: string;
+  trackingPixelUrl?: string;
 }
 
 function digestHtml({
@@ -346,6 +356,7 @@ function digestHtml({
   copy,
   locale,
   siteUrl,
+  trackingPixelUrl,
 }: DigestHtmlParams): string {
   const cards = articles.map((a) => articleCard(a, copy, locale)).join("\n");
 
@@ -361,6 +372,7 @@ ${cards}`;
     preheader: copy.digestPreheader(articles.length),
     unsubscribeUrl,
     unsubscribeLabel: copy.digestUnsubscribe,
+    trackingPixelUrl,
   });
 }
 
