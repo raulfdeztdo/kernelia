@@ -26,6 +26,8 @@
     <a href="https://github.com/raulfdeztdo/kernelia/issues">Solicitar Funcionalidad</a>
   </p>
 
+  <img src="./media/banner2.png" alt="Kernelia banner" width="100%" style="border-radius:8px; margin-bottom:12px;" />
+
   <p align="center">
     <img src="https://img.shields.io/badge/Next.js-15-000000?style=flat&logo=nextdotjs&logoColor=white" alt="Next.js" />
     <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white" alt="TypeScript" />
@@ -67,14 +69,15 @@
 
 Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas por blogs, medios y feeds de empresas. Mantenerse al día sin sobrecargarse es difícil: una parte del contenido se repite, otra es ruido y lo verdaderamente relevante se pierde en el medio.
 
-**Kernelia** recopila publicaciones de medios de referencia sobre IA, las deduplica, las clasifica por categoría y genera un resumen breve mediante un agente IA. La web pública muestra las noticias más recientes primero, con filtros por categoría y búsqueda libre por palabras clave. Sin login: cualquiera puede visitarla.
+**Kernelia** recopila publicaciones de medios de referencia sobre IA, las deduplica, las clasifica por categoría y genera un resumen breve mediante un agente IA. La web pública muestra las noticias más recientes primero, con filtros por categoría y búsqueda libre. Sin login: cualquiera puede visitarla. Las más relevantes se publican automáticamente en Mastodon, Bluesky y Telegram.
 
 ### ¿Por qué este proyecto?
 
-- **Sin ruido** — Las noticias se clasifican en categorías concretas y se resumen, para que se pueda escanear el feed en segundos.
-- **Auto-mantenido** — Un cron ingesta nuevas publicaciones cada pocas horas y el agente IA las procesa sin intervención humana.
-- **Bilingüe** — Interfaz nativa en español e inglés con selector de idioma.
-- **Coste cero** — Stack pensado para correr íntegramente en planes gratuitos (Vercel + Supabase + Cerebras).
+- **Sin ruido** — Las noticias se clasifican en 10 categorías concretas y se resumen, para escanear el feed en segundos.
+- **Auto-mantenido** — Un cron ingesta nuevas publicaciones cada 3h, el agente IA las clasifica cada 30min y el broadcaster las distribuye a redes sociales sin intervención humana.
+- **Bilingüe** — Interfaz nativa en español e inglés. Títulos y resúmenes generados en ambos idiomas por el agente.
+- **Newsletter semanal** — Digest opcional cada domingo con los artículos más relevantes de la semana.
+- **Coste cero** — Stack íntegramente en planes gratuitos (Vercel + Supabase + Cerebras + Resend).
 
 ## Stack
 
@@ -86,21 +89,25 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
 | i18n | next-intl (ES default, EN) |
 | Base de datos | Supabase Postgres |
 | ORM | Drizzle |
-| LLM | Cerebras (Llama 3.3 70B) — SDK OpenAI-compatible |
+| LLM | Cerebras `llama3.1-8b` — SDK OpenAI-compatible |
 | Ingesta | rss-parser |
 | Validación | Zod |
+| Auth (backoffice) | Email + bcrypt, cookie HMAC `__Host-` |
+| Email | Resend (confirmación newsletter + password reset) |
+| Broadcaster | Mastodon · Bluesky · Telegram |
 | Hosting | Vercel (Hobby) |
-| Cron | Vercel Cron |
+| Cron | GitHub Actions (cada 3h ingest, cada 30min classify + broadcast) |
 | Tests | Vitest + Playwright |
 
 ## Primeros pasos
 
 ### Prerrequisitos
 
-- [Node.js](https://nodejs.org) 20 o superior
+- [Node.js](https://nodejs.org) 22 LTS
 - [pnpm](https://pnpm.io) 11 o superior (`npm install -g pnpm`)
 - Una cuenta de [Supabase](https://supabase.com) (free tier)
 - Una API key de [Cerebras](https://cloud.cerebras.ai) (free tier)
+- Una cuenta de [Resend](https://resend.com) con dominio verificado (para newsletter y password reset)
 
 ### Instalación
 
@@ -108,6 +115,7 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
 git clone https://github.com/raulfdeztdo/kernelia.git
 cd kernelia
 pnpm install
+cp opencode.example.jsonc opencode.jsonc   # si usas opencode
 ```
 
 ### Variables de entorno
@@ -118,20 +126,40 @@ Copia la plantilla y rellena los valores reales:
 cp .env.example .env.local
 ```
 
-Necesitas:
-
+**Base de datos:**
 - `DATABASE_URL` — Connection string del **transaction pooler** de Supabase (puerto 6543), usado en runtime.
 - `DATABASE_URL_DIRECT` — Connection string del **session pooler** (puerto 5432), usado por `drizzle-kit` para migraciones.
-- `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Para acceso público de lectura.
-- `SUPABASE_SERVICE_ROLE` — Solo server-side, nunca exponer al cliente.
+
+**LLM:**
 - `CEREBRAS_API_KEY` — Generada en [cloud.cerebras.ai](https://cloud.cerebras.ai).
-- `CRON_SECRET` — Genera uno con `openssl rand -hex 32`. Protege los endpoints de cron.
+- `CEREBRAS_MODEL` — Modelo a usar (default: `llama3.1-8b`).
+
+**Cron:**
+- `CRON_SECRET` — Genera uno con `openssl rand -hex 32`. Protege los endpoints `/api/cron/*`.
+
+**Backoffice admin:**
+- `SESSION_SECRET` — Mínimo 32 caracteres. Firma las cookies de sesión HMAC.
+- `INITIAL_ADMIN_EMAIL` — Email del primer administrador (el seed lo crea si no existe ningún usuario).
+
+**Email (Resend):**
+- `RESEND_API_KEY` — Generada en [resend.com](https://resend.com).
+- `EMAIL_FROM` — Dirección remitente verificada, p.ej. `Kernelia <newsletter@kernelia.dev>`.
+
+**Broadcaster (opcional):**
+- `MASTODON_INSTANCE_URL` y `MASTODON_ACCESS_TOKEN` — Cuenta bot en Mastodon.
+- `BLUESKY_IDENTIFIER` y `BLUESKY_APP_PASSWORD` — Cuenta bot en Bluesky.
+- `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` — Bot y canal de Telegram.
+- `BROADCAST_ENABLED` — `true` para activar. `false` para pausar sin redeploy.
+- `BROADCAST_MIN_RELEVANCE_SCORE` — Umbral mínimo (default: `0.75`).
+
+**Sitio público:**
+- `NEXT_PUBLIC_SITE_URL` — URL pública sin slash final, p.ej. `https://kernelia.dev`.
 
 Aplica el schema y haz el seed inicial:
 
 ```bash
 pnpm db:migrate   # aplica migraciones SQL
-pnpm db:seed      # carga categorías y 10 fuentes RSS iniciales
+pnpm db:seed      # carga categorías, fuentes RSS y el primer usuario admin
 ```
 
 ## Uso
@@ -143,25 +171,41 @@ pnpm dev
 
 Abre `http://localhost:3000` y verás la home en español. Cambia a inglés desde el selector del header o navegando a `/en`.
 
-Para disparar manualmente la ingesta:
+El backoffice está en `/admin` — primer acceso por el flujo de "olvidaste contraseña" con el email configurado en `INITIAL_ADMIN_EMAIL`.
+
+Para disparar manualmente los crons:
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/ingest
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/classify?limit=10
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/broadcast
 ```
-
-Devuelve un resumen JSON con artículos obtenidos, insertados y errores por fuente.
 
 ## Funcionalidades
 
-- **Listado de noticias** — Ordenado por fecha de publicación descendente, con paginación.
-- **Filtros por categoría** — Multi-selección server-side. Categorías: LLMs, agentes, investigación, productos, robótica, regulación, seguridad/alineamiento, multimodal, coding AI, otros.
-- **Búsqueda libre** — Por palabras clave en título y resumen, con debounce en el cliente y `ILIKE` en el servidor.
-- **UI bilingüe** — Español por defecto, inglés disponible. Selector en el header. El idioma se persiste en cookie.
-- **Modo claro y oscuro** — Automático según preferencias del sistema.
-- **Ingesta automatizada** — Cron de Vercel que lee 10 fuentes RSS, normaliza URLs, deduplica por hash SHA-256 y persiste artículos como `pending`.
-- **Agente IA** — Procesa lotes de artículos `pending` y los clasifica + resume usando Cerebras con structured output validado por Zod.
-- **Dedupe robusto** — URLs canonicalizadas (elimina parámetros `utm_*`, `fbclid`, etc., ordena query params, normaliza host).
-- **API protegida** — Endpoints `/api/cron/*` requieren `Authorization: Bearer ${CRON_SECRET}`.
+**Feed público:**
+- **Listado de noticias** — Ordenado por fecha descendente, paginación append-style (sin recarga).
+- **Filtros por categoría** — Multi-selección: LLMs, agentes, investigación, productos, robótica, regulación, seguridad, multimodal, coding AI, otros.
+- **Búsqueda libre** — Por palabras clave en título y resumen, con debounce en cliente e `ILIKE` en servidor.
+- **UI bilingüe** — Español por defecto, inglés disponible. Títulos y resúmenes generados en ambos idiomas.
+- **SEO** — Metadata por locale (OG, canonical, hreflang + x-default), `sitemap.xml`, `robots.txt`.
+- **RSS** — `/rss.xml?lang=es|en` con los últimos artículos clasificados.
+- **Stats públicas** — `/api/stats` con métricas abiertas (artículos, tokens, actividad).
+- **Share buttons** — Copiar enlace, compartir por email, compartir en Mastodon.
+- **Newsletter** — Suscripción opcional con double opt-in. Digest semanal cada domingo.
+
+**Pipeline automático:**
+- **Ingesta** — Cada 3h lee 10+ fuentes RSS, normaliza URLs, deduplica por hash SHA-256.
+- **Clasificación** — Cada 30min procesa lotes de artículos `pending` con Cerebras: categoría + resumen en ES y EN + relevance score, validados con Zod antes de persistir. Cola round-robin por fuente para evitar monopolios.
+- **Broadcaster** — Publica artículos con `relevance_score >= 0.75` en Mastodon, Bluesky y Telegram. Idempotencia por `(article_id, platform)`.
+
+**Backoffice `/admin`:**
+- **Auth** — Login por email + contraseña (bcrypt cost 12), cookie HMAC `__Host-kernelia-session`, password reset vía Resend.
+- **Dashboard** — Métricas de artículos, categorías, fuentes, tokens y broadcasts con gráficas Recharts.
+- **Monitor de cron** — Últimas 50 ejecuciones de ingest, classify, broadcast y newsletter.
+- **Gestión de artículos** — Cambiar estado (pending / classified / hidden / failed), reasignar categoría, re-clasificar con un clic.
+- **Gestión de usuarios** — Añadir, desactivar o borrar administradores con guardrails (no auto-borrado, nunca cero admins activos).
+- **Broadcasts** — Historial y analytics de publicaciones por plataforma.
 
 ## Desarrollo
 
@@ -191,59 +235,67 @@ pnpm db:studio     # GUI local de Drizzle Studio
 ## Cómo funciona
 
 ```
-                                    ┌──────────────────────┐
-                                    │   Vercel Cron         │
-                                    │   (cada 3 h)          │
-                                    └──────────┬───────────┘
-                                               │ POST /api/cron/ingest
-                                               ▼
-   ┌─────────────────────┐         ┌──────────────────────┐
-   │  Fuentes RSS        │────────▶│  Ingest agent         │
-   │  (10 medios IA)     │  feeds  │  - rss-parser         │
-   └─────────────────────┘         │  - canonicaliza URL   │
-                                   │  - hash dedupe        │
-                                   └──────────┬───────────┘
-                                              │ insert pending
-                                              ▼
-                                   ┌──────────────────────┐
-                                   │  Supabase Postgres    │
-                                   │  (Drizzle ORM)        │
-                                   └──────────┬───────────┘
-                                              │ select pending
-                                              ▼
-   ┌─────────────────────┐         ┌──────────────────────┐
-   │  Cerebras LLM       │◀────────│  Classify agent       │
-   │  (Llama 3.3 70B)    │         │  - prompt + schema    │
-   └──────────┬──────────┘         │  - Zod validation     │
-              │ category + summary └──────────┬───────────┘
-              ▼                               │ update classified
-   ┌──────────────────────────────────────────▼───────────┐
-   │                  Supabase Postgres                    │
-   └──────────────────────┬───────────────────────────────┘
-                          │ select desc
-                          ▼
-                ┌──────────────────────┐
-                │  Next.js (App Router) │
-                │  - RSC + i18n         │
-                │  - filtros + búsqueda │
-                └──────────────────────┘
+  GitHub Actions (cada 3h)          GitHub Actions (cada 30min)
+         │                                    │
+         │ GET /api/cron/ingest               │ GET /api/cron/classify
+         ▼                                    ▼
+  ┌─────────────────┐             ┌─────────────────────┐
+  │  Fuentes RSS    │──── feeds ─▶│  Ingest              │
+  │  (10+ medios)   │             │  - rss-parser        │
+  └─────────────────┘             │  - canonicaliza URL  │
+                                  │  - hash dedupe       │
+                                  └──────────┬───────────┘
+                                             │ insert pending
+                                             ▼
+                                  ┌──────────────────────┐
+                                  │  Supabase Postgres    │
+                                  │  (Drizzle ORM)        │
+                                  └──────┬────────────────┘
+                                         │ select pending (round-robin)
+                                         ▼
+  ┌─────────────────┐         ┌──────────────────────────┐
+  │  Cerebras LLM   │◀────────│  Classify agent           │
+  │  (llama3.1-8b)  │         │  - prompt + Zod schema   │
+  └────────┬────────┘         │  - category + summary    │
+           │                  │  - ES + EN + score        │
+           └──── classified ──▶  update articles          │
+                                  └──────────┬────────────┘
+                                             │ relevance_score >= 0.75
+                                             ▼
+                                  ┌──────────────────────┐
+                                  │  Broadcaster          │
+                                  │  - Mastodon           │
+                                  │  - Bluesky            │
+                                  │  - Telegram           │
+                                  └──────────────────────┘
+                                             │
+                                             ▼
+                                  ┌──────────────────────┐
+                                  │  Next.js (App Router) │
+                                  │  - RSC + i18n         │
+                                  │  - filtros + búsqueda │
+                                  │  - RSS + sitemap      │
+                                  │  - /admin backoffice  │
+                                  └──────────────────────┘
 ```
 
-El frontend solo lee. La ingesta y la clasificación viven en endpoints protegidos por `CRON_SECRET` que Vercel Cron invoca de forma periódica. Toda la lógica de dominio está en `lib/ingest/` y `lib/ai/`, separada de la capa de UI.
+El frontend solo lee. La ingesta, clasificación y distribución viven en endpoints protegidos por `CRON_SECRET` que GitHub Actions invoca periódicamente. Toda la lógica de dominio está en `lib/ingest/`, `lib/ai/` y `lib/broadcast/`, separada de la capa de UI.
 
 ## Estado del proyecto
 
-En construcción. El plan de ejecución vivo está en [`PLAN.md`](./PLAN.md).
+El plan de ejecución vivo está en [`PLAN.md`](./PLAN.md).
 
 | Fase | Estado |
 |------|--------|
 | 0 — Limpieza y rebranding | ✅ done |
 | 1 — Bootstrap Next.js | ✅ done |
 | 2 — Modelo de datos e ingesta RSS | ✅ done |
-| 3 — Agente IA (Cerebras) | ⏳ pending |
-| 4 — Web: listado, filtros, búsqueda | ⏳ pending |
-| 5 — Pulido, SEO, accesibilidad | ⏳ pending |
-| 6 — Release v0.1.0 a producción | ⏳ pending |
+| 3 — Agente IA (Cerebras) | ✅ done |
+| 4 — Web: listado, filtros, búsqueda | ✅ done |
+| 5 — Pulido, SEO, accesibilidad | ✅ done |
+| 6 — Release v0.1.0 a producción | ✅ done |
+| 7 — Backoffice admin (auth + panel) | ✅ done |
+| 8 — Distribución y propagación | ⏳ in progress |
 
 ## Licencia
 

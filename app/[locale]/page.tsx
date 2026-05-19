@@ -165,10 +165,30 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
           </p>
         </div>
 
-        {/* Newsletter banner — right half on desktop */}
+        {/*
+         * Newsletter banner — right half on desktop only.
+         * On mobile we show a minimal pill link to /about#subscribe
+         * so the newsletter CTA doesn't push the article feed far down.
+         */}
+
+        {/* Mobile: compact link pill */}
+        <div className="lg:hidden text-center">
+        <a
+          href={`/${locale === "es" ? "" : locale + "/"}about#subscribe`}
+          className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 px-4 py-2 text-sm font-medium text-[color:var(--color-accent)] transition hover:bg-[color:var(--color-accent)]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect width="20" height="16" x="2" y="4" rx="2" />
+            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+          </svg>
+          {t("newsletterCallout.mobileLink")}
+        </a>
+        </div>
+
+        {/* Desktop: full newsletter form */}
         <aside
           aria-labelledby="home-newsletter-heading"
-          className="relative overflow-hidden rounded-xl border border-[color:var(--color-accent)]/20 bg-gradient-to-br from-[color:var(--color-accent)]/10 via-[color:var(--color-surface)] to-[color:var(--color-surface)] px-5 py-4"
+          className="relative hidden overflow-hidden rounded-xl border border-[color:var(--color-accent)]/20 bg-gradient-to-br from-[color:var(--color-accent)]/10 via-[color:var(--color-surface)] to-[color:var(--color-surface)] px-5 py-4 lg:block"
         >
           {/* Decorative blurred blob */}
           <div

@@ -95,50 +95,50 @@ export default async function AboutPage({ params }: AboutPageProps) {
         <p className="text-sm text-[color:var(--color-muted-foreground)]">
           {t("subscribe.body")}
         </p>
-        <ul className="flex flex-wrap gap-2">
-          {/*
-           * RSS badges first: the longest-lived format and the only one
-           * that requires zero account on a third-party. One per locale so
-           * a Spanish reader gets a Spanish-titled feed. The targets are
-           * Route Handlers that return `application/xml`, so we use
-           * `<Link prefetch={false}>` to skip the wasted prefetch round-
-           * trip while keeping the html-side anchor and accessibility.
-           */}
-          <li>
-            <Link
-              href="/rss.xml?lang=es"
-              prefetch={false}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1.5 text-xs font-medium transition hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
-            >
-              <RssIcon />
-              RSS · ES
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/rss.xml?lang=en"
-              prefetch={false}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1.5 text-xs font-medium transition hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
-            >
-              <RssIcon />
-              RSS · EN
-            </Link>
-          </li>
-          {channels.map((c) => (
-            <li key={c.platform}>
-              <a
-                href={c.url}
-                target="_blank"
-                rel="noopener noreferrer"
+        <div className="space-y-2">
+          {/* RSS badges — first row */}
+          <ul className="flex flex-wrap gap-2">
+            <li>
+              <Link
+                href="/rss.xml?lang=es"
+                prefetch={false}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1.5 text-xs font-medium transition hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
               >
-                {platformIcon(c.platform, "size-3.5 text-[color:var(--color-accent)]")}
-                {PLATFORM_LABEL[c.platform]}
-                <span className="text-[color:var(--color-muted-foreground)]/80">{c.handle}</span>
-              </a>
+                <RssIcon />
+                RSS · ES
+              </Link>
             </li>
-          ))}
-        </ul>
+            <li>
+              <Link
+                href="/rss.xml?lang=en"
+                prefetch={false}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1.5 text-xs font-medium transition hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
+              >
+                <RssIcon />
+                RSS · EN
+              </Link>
+            </li>
+          </ul>
+          {/* Social channels — second row */}
+          {channels.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {channels.map((c) => (
+                <li key={c.platform}>
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-1.5 text-xs font-medium transition hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
+                  >
+                    {platformIcon(c.platform, "size-3.5 text-[color:var(--color-accent)]")}
+                    {PLATFORM_LABEL[c.platform]}
+                    <span className="text-[color:var(--color-muted-foreground)]/80">{c.handle}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {/*
          * Newsletter signup. Sits below the RSS + social badges because
          * those are zero-friction (no account, no email left behind). The

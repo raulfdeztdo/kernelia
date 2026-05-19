@@ -30,7 +30,8 @@
     "loadMoreError": "We couldn't load more articles. Try again.",
     "newsletterCallout": {
       "title": "Get your weekly newsletter!",
-      "body": "Every Sunday, the 10 most relevant articles of the week in your inbox. Email confirmation and one-click unsubscribe."
+      "body": "Every Sunday, the 10 most relevant articles of the week in your inbox. Email confirmation and one-click unsubscribe.",
+      "mobileLink": "Subscribe to our newsletter!"
     },
     "noResults": {
       "title": "Nothing here",
@@ -204,11 +205,11 @@
       },
       "cookies": {
         "title": "Cookies",
-        "body": "The site doesn't use tracking cookies. The only cookie is the admin session, which is irrelevant for anonymous visitors."
+        "body": "The site doesn't use tracking, analytics or advertising cookies. If you subscribe to the newsletter, a minimal technical cookie is used to manage your preferences session. It is not shared with third parties and is not used to track you."
       },
       "contact": {
         "title": "Contact",
-        "body": "For any question or request (access, rectification, deletion) reach out to the project author via the footer links."
+        "body": "For any question or request (access, rectification or deletion of data) you can reach us by writing to <email>admin@kernelia.dev</email>."
       }
     },
     "backHome": "Back to home"
