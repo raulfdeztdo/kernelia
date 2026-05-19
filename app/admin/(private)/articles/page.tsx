@@ -137,12 +137,19 @@ export default async function AdminArticlesPage({ searchParams }: PageProps) {
             ) : (
               page.rows.map((row) => (
                 <tr key={row.id} className="border-t border-border align-top last:border-b">
-                  <td className="max-w-[320px] px-3 py-2">
+                  {/*
+                   * On desktop the title column is capped to 320px and clamped
+                   * to two lines so the grid stays scannable. On mobile the
+                   * table scrolls horizontally anyway, so we let the title
+                   * flow to its full length — easier for the operator to
+                   * confirm at a glance which article they're acting on.
+                   */}
+                  <td className="px-3 py-2 md:max-w-[320px]">
                     <a
                       href={row.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="line-clamp-2 underline-offset-2 hover:underline"
+                      className="underline-offset-2 hover:underline md:line-clamp-2"
                     >
                       {row.title}
                     </a>
