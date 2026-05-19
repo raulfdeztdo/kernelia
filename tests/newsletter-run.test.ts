@@ -27,6 +27,7 @@ function buildArticle(id: string): DigestArticle {
     sourceName: "Test",
     categorySlug: "llm",
     relevanceScore: 0.9,
+    imageUrl: null,
     ingestedAt: new Date(),
   };
 }
