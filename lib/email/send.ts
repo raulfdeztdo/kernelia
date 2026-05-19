@@ -1,6 +1,8 @@
 import { createLogger } from "@/lib/logger";
+import { getSiteUrl } from "@/lib/site";
 import type { DigestArticle } from "@/lib/newsletter/digest";
 import type { Locale } from "@/db/schema";
+import { BRAND, categoryLabel, ctaButton, emailShell, escapeHtml } from "./templates";
 
 /**
  * Email helper. Wraps the Resend HTTP API directly (no SDK) so the
@@ -13,10 +15,13 @@ import type { Locale } from "@/db/schema";
  *                     During domain-verification gap, use
  *                     "Kernelia <onboarding@resend.dev>" — emails will
  *                     only deliver to the Resend account's own inbox.
+ *   - NEXT_PUBLIC_SITE_URL: origin for the `<img>` to the logo and the
+ *                     "kernelia.dev" link in the footer.
  *
- * History: started in Phase 7.F with password-reset only (replacing the
- * magic-link login). Phase 8.C.2 added the newsletter confirmation and
- * weekly-digest emails — same Resend client, same env vars.
+ * Every transactional email Kernelia sends now flows through the
+ * shared shell in `templates.ts` — dark canvas + transparent SVG logo
+ * + branded header/footer. Per-template bodies are kept small and
+ * focused.
  */
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
@@ -65,12 +70,14 @@ export async function sendPasswordReset(
   const apiKey = requiredEnv("RESEND_API_KEY");
   const from = params.from ?? requiredEnv("EMAIL_FROM");
   const fetchImpl = params.fetchImpl ?? fetch;
+  const siteUrl = getSiteUrl();
 
+  const subject = "Restablece tu contraseña de Kernelia Admin";
   const body: ResendRequest = {
     from,
     to: [params.to],
-    subject: "Restablece tu contraseña de Kernelia Admin",
-    html: passwordResetHtml(params.link),
+    subject,
+    html: passwordResetHtml(params.link, subject, siteUrl),
     text: passwordResetText(params.link),
   };
 
@@ -97,14 +104,19 @@ export async function sendPasswordReset(
   return { id: json.id };
 }
 
-function passwordResetHtml(link: string): string {
-  // Plain inline HTML — no JSX, no @react-email. Keeps build deps untouched.
-  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0a0a0a">
-<h1 style="font-size:20px;margin:0 0 16px">Restablece tu contraseña</h1>
-<p>Has solicitado restablecer la contraseña de tu cuenta de administrador en Kernelia. Pulsa el botón para elegir una nueva contraseña. El enlace caduca en 30 minutos y solo puede usarse una vez.</p>
-<p style="margin:24px 0"><a href="${escapeHtml(link)}" style="background:#0a0a0a;color:#fff;text-decoration:none;padding:12px 20px;border-radius:6px;display:inline-block">Elegir nueva contraseña</a></p>
-<p style="font-size:13px;color:#525252">Si no has solicitado este cambio, ignora el correo. Tu contraseña actual seguirá funcionando.</p>
-</body></html>`;
+function passwordResetHtml(link: string, subject: string, siteUrl: string): string {
+  const content = `<h1 style="font-size:20px;font-weight:600;margin:0 0 16px;color:${BRAND.foreground};letter-spacing:-0.01em;">Restablece tu contraseña</h1>
+<p style="margin:0 0 12px;color:${BRAND.foreground};line-height:1.6;font-size:15px;">Has solicitado restablecer la contraseña de tu cuenta de administrador en Kernelia.</p>
+<p style="margin:0 0 8px;color:${BRAND.muted};line-height:1.6;font-size:14px;">Pulsa el botón para elegir una nueva contraseña. El enlace caduca en <strong style="color:${BRAND.foreground};">30 minutos</strong> y solo puede usarse una vez.</p>
+${ctaButton("Elegir nueva contraseña", link)}
+<p style="margin:24px 0 0;font-size:13px;color:${BRAND.mutedFaint};line-height:1.6;">Si no has solicitado este cambio, ignora el correo. Tu contraseña actual seguirá funcionando.</p>`;
+  return emailShell({
+    subject,
+    locale: "es",
+    siteUrl,
+    content,
+    preheader: "Enlace válido durante 30 minutos para elegir una nueva contraseña.",
+  });
 }
 
 function passwordResetText(link: string): string {
@@ -119,26 +131,21 @@ function passwordResetText(link: string): string {
   ].join("\n");
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 // ---------------------------------------------------------------------------
 // Newsletter (Phase 8.C.2)
 // ---------------------------------------------------------------------------
 
 interface NewsletterCopy {
   confirmSubject: string;
+  confirmHeading: string;
   confirmIntro: string;
   confirmCta: string;
   confirmFooter: string;
+  confirmPreheader: string;
   digestSubject: (weekLabel: string) => string;
+  digestHeading: (weekLabel: string) => string;
   digestIntro: string;
+  digestPreheader: (n: number) => string;
   digestUnsubscribe: string;
   digestSourcePrefix: string;
   digestEmptyFallback: string;
@@ -146,13 +153,17 @@ interface NewsletterCopy {
 
 const COPY_ES: NewsletterCopy = {
   confirmSubject: "Confirma tu suscripción a Kernelia",
+  confirmHeading: "Bienvenido a Kernelia",
   confirmIntro:
     "Gracias por suscribirte a la newsletter semanal de Kernelia. Confirma tu email para empezar a recibir las novedades de IA cada domingo.",
   confirmCta: "Confirmar suscripción",
   confirmFooter:
     "Si no has solicitado esta suscripción, ignora el correo: sin confirmar no recibirás nada.",
+  confirmPreheader: "Confirma tu email para activar la suscripción semanal.",
   digestSubject: (weekLabel: string) => `Kernelia · Resumen de ${weekLabel}`,
+  digestHeading: (weekLabel: string) => `Resumen de la semana · ${weekLabel}`,
   digestIntro: "Lo más relevante de IA esta semana, según el agente de Kernelia.",
+  digestPreheader: (n) => `${n} ${n === 1 ? "artículo" : "artículos"} seleccionados esta semana.`,
   digestUnsubscribe: "Darse de baja",
   digestSourcePrefix: "Fuente",
   digestEmptyFallback:
@@ -161,13 +172,17 @@ const COPY_ES: NewsletterCopy = {
 
 const COPY_EN: NewsletterCopy = {
   confirmSubject: "Confirm your Kernelia subscription",
+  confirmHeading: "Welcome to Kernelia",
   confirmIntro:
     "Thanks for subscribing to the Kernelia weekly newsletter. Confirm your email to start receiving the AI digest every Sunday.",
   confirmCta: "Confirm subscription",
   confirmFooter:
     "If you didn't request this subscription, ignore the email — you won't receive anything without confirming.",
+  confirmPreheader: "Confirm your email to activate the weekly subscription.",
   digestSubject: (weekLabel: string) => `Kernelia · Week of ${weekLabel}`,
+  digestHeading: (weekLabel: string) => `Weekly digest · ${weekLabel}`,
   digestIntro: "The most relevant AI signal this week, picked by the Kernelia agent.",
+  digestPreheader: (n) => `${n} ${n === 1 ? "article" : "articles"} curated this week.`,
   digestUnsubscribe: "Unsubscribe",
   digestSourcePrefix: "Source",
   digestEmptyFallback:
@@ -201,13 +216,14 @@ export async function sendNewsletterConfirmation(
   const apiKey = requiredEnv("RESEND_API_KEY");
   const from = params.from ?? requiredEnv("EMAIL_FROM");
   const fetchImpl = params.fetchImpl ?? fetch;
+  const siteUrl = getSiteUrl();
   const copy = copyFor(params.locale);
 
   const body: ResendRequest = {
     from,
     to: [params.to],
     subject: copy.confirmSubject,
-    html: confirmHtml(params.confirmUrl, copy),
+    html: confirmHtml(params.confirmUrl, copy, params.locale, siteUrl),
     text: confirmText(params.confirmUrl, copy),
   };
 
@@ -258,13 +274,21 @@ export async function sendWeeklyDigest(
   const apiKey = requiredEnv("RESEND_API_KEY");
   const from = params.from ?? requiredEnv("EMAIL_FROM");
   const fetchImpl = params.fetchImpl ?? fetch;
+  const siteUrl = getSiteUrl();
   const copy = copyFor(params.locale);
 
   const body: ResendRequest = {
     from,
     to: [params.to],
     subject: copy.digestSubject(params.weekLabel),
-    html: digestHtml(params.articles, params.unsubscribeUrl, copy),
+    html: digestHtml({
+      articles: params.articles,
+      unsubscribeUrl: params.unsubscribeUrl,
+      weekLabel: params.weekLabel,
+      copy,
+      locale: params.locale,
+      siteUrl,
+    }),
     text: digestText(params.articles, params.unsubscribeUrl, copy),
   };
 
@@ -288,45 +312,93 @@ export async function sendWeeklyDigest(
   return { id: json.id };
 }
 
-function confirmHtml(link: string, copy: NewsletterCopy): string {
-  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0a0a0a">
-<h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(copy.confirmSubject)}</h1>
-<p>${escapeHtml(copy.confirmIntro)}</p>
-<p style="margin:24px 0"><a href="${escapeHtml(link)}" style="background:#0a0a0a;color:#fff;text-decoration:none;padding:12px 20px;border-radius:6px;display:inline-block">${escapeHtml(copy.confirmCta)}</a></p>
-<p style="font-size:13px;color:#525252">${escapeHtml(copy.confirmFooter)}</p>
-</body></html>`;
+function confirmHtml(link: string, copy: NewsletterCopy, locale: Locale, siteUrl: string): string {
+  const content = `<h1 style="font-size:22px;font-weight:700;margin:0 0 12px;color:${BRAND.foreground};letter-spacing:-0.01em;">${escapeHtml(copy.confirmHeading)}</h1>
+<p style="margin:0 0 20px;color:${BRAND.foreground};line-height:1.6;font-size:15px;">${escapeHtml(copy.confirmIntro)}</p>
+${ctaButton(copy.confirmCta, link)}
+<p style="margin:24px 0 0;font-size:13px;color:${BRAND.mutedFaint};line-height:1.6;">${escapeHtml(copy.confirmFooter)}</p>`;
+  return emailShell({
+    subject: copy.confirmSubject,
+    locale,
+    siteUrl,
+    content,
+    preheader: copy.confirmPreheader,
+  });
 }
 
 function confirmText(link: string, copy: NewsletterCopy): string {
   return [copy.confirmSubject, "", copy.confirmIntro, "", link, "", copy.confirmFooter].join("\n");
 }
 
-function digestHtml(
-  articles: DigestArticle[],
-  unsubscribeUrl: string,
-  copy: NewsletterCopy,
-): string {
-  const items = articles
-    .map((a) => {
-      const summary = a.summary ? `<p style="margin:6px 0 0;color:#404040">${escapeHtml(a.summary)}</p>` : "";
-      const chip = a.categorySlug
-        ? `<span style="display:inline-block;margin-right:8px;padding:1px 8px;border-radius:9999px;background:#f5f5f5;color:#525252;font-size:11px;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(a.categorySlug)}</span>`
-        : "";
-      return `<li style="margin:0 0 20px;padding:0;list-style:none">
-  <a href="${escapeHtml(a.url)}" style="color:#0a0a0a;text-decoration:none;font-weight:600;font-size:16px;line-height:1.35">${escapeHtml(a.title)}</a>
-  ${summary}
-  <div style="margin-top:8px;font-size:12px;color:#737373">${chip}<span>${escapeHtml(copy.digestSourcePrefix)}: ${escapeHtml(a.sourceName)}</span></div>
-</li>`;
-    })
-    .join("\n");
+interface DigestHtmlParams {
+  articles: DigestArticle[];
+  unsubscribeUrl: string;
+  weekLabel: string;
+  copy: NewsletterCopy;
+  locale: Locale;
+  siteUrl: string;
+}
 
-  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:24px;color:#0a0a0a">
-<h1 style="font-size:22px;margin:0 0 8px">Kernelia</h1>
-<p style="margin:0 0 24px;color:#525252">${escapeHtml(copy.digestIntro)}</p>
-<ol style="padding:0;margin:0">${items}</ol>
-<hr style="margin:32px 0;border:0;border-top:1px solid #e5e5e5">
-<p style="font-size:12px;color:#737373"><a href="${escapeHtml(unsubscribeUrl)}" style="color:#737373">${escapeHtml(copy.digestUnsubscribe)}</a></p>
-</body></html>`;
+function digestHtml({
+  articles,
+  unsubscribeUrl,
+  weekLabel,
+  copy,
+  locale,
+  siteUrl,
+}: DigestHtmlParams): string {
+  const cards = articles.map((a) => articleCard(a, copy, locale)).join("\n");
+
+  const content = `<h1 style="font-size:22px;font-weight:700;margin:0 0 8px;color:${BRAND.foreground};letter-spacing:-0.01em;">${escapeHtml(copy.digestHeading(weekLabel))}</h1>
+<p style="margin:0 0 28px;color:${BRAND.muted};line-height:1.5;font-size:14px;">${escapeHtml(copy.digestIntro)}</p>
+${cards}`;
+
+  return emailShell({
+    subject: copy.digestSubject(weekLabel),
+    locale,
+    siteUrl,
+    content,
+    preheader: copy.digestPreheader(articles.length),
+    unsubscribeUrl,
+    unsubscribeLabel: copy.digestUnsubscribe,
+  });
+}
+
+/**
+ * Renders one article as a dark card. Image (if any) on top, then
+ * category chip, title, summary and source on a meta line. Falls back
+ * to a text-only card if `imageUrl` is null.
+ */
+function articleCard(article: DigestArticle, copy: NewsletterCopy, locale: Locale): string {
+  const cat = categoryLabel(article.categorySlug, locale);
+  const chip = cat
+    ? `<div style="font-size:11px;font-weight:600;color:${BRAND.accent};letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">${escapeHtml(cat)}</div>`
+    : "";
+  const summary = article.summary
+    ? `<p style="margin:8px 0 0;color:${BRAND.muted};line-height:1.55;font-size:14px;">${escapeHtml(article.summary)}</p>`
+    : "";
+  const meta = `<div style="margin-top:14px;font-size:12px;color:${BRAND.mutedFaint};">${escapeHtml(copy.digestSourcePrefix)}: <span style="color:${BRAND.muted};">${escapeHtml(article.sourceName)}</span></div>`;
+
+  // The hero image cell only renders when we actually have one. Width
+  // attribute is explicit (Outlook ignores CSS width on <img>) and the
+  // inline `max-width:100%` keeps it responsive on narrow mobile widths.
+  const imageCell = article.imageUrl
+    ? `<tr><td>
+  <a href="${escapeHtml(article.url)}" style="display:block;">
+    <img src="${escapeHtml(article.imageUrl)}" alt="" width="544" style="display:block;width:100%;max-width:544px;height:auto;border:0;outline:none;border-top-left-radius:10px;border-top-right-radius:10px;">
+  </a>
+</td></tr>`
+    : "";
+
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px;background-color:${BRAND.surface2};border:1px solid ${BRAND.border};border-radius:10px;overflow:hidden;">
+${imageCell}
+<tr><td style="padding:18px 20px;">
+${chip}
+<a href="${escapeHtml(article.url)}" style="color:${BRAND.foreground};text-decoration:none;font-weight:600;font-size:16px;line-height:1.35;display:block;">${escapeHtml(article.title)}</a>
+${summary}
+${meta}
+</td></tr>
+</table>`;
 }
 
 function digestText(

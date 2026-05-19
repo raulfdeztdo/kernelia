@@ -29,6 +29,12 @@ export interface DigestArticle {
   categorySlug: string | null;
   /** LLM relevance score in [0, 1]. Useful for debugging the sort order. */
   relevanceScore: number;
+  /**
+   * Article hero image as ingested from the RSS feed. May be `null` for
+   * publishers that don't ship one (or where the ingester couldn't extract
+   * it). The email template falls back to a text-only card in that case.
+   */
+  imageUrl: string | null;
   ingestedAt: Date;
 }
 
@@ -55,6 +61,7 @@ export async function getWeeklyDigestArticles(
       sourceName: sources.name,
       categorySlug: categories.slug,
       relevanceScore: articles.relevanceScore,
+      imageUrl: articles.imageUrl,
       ingestedAt: articles.ingestedAt,
     })
     .from(articles)
@@ -84,6 +91,7 @@ export async function getWeeklyDigestArticles(
       sourceName: r.sourceName,
       categorySlug: r.categorySlug,
       relevanceScore: r.relevanceScore ?? 0,
+      imageUrl: r.imageUrl,
       ingestedAt: r.ingestedAt,
     });
   }
