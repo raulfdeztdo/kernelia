@@ -22,6 +22,13 @@ interface Props {
    * crash render.
    */
   categoryLabels: Record<string, string>;
+  /**
+   * When true: renders a compact single-row layout (input + button inline,
+   * no category chips) — intended for the home-page banner strip.
+   * When false/absent: full vertical layout with category chips for the
+   * about page or any full-width standalone placement.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -37,7 +44,7 @@ interface Props {
  * so success copy stays the same for first-subscribe vs re-arm. The
  * recipient finds out via the confirmation email.
  */
-export function NewsletterForm({ locale, categorySlugs, categoryLabels }: Props) {
+export function NewsletterForm({ locale, categorySlugs, categoryLabels, compact = false }: Props) {
   const t = useTranslations("newsletter.form");
   const [email, setEmail] = useState("");
   // Empty Set = "all categories" — matches the DB contract (empty array
@@ -97,11 +104,42 @@ export function NewsletterForm({ locale, categorySlugs, categoryLabels }: Props)
 
   const messageId = "newsletter-form-message";
 
+  const chips = categorySlugs.length > 0 ? (
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("categoriesLabel")}>
+      {categorySlugs.map((slug) => {
+        const checked = selected.has(slug);
+        return (
+          <label
+            key={slug}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition ${
+              checked
+                ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
+                : "border-[color:var(--color-border)] text-[color:var(--color-muted-foreground)] hover:border-[color:var(--color-accent)]/60"
+            }`}
+          >
+            <input
+              type="checkbox"
+              name="preferredCategories"
+              value={slug}
+              checked={checked}
+              onChange={() => toggle(slug)}
+              disabled={status === "loading"}
+              className="sr-only"
+            />
+            {categoryLabels[slug] ?? slug}
+          </label>
+        );
+      })}
+    </div>
+  ) : null;
+
   return (
     <form onSubmit={onSubmit} className="space-y-2" noValidate>
-      <label htmlFor="newsletter-email" className="block text-sm font-medium">
-        {t("label")}
-      </label>
+      {!compact && (
+        <label htmlFor="newsletter-email" className="block text-sm font-medium">
+          {t("label")}
+        </label>
+      )}
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
           id="newsletter-email"
@@ -112,6 +150,7 @@ export function NewsletterForm({ locale, categorySlugs, categoryLabels }: Props)
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder={t("placeholder")}
+          aria-label={compact ? t("label") : undefined}
           aria-describedby={status !== "idle" && status !== "loading" ? messageId : undefined}
           aria-invalid={status === "invalid" ? true : undefined}
           className="flex-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-surface)] px-3 py-2 text-sm placeholder:text-[color:var(--color-muted-foreground)]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
@@ -120,12 +159,23 @@ export function NewsletterForm({ locale, categorySlugs, categoryLabels }: Props)
         <button
           type="submit"
           disabled={status === "loading" || email.length === 0}
-          className="inline-flex items-center justify-center rounded-md bg-[color:var(--color-accent)] px-4 py-2 text-sm font-medium text-[color:var(--color-accent-foreground,white)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/60 disabled:opacity-50"
+          className="inline-flex shrink-0 items-center justify-center rounded-md bg-[color:var(--color-accent)] px-4 py-2 text-sm font-medium text-[color:var(--color-accent-foreground,white)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/60 disabled:opacity-50"
         >
           {status === "loading" ? t("submitting") : t("submit")}
         </button>
       </div>
-      {categorySlugs.length > 0 ? (
+
+      {/* Category chips — shown in both modes; full mode wraps them in a
+          labelled fieldset with a hint, compact mode shows them bare so
+          the banner doesn't get a double border. */}
+      {compact ? (
+        <>
+          <p className="text-xs text-[color:var(--color-muted-foreground)]/80">
+            {t("categoriesHint")}
+          </p>
+          {chips}
+        </>
+      ) : categorySlugs.length > 0 ? (
         <fieldset
           className="space-y-2 rounded-md border border-[color:var(--color-border)]/60 p-3"
           disabled={status === "loading"}
@@ -134,39 +184,12 @@ export function NewsletterForm({ locale, categorySlugs, categoryLabels }: Props)
           <p className="text-xs text-[color:var(--color-muted-foreground)]/80">
             {t("categoriesHint")}
           </p>
-          <div className="flex flex-wrap gap-2">
-            {categorySlugs.map((slug) => {
-              const checked = selected.has(slug);
-              return (
-                <label
-                  key={slug}
-                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
-                    checked
-                      ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
-                      : "border-[color:var(--color-border)] text-[color:var(--color-muted-foreground)] hover:border-[color:var(--color-accent)]/60"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    name="preferredCategories"
-                    value={slug}
-                    checked={checked}
-                    onChange={() => toggle(slug)}
-                    className="sr-only"
-                  />
-                  {categoryLabels[slug] ?? slug}
-                </label>
-              );
-            })}
-          </div>
+          {chips}
         </fieldset>
       ) : null}
+
       {status === "ok" ? (
-        <p
-          id={messageId}
-          role="status"
-          className="text-sm text-[color:var(--color-accent)]"
-        >
+        <p id={messageId} role="status" className="text-sm text-[color:var(--color-accent)]">
           {t("success")}
         </p>
       ) : null}
@@ -185,7 +208,6 @@ export function NewsletterForm({ locale, categorySlugs, categoryLabels }: Props)
           {t("error")}
         </p>
       ) : null}
-      <p className="text-xs text-[color:var(--color-muted-foreground)]/80">{t("hint")}</p>
     </form>
   );
 }

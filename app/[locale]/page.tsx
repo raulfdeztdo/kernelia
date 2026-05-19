@@ -154,39 +154,55 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
   return (
     <section className="space-y-8">
       {/*
-       * Header band. Two-column on `lg` (title block + newsletter
-       * callout side by side) and stacked everywhere else. The
-       * callout intentionally lives at the SAME LEVEL as the heading
-       * — the about-page card was a quieter second home for it, and
-       * we want the highest-conversion surface (the feed) to push
-       * the digest signup too. The `items-start` keeps the heading
-       * top-aligned with the card so they read as a pair on desktop.
+       * Header band. Two-column on lg: title/desc on the left,
+       * newsletter banner on the right. Stacked on mobile.
        */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_24rem] lg:items-start">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-center">
         <div className="space-y-3">
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{t("heading")}</h1>
           <p className="max-w-2xl text-[color:var(--color-muted-foreground)]">
             {t("subheading")}
           </p>
         </div>
+
+        {/* Newsletter banner — right half on desktop */}
         <aside
           aria-labelledby="home-newsletter-heading"
-          className="rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-surface)] p-4"
+          className="relative overflow-hidden rounded-xl border border-[color:var(--color-accent)]/20 bg-gradient-to-br from-[color:var(--color-accent)]/10 via-[color:var(--color-surface)] to-[color:var(--color-surface)] px-5 py-4"
         >
-          <h2
-            id="home-newsletter-heading"
-            className="mb-1 text-base font-medium"
-          >
-            {t("newsletterCallout.title")}
-          </h2>
-          <p className="mb-3 text-sm text-[color:var(--color-muted-foreground)]">
-            {t("newsletterCallout.body")}
-          </p>
-          <NewsletterForm
-            locale={locale as "es" | "en"}
-            categorySlugs={visibleSlugs}
-            categoryLabels={categoryLabels}
+          {/* Decorative blurred blob */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -right-6 -top-6 h-36 w-36 rounded-full bg-[color:var(--color-accent)]/15 blur-3xl"
           />
+          <div className="relative flex items-start gap-3">
+            <span
+              aria-hidden
+              className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect width="20" height="16" x="2" y="4" rx="2" />
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2
+                id="home-newsletter-heading"
+                className="text-sm font-semibold leading-tight text-[color:var(--color-foreground)]"
+              >
+                {t("newsletterCallout.title")}
+              </h2>
+              <p className="mb-3 mt-0.5 text-xs text-[color:var(--color-muted-foreground)]">
+                {t("newsletterCallout.body")}
+              </p>
+              <NewsletterForm
+                locale={locale as "es" | "en"}
+                categorySlugs={visibleSlugs}
+                categoryLabels={categoryLabels}
+                compact
+              />
+            </div>
+          </div>
         </aside>
       </div>
 
