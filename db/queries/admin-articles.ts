@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, or, sql, type Column } from "drizzle-orm";
 import { db } from "@/db";
 import {
   articles,
@@ -6,6 +6,31 @@ import {
   sources,
   type ArticleStatus,
 } from "@/db/schema";
+
+/**
+ * Columns the admin table can sort by. Kept narrow on purpose:
+ * - `publishedAt` / `ingestedAt`: the two timestamps already in the row
+ *   shape; both have full datetime precision so ties are rare.
+ * - `sourceName` / `categoryNameEs`: text columns from the joined tables.
+ *   Lexicographic order is what an operator visually expects.
+ * - `status`: enum; lexicographic order works fine here too
+ *   (`classified < failed < hidden < pending`).
+ * - `title`: original feed title. Useful when looking for a known piece.
+ *
+ * Each column has a tie-breaker on `articles.id` so pagination is
+ * deterministic even when many rows share the sort key (e.g. publishing
+ * platforms that floor `publishedAt` to the minute).
+ */
+export const ADMIN_ARTICLES_SORT_COLUMNS = [
+  "publishedAt",
+  "ingestedAt",
+  "sourceName",
+  "categoryNameEs",
+  "status",
+  "title",
+] as const;
+export type AdminArticlesSortColumn = (typeof ADMIN_ARTICLES_SORT_COLUMNS)[number];
+export type AdminArticlesSortDir = "asc" | "desc";
 
 /**
  * DB surface for the admin article-management page.
@@ -40,8 +65,18 @@ export interface ListAdminArticlesParams {
   status?: ArticleStatus;
   categoryId?: string;
   sourceId?: string;
-  /** Cursor: ISO timestamp of `published_at` of the last row of the previous page. */
-  cursor?: { publishedAt: Date; id: string };
+  /** Column to order by. Defaults to `publishedAt`. */
+  sort?: AdminArticlesSortColumn;
+  /** Direction; defaults to `desc` (newest / Z-to-A first). */
+  dir?: AdminArticlesSortDir;
+  /**
+   * Cursor for keyset pagination. Carries the value of the sort column on
+   * the last row of the previous page (as a string — ISO timestamp for
+   * dates, raw text for everything else) plus the row id as the tie
+   * breaker. The cursor also carries the sort+dir it was generated with;
+   * the caller is expected to drop the cursor if the active sort changes.
+   */
+  cursor?: { sortValue: string; id: string };
   /** Page size. Capped at 200. */
   limit?: number;
 }
@@ -49,26 +84,79 @@ export interface ListAdminArticlesParams {
 export interface AdminArticlesPage {
   rows: AdminListedArticle[];
   /** Cursor to pass back to fetch the next page, or `null` if last page. */
-  nextCursor: { publishedAt: Date; id: string } | null;
+  nextCursor: { sortValue: string; id: string } | null;
 }
+
+/**
+ * Maps each sortable column id to (drizzle column, row → cursor-string).
+ * Centralised so the WHERE comparator, the ORDER BY clause and the
+ * cursor encoder all agree on the same set of columns.
+ */
+const SORT_COLUMNS = {
+  publishedAt: {
+    col: articles.publishedAt,
+    toCursor: (r: AdminListedArticle) => r.publishedAt.toISOString(),
+  },
+  ingestedAt: {
+    col: articles.ingestedAt,
+    toCursor: (r: AdminListedArticle) => r.ingestedAt.toISOString(),
+  },
+  // sourceName comes from the joined `sources` table; the alias is what
+  // drizzle generates internally so `asc/desc(sources.name)` works.
+  sourceName: {
+    col: sources.name,
+    toCursor: (r: AdminListedArticle) => r.sourceName,
+  },
+  categoryNameEs: {
+    col: categories.nameEs,
+    toCursor: (r: AdminListedArticle) => r.categoryNameEs ?? "",
+  },
+  status: {
+    col: articles.status,
+    toCursor: (r: AdminListedArticle) => r.status,
+  },
+  title: {
+    col: articles.title,
+    toCursor: (r: AdminListedArticle) => r.title,
+  },
+} as const satisfies Record<
+  AdminArticlesSortColumn,
+  { col: Column; toCursor: (r: AdminListedArticle) => string }
+>;
 
 export async function listAdminArticles(
   params: ListAdminArticlesParams = {},
 ): Promise<AdminArticlesPage> {
   const limit = Math.min(Math.max(params.limit ?? 50, 1), 200);
+  const sort: AdminArticlesSortColumn = params.sort ?? "publishedAt";
+  const dir: AdminArticlesSortDir = params.dir ?? "desc";
+  const sortDef = SORT_COLUMNS[sort];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sortCol = sortDef.col as any;
+  const dirFn = dir === "asc" ? asc : desc;
 
   const conds = [];
   if (params.status) conds.push(eq(articles.status, params.status));
   if (params.categoryId) conds.push(eq(articles.categoryId, params.categoryId));
   if (params.sourceId) conds.push(eq(articles.sourceId, params.sourceId));
   if (params.cursor) {
-    // Lexicographic cursor on (publishedAt desc, id desc): we want rows
-    // strictly older than the cursor, breaking ties by id desc so the
-    // pagination is deterministic across calls.
+    // Keyset pagination on (sortCol <dir>, id <dir>): rows strictly past
+    // the cursor in the active direction, with id as tie-breaker for
+    // determinism when many rows share the sort value (e.g. dates floored
+    // to the minute, or category names that repeat across articles).
+    //
+    // For date columns we parse the cursor as ISO; everything else is
+    // compared as a raw value (drizzle will coerce based on the column
+    // type at SQL-emit time).
+    const isDateCol = sort === "publishedAt" || sort === "ingestedAt";
+    const cursorVal: Date | string = isDateCol
+      ? new Date(params.cursor.sortValue)
+      : params.cursor.sortValue;
+    const cmpStrict = dir === "asc" ? gt : lt;
     conds.push(
       or(
-        lt(articles.publishedAt, params.cursor.publishedAt),
-        and(eq(articles.publishedAt, params.cursor.publishedAt), lt(articles.id, params.cursor.id)),
+        cmpStrict(sortCol, cursorVal),
+        and(eq(sortCol, cursorVal), cmpStrict(articles.id, params.cursor.id)),
       )!,
     );
   }
@@ -103,7 +191,7 @@ export async function listAdminArticles(
 
   const filtered = where ? base.where(where) : base;
   const rows = await filtered
-    .orderBy(desc(articles.publishedAt), desc(articles.id))
+    .orderBy(dirFn(sortCol), dirFn(articles.id))
     // Over-fetch by 1 to know whether there's a next page without a count.
     .limit(limit + 1);
 
@@ -111,7 +199,7 @@ export async function listAdminArticles(
   const sliced = hasMore ? rows.slice(0, limit) : rows;
   const last = sliced[sliced.length - 1];
   const nextCursor =
-    hasMore && last ? { publishedAt: last.publishedAt, id: last.id } : null;
+    hasMore && last ? { sortValue: sortDef.toCursor(last), id: last.id } : null;
 
   return { rows: sliced, nextCursor };
 }
