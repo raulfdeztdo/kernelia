@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { listAdminArticles } from "@/db/queries/admin-articles";
+import {
+  ADMIN_ARTICLES_SORT_COLUMNS,
+  listAdminArticles,
+  type AdminArticlesSortColumn,
+  type AdminArticlesSortDir,
+} from "@/db/queries/admin-articles";
 import { listCategories } from "@/db/queries/categories";
 import { listSourcesForAdmin } from "@/db/queries/sources";
 import { articleStatusEnum, type ArticleStatus } from "@/db/schema";
@@ -14,6 +19,9 @@ const STATUS_TONE: Record<ArticleStatus, string> = {
   hidden: "bg-amber-500/15 text-amber-300",
 };
 
+const DEFAULT_SORT: AdminArticlesSortColumn = "publishedAt";
+const DEFAULT_DIR: AdminArticlesSortDir = "desc";
+
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
@@ -22,21 +30,38 @@ function isStatus(v: unknown): v is ArticleStatus {
   return typeof v === "string" && (articleStatusEnum.enumValues as readonly string[]).includes(v);
 }
 
+function isSortColumn(v: unknown): v is AdminArticlesSortColumn {
+  return (
+    typeof v === "string" &&
+    (ADMIN_ARTICLES_SORT_COLUMNS as readonly string[]).includes(v)
+  );
+}
+
+function isDir(v: unknown): v is AdminArticlesSortDir {
+  return v === "asc" || v === "desc";
+}
+
 export default async function AdminArticlesPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const statusFilter = isStatus(sp.status) ? sp.status : undefined;
   const categoryFilter = typeof sp.category === "string" && sp.category ? sp.category : undefined;
   const sourceFilter = typeof sp.source === "string" && sp.source ? sp.source : undefined;
+  const sort = isSortColumn(sp.sort) ? sp.sort : DEFAULT_SORT;
+  const dir = isDir(sp.dir) ? sp.dir : DEFAULT_DIR;
 
-  // Cursor encoded as `<isoTimestamp>|<id>`. Tolerant: any malformed cursor
-  // is silently dropped (falls back to page 1).
-  const cursor = parseCursor(typeof sp.cursor === "string" ? sp.cursor : undefined);
+  // Cursor encoded as `<sortField>|<sortValue>|<id>`. If the cursor's
+  // sort field doesn't match the active one (because the user clicked a
+  // different header mid-pagination), it is silently dropped — paging
+  // restarts from the top in the new order.
+  const cursor = parseCursor(typeof sp.cursor === "string" ? sp.cursor : undefined, sort);
 
   const [page, allCategories, allSources] = await Promise.all([
     listAdminArticles({
       status: statusFilter,
       categoryId: categoryFilter,
       sourceId: sourceFilter,
+      sort,
+      dir,
       cursor,
       limit: 50,
     }),
@@ -45,6 +70,14 @@ export default async function AdminArticlesPage({ searchParams }: PageProps) {
   ]);
 
   const categoryOptions = allCategories.map((c) => ({ id: c.id, slug: c.slug, nameEs: c.nameEs }));
+
+  // Carry the active filters into every header link so clicking a sort
+  // arrow doesn't blow away `status=failed`, `category=...`, etc.
+  const filtersForHref: FilterParams = {
+    status: statusFilter,
+    category: categoryFilter,
+    source: sourceFilter,
+  };
 
   return (
     <div className="space-y-6">
@@ -101,6 +134,13 @@ export default async function AdminArticlesPage({ searchParams }: PageProps) {
             ))}
           </select>
         </label>
+        {/*
+         * Preserve the active sort across filter changes so the operator
+         * doesn't lose the orden they were eyeballing whenever they tweak
+         * the status / category / fuente dropdowns.
+         */}
+        {sort !== DEFAULT_SORT ? <input type="hidden" name="sort" value={sort} /> : null}
+        {dir !== DEFAULT_DIR ? <input type="hidden" name="dir" value={dir} /> : null}
         <button
           type="submit"
           className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
@@ -119,11 +159,21 @@ export default async function AdminArticlesPage({ searchParams }: PageProps) {
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 font-medium">Título</th>
-              <th className="px-3 py-2 font-medium">Fuente</th>
-              <th className="px-3 py-2 font-medium">Categoría</th>
-              <th className="px-3 py-2 font-medium">Publicado</th>
-              <th className="px-3 py-2 font-medium">Status</th>
+              <SortableHeader col="title" current={sort} dir={dir} filters={filtersForHref}>
+                Título
+              </SortableHeader>
+              <SortableHeader col="sourceName" current={sort} dir={dir} filters={filtersForHref}>
+                Fuente
+              </SortableHeader>
+              <SortableHeader col="categoryNameEs" current={sort} dir={dir} filters={filtersForHref}>
+                Categoría
+              </SortableHeader>
+              <SortableHeader col="publishedAt" current={sort} dir={dir} filters={filtersForHref}>
+                Publicado
+              </SortableHeader>
+              <SortableHeader col="status" current={sort} dir={dir} filters={filtersForHref}>
+                Status
+              </SortableHeader>
               <th className="px-3 py-2 font-medium">Acciones</th>
             </tr>
           </thead>
@@ -161,7 +211,7 @@ export default async function AdminArticlesPage({ searchParams }: PageProps) {
                     {row.categoryNameEs ?? "—"}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums text-muted-foreground">
-                    {row.publishedAt.toISOString().slice(0, 10)}
+                    {formatDateTime(row.publishedAt)}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <span
@@ -192,7 +242,7 @@ export default async function AdminArticlesPage({ searchParams }: PageProps) {
         </span>
         {page.nextCursor ? (
           <Link
-            href={buildNextHref(sp, page.nextCursor)}
+            href={buildNextHref(sort, dir, filtersForHref, page.nextCursor)}
             className="rounded-md border border-border px-3 py-1.5 hover:bg-surface-2"
           >
             Siguiente →
@@ -203,26 +253,107 @@ export default async function AdminArticlesPage({ searchParams }: PageProps) {
   );
 }
 
-function parseCursor(raw: string | undefined): { publishedAt: Date; id: string } | undefined {
+interface FilterParams {
+  status?: ArticleStatus;
+  category?: string;
+  source?: string;
+}
+
+interface SortableHeaderProps {
+  col: AdminArticlesSortColumn;
+  current: AdminArticlesSortColumn;
+  dir: AdminArticlesSortDir;
+  filters: FilterParams;
+  children: React.ReactNode;
+}
+
+function SortableHeader({ col, current, dir, filters, children }: SortableHeaderProps) {
+  // Click toggles direction if we're already on this column, otherwise
+  // moves to this column with the column's natural default: dates default
+  // to desc (newest first), strings/enums default to asc (A→Z).
+  const isActive = current === col;
+  const naturalDefault: AdminArticlesSortDir =
+    col === "publishedAt" || col === "ingestedAt" ? "desc" : "asc";
+  const nextDir: AdminArticlesSortDir = isActive
+    ? dir === "asc"
+      ? "desc"
+      : "asc"
+    : naturalDefault;
+
+  const href = buildSortHref(col, nextDir, filters);
+  const arrow = isActive ? (dir === "asc" ? " ↑" : " ↓") : " ↕";
+
+  return (
+    <th className="px-3 py-2 font-medium">
+      <Link
+        href={href}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${isActive ? "text-foreground" : ""}`}
+        aria-sort={isActive ? (dir === "asc" ? "ascending" : "descending") : "none"}
+      >
+        {children}
+        <span aria-hidden className="text-[10px] opacity-60">
+          {arrow}
+        </span>
+      </Link>
+    </th>
+  );
+}
+
+function buildSortHref(
+  col: AdminArticlesSortColumn,
+  dir: AdminArticlesSortDir,
+  filters: FilterParams,
+): string {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.source) params.set("source", filters.source);
+  if (col !== DEFAULT_SORT) params.set("sort", col);
+  if (dir !== DEFAULT_DIR) params.set("dir", dir);
+  // Sort changes always reset pagination to page 1: a cursor generated
+  // under a different order is meaningless.
+  const qs = params.toString();
+  return qs ? `/admin/articles?${qs}` : "/admin/articles";
+}
+
+function parseCursor(
+  raw: string | undefined,
+  activeSort: AdminArticlesSortColumn,
+): { sortValue: string; id: string } | undefined {
   if (!raw) return undefined;
-  const idx = raw.indexOf("|");
-  if (idx <= 0) return undefined;
-  const iso = raw.slice(0, idx);
-  const id = raw.slice(idx + 1);
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime()) || !id) return undefined;
-  return { publishedAt: d, id };
+  const parts = raw.split("|");
+  if (parts.length < 3) return undefined;
+  const [sortField, sortValue, ...idParts] = parts;
+  // Cursor only valid for the current sort. If the user switched columns
+  // mid-pagination, we silently start over from the top.
+  if (sortField !== activeSort) return undefined;
+  if (!sortValue && sortValue !== "") return undefined;
+  const id = idParts.join("|"); // ids are uuids without `|` but be defensive
+  if (!id) return undefined;
+  return { sortValue, id };
 }
 
 function buildNextHref(
-  sp: Record<string, string | string[] | undefined>,
-  cursor: { publishedAt: Date; id: string },
+  sort: AdminArticlesSortColumn,
+  dir: AdminArticlesSortDir,
+  filters: FilterParams,
+  cursor: { sortValue: string; id: string },
 ): string {
   const params = new URLSearchParams();
-  for (const key of ["status", "category", "source"] as const) {
-    const v = sp[key];
-    if (typeof v === "string" && v) params.set(key, v);
-  }
-  params.set("cursor", `${cursor.publishedAt.toISOString()}|${cursor.id}`);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.source) params.set("source", filters.source);
+  if (sort !== DEFAULT_SORT) params.set("sort", sort);
+  if (dir !== DEFAULT_DIR) params.set("dir", dir);
+  params.set("cursor", `${sort}|${cursor.sortValue}|${cursor.id}`);
   return `/admin/articles?${params.toString()}`;
+}
+
+/**
+ * Display format: `YYYY-MM-DD HH:mm` (UTC). Showing the time disambiguates
+ * articles published the same day (which is most of them on a busy news
+ * cycle) and matches what the sort column now orders by under the hood.
+ */
+function formatDateTime(d: Date): string {
+  return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`;
 }
