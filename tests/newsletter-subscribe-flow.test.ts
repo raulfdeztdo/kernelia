@@ -33,6 +33,11 @@ function freshSubscriber(overrides: Partial<NewsletterSubscriber> = {}): Newslet
     confirmedAt: null,
     unsubscribedAt: null,
     createdAt: new Date(),
+    // Phase 8.H: column is NOT NULL with default `'{}'`; the DB layer
+    // mirrors that with a non-nullable `string[]`. Empty = "all
+    // categories", the default for tests that don't care about the
+    // filter.
+    preferredCategories: [],
     ...overrides,
   };
 }
@@ -149,6 +154,39 @@ describe("subscribeToNewsletter", () => {
     expect(out.kind).toBe("sent");
     if (out.kind === "sent") expect(out.status).toBe("rearmed");
     expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("forwards preferredCategories to upsert (deduped + lowercased)", async () => {
+    // The schema lowercases + dedupes; we verify the flow doesn't
+    // accidentally drop the field on the way to the persistence call.
+    await subscribeToNewsletter({
+      rawEmail: VALID_EMAIL,
+      rawLocale: "es",
+      rawPreferredCategories: ["LLM", "llm", "agents"],
+      ip: "1.2.3.4",
+      origin: "https://kernelia.dev",
+      upsert,
+      send,
+      rateLimitStore: store,
+    });
+    expect(upsert.mock.calls[0]?.[0]?.preferredCategories).toEqual(["llm", "agents"]);
+  });
+
+  it("invalid preferredCategories payload falls back to empty array (best-effort)", async () => {
+    // Same posture as locale: don't 400 the whole subscribe over a
+    // single bad checkbox; just drop the field and behave as "all
+    // categories".
+    await subscribeToNewsletter({
+      rawEmail: VALID_EMAIL,
+      rawLocale: "es",
+      rawPreferredCategories: { not: "an array" },
+      ip: "1.2.3.4",
+      origin: "https://kernelia.dev",
+      upsert,
+      send,
+      rateLimitStore: store,
+    });
+    expect(upsert.mock.calls[0]?.[0]?.preferredCategories).toEqual([]);
   });
 
   it("locale defaults to es when missing or invalid", async () => {

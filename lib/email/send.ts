@@ -147,6 +147,12 @@ interface NewsletterCopy {
   digestIntro: string;
   digestPreheader: (n: number) => string;
   digestUnsubscribe: string;
+  /**
+   * Phase 8.H: footer link label for the per-subscriber preferences
+   * page. Rendered next to the unsubscribe link inside the email
+   * shell. See `emailShell.preferencesLabel`.
+   */
+  digestPreferences: string;
   digestSourcePrefix: string;
   digestEmptyFallback: string;
 }
@@ -165,6 +171,7 @@ const COPY_ES: NewsletterCopy = {
   digestIntro: "Lo más relevante de IA esta semana, según el agente de Kernelia.",
   digestPreheader: (n) => `${n} ${n === 1 ? "artículo" : "artículos"} seleccionados esta semana.`,
   digestUnsubscribe: "Darse de baja",
+  digestPreferences: "Cambiar preferencias",
   digestSourcePrefix: "Fuente",
   digestEmptyFallback:
     "Esta semana no hay artículos por encima del umbral del agente — el envío se ha pospuesto.",
@@ -184,6 +191,7 @@ const COPY_EN: NewsletterCopy = {
   digestIntro: "The most relevant AI signal this week, picked by the Kernelia agent.",
   digestPreheader: (n) => `${n} ${n === 1 ? "article" : "articles"} curated this week.`,
   digestUnsubscribe: "Unsubscribe",
+  digestPreferences: "Change preferences",
   digestSourcePrefix: "Source",
   digestEmptyFallback:
     "No articles cleared the agent's threshold this week — the digest has been skipped.",
@@ -252,6 +260,13 @@ export interface SendWeeklyDigestParams {
   locale: Locale;
   /** Absolute unsubscribe URL (token already embedded). */
   unsubscribeUrl: string;
+  /**
+   * Phase 8.H: absolute URL to the subscriber's preferences page
+   * (token already embedded). When present, renders as a footer link
+   * next to Unsubscribe. Optional so the confirm email and any future
+   * one-off transactional digest can omit it.
+   */
+  preferencesUrl?: string;
   articles: DigestArticle[];
   /** Human-readable week label for the subject line (e.g. "18 May 2026"). */
   weekLabel: string;
@@ -292,13 +307,14 @@ export async function sendWeeklyDigest(
     html: digestHtml({
       articles: params.articles,
       unsubscribeUrl: params.unsubscribeUrl,
+      preferencesUrl: params.preferencesUrl,
       weekLabel: params.weekLabel,
       copy,
       locale: params.locale,
       siteUrl,
       trackingPixelUrl: params.trackingPixelUrl,
     }),
-    text: digestText(params.articles, params.unsubscribeUrl, copy),
+    text: digestText(params.articles, params.unsubscribeUrl, params.preferencesUrl, copy),
   };
 
   const res = await fetchImpl(RESEND_ENDPOINT, {
@@ -342,6 +358,7 @@ function confirmText(link: string, copy: NewsletterCopy): string {
 interface DigestHtmlParams {
   articles: DigestArticle[];
   unsubscribeUrl: string;
+  preferencesUrl?: string;
   weekLabel: string;
   copy: NewsletterCopy;
   locale: Locale;
@@ -352,6 +369,7 @@ interface DigestHtmlParams {
 function digestHtml({
   articles,
   unsubscribeUrl,
+  preferencesUrl,
   weekLabel,
   copy,
   locale,
@@ -372,6 +390,8 @@ ${cards}`;
     preheader: copy.digestPreheader(articles.length),
     unsubscribeUrl,
     unsubscribeLabel: copy.digestUnsubscribe,
+    preferencesUrl,
+    preferencesLabel: copy.digestPreferences,
     trackingPixelUrl,
   });
 }
@@ -416,6 +436,7 @@ ${meta}
 function digestText(
   articles: DigestArticle[],
   unsubscribeUrl: string,
+  preferencesUrl: string | undefined,
   copy: NewsletterCopy,
 ): string {
   const lines: string[] = ["Kernelia", "", copy.digestIntro, ""];
@@ -427,6 +448,9 @@ function digestText(
     lines.push("");
   }
   lines.push("---");
+  if (preferencesUrl) {
+    lines.push(`${copy.digestPreferences}: ${preferencesUrl}`);
+  }
   lines.push(`${copy.digestUnsubscribe}: ${unsubscribeUrl}`);
   return lines.join("\n");
 }

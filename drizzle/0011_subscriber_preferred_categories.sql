@@ -1,0 +1,1 @@
+ALTER TABLE "newsletter_subscribers" ADD COLUMN "preferred_categories" text[] DEFAULT '{}'::text[] NOT NULL;

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { articles, categories, sources, type Locale } from "@/db/schema";
 import { PUBLIC_HIDDEN_CATEGORY_SLUG } from "@/db/queries/articles";
@@ -42,13 +42,28 @@ export interface DigestArticle {
 export const WEEKLY_DIGEST_TOP_N = 10;
 export const WEEKLY_DIGEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Phase 8.H: a normalised key for filter sets so callers can cache
+ * `getWeeklyDigestArticles` results across subscribers who share the
+ * same locale + category selection. Empty array → `<all>` so the
+ * "no preference" case doesn't collide with any explicit filter.
+ *
+ * Exported so `runNewsletter` can use the SAME key for its in-memory
+ * Map without forking the normalisation logic.
+ */
+export function digestCacheKey(locale: Locale, categorySlugs: readonly string[]): string {
+  if (categorySlugs.length === 0) return `${locale}|<all>`;
+  return `${locale}|${[...categorySlugs].sort().join(",")}`;
+}
+
 export async function getWeeklyDigestArticles(
   locale: Locale,
-  opts: { now?: Date; topN?: number } = {},
+  opts: { now?: Date; topN?: number; categorySlugs?: readonly string[] } = {},
 ): Promise<DigestArticle[]> {
   const now = opts.now ?? new Date();
   const topN = opts.topN ?? WEEKLY_DIGEST_TOP_N;
   const since = new Date(now.getTime() - WEEKLY_DIGEST_WINDOW_MS);
+  const categorySlugs = opts.categorySlugs ?? [];
 
   const titleCol = locale === "es" ? articles.titleEs : articles.titleEn;
   const summaryCol = locale === "es" ? articles.summaryEs : articles.summaryEn;
@@ -79,6 +94,15 @@ export async function getWeeklyDigestArticles(
         isNotNull(articles.relevanceScore),
         isNotNull(titleCol),
         gte(articles.ingestedAt, since),
+        // Phase 8.H: empty slug list means "no filter" — send the
+        // global top-N. A non-empty list narrows the pool BEFORE the
+        // top-N cut so a subscriber with only `["llm"]` selected gets
+        // up to 10 LLM articles, not 10 globally-best of which 2 are
+        // LLM. The `other` exclusion above still applies — it's a
+        // sitewide rule, not a category preference.
+        categorySlugs.length > 0
+          ? inArray(categories.slug, [...categorySlugs])
+          : undefined,
       ),
     )
     .orderBy(desc(articles.relevanceScore), desc(articles.ingestedAt))

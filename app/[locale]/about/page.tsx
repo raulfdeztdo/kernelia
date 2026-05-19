@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { isLocale } from "@/i18n/routing";
 import { listSourcesPublic } from "@/db/queries/sources";
 import { CATEGORY_SLUGS } from "@/lib/categories";
+import { PUBLIC_HIDDEN_CATEGORY_SLUG } from "@/db/queries/articles";
 import { getAllPublicChannels } from "@/lib/broadcast-channels";
 import { platformIcon } from "@/components/social-icons";
 import { NewsletterForm } from "@/components/newsletter-form";
@@ -149,7 +150,17 @@ export default async function AboutPage({ params }: AboutPageProps) {
           <p className="mb-3 text-sm text-[color:var(--color-muted-foreground)]">
             {t("newsletter.body")}
           </p>
-          <NewsletterForm locale={locale} />
+          <NewsletterForm
+            locale={locale}
+            // The same publicly-visible category set used everywhere
+            // else on the site (digest, facets, public pages). `other`
+            // is excluded — it's the LLM's catch-all and isn't
+            // user-facing.
+            categorySlugs={CATEGORY_SLUGS.filter((s) => s !== PUBLIC_HIDDEN_CATEGORY_SLUG)}
+            categoryLabels={Object.fromEntries(
+              CATEGORY_SLUGS.map((slug) => [slug, tCategories(slug)]),
+            )}
+          />
         </div>
       </section>
 

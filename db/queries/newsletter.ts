@@ -35,6 +35,14 @@ export interface UpsertSubscriberParams {
    * so old digest emails' unsubscribe links keep working.
    */
   unsubscribeToken: string;
+  /**
+   * Phase 8.H: category slugs the subscriber wants in their weekly
+   * digest. Empty array = no filter (all categories). On re-arm the
+   * upsert overwrites the previous preferences with whatever the
+   * caller passes — that's the contract: subscribing again picks
+   * the new selection.
+   */
+  preferredCategories?: string[];
 }
 
 export type UpsertStatus = "new" | "rearmed" | "already_active";
@@ -75,11 +83,13 @@ export async function upsertSubscriber(
   params: UpsertSubscriberParams,
 ): Promise<UpsertSubscriberResult> {
   const email = normaliseEmail(params.email);
+  const preferredCategories = params.preferredCategories ?? [];
   const row: NewNewsletterSubscriber = {
     email,
     locale: params.locale,
     confirmTokenHash: params.confirmTokenHash,
     unsubscribeToken: params.unsubscribeToken,
+    preferredCategories,
   };
 
   const upserted = await db
@@ -92,6 +102,10 @@ export async function upsertSubscriber(
         confirmedAt: null,
         unsubscribedAt: null,
         locale: params.locale,
+        // Overwrites on re-arm. Contract documented on
+        // UpsertSubscriberParams.preferredCategories: subscribing again
+        // picks the new selection, no merging of old + new.
+        preferredCategories,
       },
       // Only re-arm pending or unsubscribed rows. A confirmed + active row
       // is left untouched — security guard, see fn docstring.
@@ -164,11 +178,72 @@ export async function unsubscribeByToken(
   return updated ?? null;
 }
 
+/**
+ * Phase 8.H: lookup-by-token, used by the `/newsletter/preferences?token=…`
+ * page so the user can see their current state before editing. The
+ * unsubscribe token is the long-lived stable handle (see schema comment);
+ * the confirm token is one-shot and cleared on confirmation, so it can't
+ * serve as the preferences handle.
+ *
+ * Only active rows are returned — a confirmed AND not-unsubscribed
+ * subscriber. Anyone else hitting the page sees the same "link no longer
+ * valid" screen, matching the existing oracle-avoidance posture.
+ */
+export async function getActiveSubscriberByUnsubscribeToken(
+  unsubscribeToken: string,
+): Promise<NewsletterSubscriber | null> {
+  const [row] = await db
+    .select()
+    .from(newsletterSubscribers)
+    .where(
+      and(
+        eq(newsletterSubscribers.unsubscribeToken, unsubscribeToken),
+        isNotNull(newsletterSubscribers.confirmedAt),
+        isNull(newsletterSubscribers.unsubscribedAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Phase 8.H: persist a subscriber's category preferences. Token-scoped
+ * (same long-lived unsubscribe token used by the preferences page link)
+ * and only mutates active rows — a pending/unsubscribed row is treated
+ * as "no match" to keep this from being an oracle. Returns the updated
+ * row on success, `null` when no active row matched the token.
+ */
+export async function updatePreferredCategoriesByToken(
+  unsubscribeToken: string,
+  preferredCategories: string[],
+): Promise<NewsletterSubscriber | null> {
+  const [updated] = await db
+    .update(newsletterSubscribers)
+    .set({ preferredCategories })
+    .where(
+      and(
+        eq(newsletterSubscribers.unsubscribeToken, unsubscribeToken),
+        isNotNull(newsletterSubscribers.confirmedAt),
+        isNull(newsletterSubscribers.unsubscribedAt),
+      ),
+    )
+    .returning();
+  return updated ?? null;
+}
+
 export interface ActiveSubscriber {
   id: string;
   email: string;
   locale: Locale;
   unsubscribeToken: string;
+  /**
+   * Phase 8.H: category slugs this subscriber wants in their weekly
+   * digest. Empty array = no filter, send all categories (see
+   * schema/queries upsert contract). The digest job reads this and
+   * either passes it to `getWeeklyDigestArticles` as a filter or
+   * skips the filter when empty.
+   */
+  preferredCategories: string[];
 }
 
 /**
@@ -182,6 +257,7 @@ export async function listActiveSubscribers(): Promise<ActiveSubscriber[]> {
       email: newsletterSubscribers.email,
       locale: newsletterSubscribers.locale,
       unsubscribeToken: newsletterSubscribers.unsubscribeToken,
+      preferredCategories: newsletterSubscribers.preferredCategories,
     })
     .from(newsletterSubscribers)
     .where(

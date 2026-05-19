@@ -19,11 +19,17 @@ export const dynamic = "force-dynamic";
  * and we redirect back to /about?subscribed=1.
  */
 export async function POST(req: Request): Promise<Response> {
-  const { email, locale, isJson } = await readBody(req);
+  const { email, locale, preferredCategories, isJson } = await readBody(req);
   const origin = pickOrigin(req);
   const ip = pickClientIp(req);
 
-  const outcome = await subscribeToNewsletter({ rawEmail: email, rawLocale: locale, origin, ip });
+  const outcome = await subscribeToNewsletter({
+    rawEmail: email,
+    rawLocale: locale,
+    rawPreferredCategories: preferredCategories,
+    origin,
+    ip,
+  });
 
   if (isJson) {
     switch (outcome.kind) {
@@ -63,29 +69,43 @@ export async function POST(req: Request): Promise<Response> {
   }
 }
 
-async function readBody(
-  req: Request,
-): Promise<{ email: unknown; locale: unknown; isJson: boolean }> {
+async function readBody(req: Request): Promise<{
+  email: unknown;
+  locale: unknown;
+  preferredCategories: unknown;
+  isJson: boolean;
+}> {
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     try {
       const body = (await req.json()) as Record<string, unknown>;
-      return { email: body.email, locale: body.locale, isJson: true };
+      return {
+        email: body.email,
+        locale: body.locale,
+        preferredCategories: body.preferredCategories,
+        isJson: true,
+      };
     } catch {
-      return { email: undefined, locale: undefined, isJson: true };
+      return { email: undefined, locale: undefined, preferredCategories: undefined, isJson: true };
     }
   }
   try {
     const form = await req.formData();
     const email = form.get("email");
     const locale = form.get("locale");
+    // form-encoded duplicate keys → `getAll`. Empty list (no boxes
+    // ticked) lands as [] which the flow already treats as "all".
+    const preferredCategories = form.getAll("preferredCategories").filter(
+      (v): v is string => typeof v === "string",
+    );
     return {
       email: typeof email === "string" ? email : undefined,
       locale: typeof locale === "string" ? locale : undefined,
+      preferredCategories,
       isJson: false,
     };
   } catch {
-    return { email: undefined, locale: undefined, isJson: false };
+    return { email: undefined, locale: undefined, preferredCategories: undefined, isJson: false };
   }
 }
 

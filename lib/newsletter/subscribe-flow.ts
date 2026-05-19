@@ -21,6 +21,23 @@ const log = createLogger("newsletter_subscribe");
 
 export const subscribeEmailSchema = z.string().trim().toLowerCase().email().max(254);
 export const subscribeLocaleSchema = z.enum(["es", "en"]);
+/**
+ * Phase 8.H: each preferred category is a slug — lowercase letters,
+ * digits and hyphens. We accept up to 32 (way above the current
+ * category count) and silently de-duplicate. An empty array stays
+ * empty: that's the "all categories" signal at the DB layer.
+ */
+export const subscribePreferredCategoriesSchema = z
+  .array(
+    z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[a-z0-9-]+$/, "category slug")
+      .max(48),
+  )
+  .max(32)
+  .transform((arr) => Array.from(new Set(arr)));
 
 // Per-IP: throttle a single client. Per-email: throttle a distributed
 // attempt to spam someone's inbox with confirmation links.
@@ -37,6 +54,14 @@ export type SubscribeOutcome =
 export interface SubscribeParams {
   rawEmail: unknown;
   rawLocale: unknown;
+  /**
+   * Phase 8.H: optional list of category slugs the subscriber wants
+   * in the weekly digest. Invalid items are silently dropped (best-
+   * effort form, like locale); a fully-invalid payload is treated as
+   * "no preference" (= empty array = all categories). Validation
+   * happens inside the flow via `subscribePreferredCategoriesSchema`.
+   */
+  rawPreferredCategories?: unknown;
   ip: string;
   origin: string;
   // Injectables for tests.
@@ -61,6 +86,15 @@ export async function subscribeToNewsletter(params: SubscribeParams): Promise<Su
   // back to `es` rather than 400'ing, since the form is best-effort.
   const localeParsed = subscribeLocaleSchema.safeParse(params.rawLocale);
   const locale: Locale = localeParsed.success ? localeParsed.data : "es";
+
+  // Best-effort like locale: silently fall back to [] (= all categories)
+  // on an invalid payload instead of 400'ing the whole subscribe.
+  const preferredCategoriesParsed = subscribePreferredCategoriesSchema.safeParse(
+    params.rawPreferredCategories ?? [],
+  );
+  const preferredCategories = preferredCategoriesParsed.success
+    ? preferredCategoriesParsed.data
+    : [];
 
   const now = params.now ?? Date.now();
   const store = params.rateLimitStore;
@@ -94,6 +128,7 @@ export async function subscribeToNewsletter(params: SubscribeParams): Promise<Su
       // upsert keeps the existing one (see the query). Pass our generated
       // plaintext so a brand-new row gets a valid token.
       unsubscribeToken: unsubscribeTokenPair.plaintext,
+      preferredCategories,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
