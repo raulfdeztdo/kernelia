@@ -47,17 +47,17 @@ export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
 
   return (
     <div
-      className="-mx-4 overflow-x-auto px-4"
+      className=""
       role="group"
       aria-label={tHome("filterCategoriesAria")}
     >
-      <div className="flex min-w-min gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => push([])}
           aria-pressed={selected.length === 0}
           className={cn(
-            "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium uppercase tracking-wider transition",
+            "rounded-full border px-3.5 py-1.5 text-xs font-medium uppercase tracking-wider transition",
             selected.length === 0
               ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-accent-foreground)]"
               : "border-[color:var(--color-border)] text-[color:var(--color-muted-foreground)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-foreground)]",
@@ -75,7 +75,7 @@ export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
               onClick={() => toggle(slug)}
               aria-pressed={active}
               className={cn(
-                "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium uppercase tracking-wider transition",
+                "rounded-full border px-3.5 py-1.5 text-xs font-medium uppercase tracking-wider transition",
                 active
                   ? "border-transparent text-[color:var(--color-background)]"
                   : "border-[color:var(--color-border)] text-[color:var(--color-muted-foreground)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-foreground)]",
