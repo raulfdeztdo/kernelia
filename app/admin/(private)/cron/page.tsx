@@ -1,26 +1,10 @@
 import Link from "next/link";
 import { listCronRuns } from "@/db/queries/cron-runs";
-import type { CronJob, CronRun, CronRunStatus } from "@/db/schema";
+import type { CronJob, CronRunStatus } from "@/db/schema";
 import { CronDispatchButtons } from "@/components/admin/cron-dispatch-buttons";
+import { CronRunRow, summariseRun } from "@/components/admin/cron-run-row";
 
 export const dynamic = "force-dynamic";
-
-const JOB_LABEL: Record<CronJob, string> = {
-  ingest: "Ingest",
-  classify: "Classify",
-  broadcast: "Broadcast",
-  newsletter: "Newsletter",
-};
-const STATUS_LABEL: Record<CronRunStatus, string> = {
-  ok: "OK",
-  partial: "Parcial",
-  failed: "Fallido",
-};
-const STATUS_TONE: Record<CronRunStatus, string> = {
-  ok: "text-accent",
-  partial: "text-amber-400",
-  failed: "text-red-400",
-};
 
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -29,7 +13,7 @@ interface PageProps {
 const isJob = (v: unknown): v is CronJob =>
   v === "ingest" || v === "classify" || v === "broadcast" || v === "newsletter";
 const isStatus = (v: unknown): v is CronRunStatus =>
-  v === "ok" || v === "partial" || v === "failed";
+  v === "running" || v === "ok" || v === "partial" || v === "failed";
 
 export default async function CronMonitorPage({ searchParams }: PageProps) {
   const sp = await searchParams;
@@ -70,14 +54,30 @@ export default async function CronMonitorPage({ searchParams }: PageProps) {
                 </td>
               </tr>
             ) : (
-              runs.map((r) => <Row key={r.id} run={r} />)
+              runs.map((r) => (
+                <CronRunRow
+                  key={r.id}
+                  run={{
+                    id: r.id,
+                    job: r.job,
+                    status: r.status,
+                    startedAt: r.startedAt.toISOString(),
+                    finishedAt: r.finishedAt.toISOString(),
+                    durationMs: r.durationMs,
+                    errorMessage: r.errorMessage,
+                  }}
+                  summaryOneLiner={summariseRun(r)}
+                />
+              ))
             )}
           </tbody>
         </table>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Mostrando las 50 ejecuciones más recientes. Las anteriores se mantienen en la tabla{" "}
+        Mostrando las 50 ejecuciones más recientes. Haz clic en una fila para ver
+        el detalle: noticias ingestadas/clasificadas o posts enviados por ese
+        tick. Las anteriores se mantienen en la tabla{" "}
         <code>cron_runs</code> de Supabase pero no se muestran aquí en V1.
       </p>
     </div>
@@ -109,6 +109,7 @@ function FilterBar({ job, status }: { job?: CronJob; status?: CronRunStatus }) {
           className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
         >
           <option value="">Todos</option>
+          <option value="running">Ejecutando</option>
           <option value="ok">OK</option>
           <option value="partial">Parcial</option>
           <option value="failed">Fallido</option>
@@ -128,56 +129,4 @@ function FilterBar({ job, status }: { job?: CronJob; status?: CronRunStatus }) {
       </Link>
     </form>
   );
-}
-
-function Row({ run }: { run: CronRun }) {
-  const summary = summariseRun(run);
-  return (
-    <tr className="border-t border-border align-top last:border-b">
-      <td className="px-3 py-2 tabular-nums">
-        <time dateTime={run.startedAt.toISOString()}>
-          {run.startedAt.toISOString().replace("T", " ").slice(0, 19)}
-        </time>
-      </td>
-      <td className="px-3 py-2">{JOB_LABEL[run.job]}</td>
-      <td className={`px-3 py-2 font-medium ${STATUS_TONE[run.status]}`}>
-        {STATUS_LABEL[run.status]}
-      </td>
-      <td className="px-3 py-2 tabular-nums text-muted-foreground">
-        {(run.durationMs / 1000).toFixed(1)}s
-      </td>
-      <td className="px-3 py-2 text-xs">
-        <pre className="whitespace-pre-wrap break-words text-muted-foreground">{summary}</pre>
-        {run.errorMessage ? (
-          <pre className="mt-1 whitespace-pre-wrap break-words text-red-400">
-            {run.errorMessage}
-          </pre>
-        ) : null}
-      </td>
-    </tr>
-  );
-}
-
-/**
- * Renders the JSON summary as a compact one-liner with the columns that
- * actually matter for each job, so the operator doesn't have to expand
- * raw JSON to spot a regression.
- */
-function summariseRun(run: CronRun): string {
-  const s = run.summary as Record<string, unknown>;
-  if (run.job === "classify") {
-    const tokens = (s["tokens"] as { total?: number } | undefined)?.total ?? 0;
-    return `processed=${s["processed"] ?? 0}  classified=${s["classified"] ?? 0}  dedupedHidden=${s["dedupedHidden"] ?? 0}  dedupedReplaced=${s["dedupedReplaced"] ?? 0}  failed=${s["failed"] ?? 0}  timedOut=${s["timedOut"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? false}  tokens=${tokens}`;
-  }
-  if (run.job === "broadcast") {
-    const posted = (s["posted"] as Record<string, number> | undefined) ?? {};
-    return `mastodon=${posted["mastodon"] ?? 0}  bluesky=${posted["bluesky"] ?? 0}  telegram=${posted["telegram"] ?? 0}  failed=${s["failed"] ?? 0}  skipped=${s["skipped"] ?? 0}`;
-  }
-  if (run.job === "newsletter") {
-    const dc = (s["digestCounts"] as { es?: number; en?: number } | undefined) ?? {};
-    return `attempted=${s["attempted"] ?? 0}  sent=${s["sent"] ?? 0}  failed=${s["failed"] ?? 0}  skippedNoArticles=${s["skippedNoArticles"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? 0}  articles[es=${dc.es ?? 0},en=${dc.en ?? 0}]`;
-  }
-  // ingest
-  const totals = (s["totals"] as Record<string, unknown> | undefined) ?? {};
-  return `fetched=${totals["fetched"] ?? 0}  inserted=${totals["inserted"] ?? 0}  failedSources=${totals["failedSources"] ?? 0}`;
 }

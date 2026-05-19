@@ -50,6 +50,13 @@
       "when": 1779120489763,
       "tag": "0006_newsletter",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779205054305,
+      "tag": "0007_cron_run_traceability",
+      "breakpoints": true
     }
   ]
 }

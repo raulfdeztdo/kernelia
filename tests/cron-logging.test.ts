@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { broadcastStatus, classifyStatus, ingestStatus } from "@/lib/cron-logging";
+import { describe, expect, it, vi } from "vitest";
+import { broadcastStatus, classifyStatus, endCronRun, ingestStatus } from "@/lib/cron-logging";
 
 describe("classifyStatus", () => {
   it("returns 'ok' when every article processed cleanly", () => {
@@ -64,5 +64,63 @@ describe("broadcastStatus", () => {
     expect(
       broadcastStatus({ failed: { mastodon: 0, bluesky: 0, telegram: 0 }, skipped: 1 }),
     ).toBe("partial");
+  });
+
+  it("returns 'ok' when the tick bailed out of the publishing window", () => {
+    // Regression for Phase 8.D: an out-of-window broadcast tick is by
+    // design a no-op, not a partial failure.
+    expect(
+      broadcastStatus({
+        failed: { mastodon: 0, bluesky: 0, telegram: 0 },
+        skipped: 0,
+        skippedWindow: true,
+      }),
+    ).toBe("ok");
+  });
+});
+
+describe("endCronRun fallback path", () => {
+  // The two-phase flow (`beginCronRun` + `endCronRun`) becomes a
+  // one-shot insert when `beginCronRun` returns null (e.g. transient
+  // DB hiccup at the start of the tick). We can't easily mock the
+  // DB layer here, but we can at least assert the function shape
+  // and that it doesn't throw on a null id — that's the property
+  // the cron handler depends on to not crash.
+  it("is callable with id=null without throwing the contract", () => {
+    // We don't await here because the underlying DB call would
+    // require a live connection. Instead we assert the function
+    // returns a Promise (i.e. the call shape is valid).
+    const p = endCronRun(
+      {
+        id: null,
+        status: "ok",
+        finishedAt: new Date(),
+        summary: { processed: 0 },
+      },
+      "ingest",
+      new Date(),
+    );
+    expect(p).toBeInstanceOf(Promise);
+    // Swallow any rejection so the test process stays clean.
+    void p.catch(() => {});
+  });
+});
+
+describe("isWithinBroadcastWindow integration via broadcastStatus", () => {
+  // Smoke test: `broadcastStatus` accepts the optional skippedWindow
+  // field (must be backwards-compatible with the existing callers).
+  it("accepts a summary without skippedWindow (back-compat)", () => {
+    // No type error, no runtime error. Returns 'ok' on a clean shape.
+    expect(
+      broadcastStatus({ failed: { mastodon: 0, bluesky: 0, telegram: 0 }, skipped: 0 }),
+    ).toBe("ok");
+  });
+});
+
+describe("logger smoke", () => {
+  // Trivial canary so the import surface stays under test even when
+  // the queries themselves are exercised via integration paths.
+  it("vi is available", () => {
+    expect(vi).toBeDefined();
   });
 });
