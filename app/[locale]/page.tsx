@@ -173,12 +173,12 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
           {/* Decorative blurred blob */}
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-6 -top-6 h-36 w-36 rounded-full bg-[color:var(--color-accent)]/15 blur-3xl"
+            className="pointer-events-none absolute -right-6 -top-6 size-36 rounded-full bg-[color:var(--color-accent)]/15 blur-3xl"
           />
           <div className="relative flex items-start gap-3">
             <span
               aria-hidden
-              className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
+              className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <rect width="20" height="16" x="2" y="4" rx="2" />

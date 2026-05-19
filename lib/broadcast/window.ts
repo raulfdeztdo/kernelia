@@ -28,16 +28,24 @@ export const BROADCAST_LOCAL_HOURS: ReadonlySet<number> = new Set([
 export const BROADCAST_TIMEZONE = "Europe/Madrid";
 
 /**
+ * Module-level formatter — hoisted so the `Intl.DateTimeFormat` object is
+ * created once per process rather than once per call. Safe because the
+ * options are fixed; only the `Date` argument changes on each `formatToParts`
+ * call.
+ */
+const _madridHourFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: BROADCAST_TIMEZONE,
+  hour: "2-digit",
+  // `hourCycle: "h23"` forces 00-23 regardless of locale defaults.
+  hourCycle: "h23",
+});
+
+/**
  * Returns the hour-of-day (0-23) in Europe/Madrid for the given instant.
  * Uses `Intl.DateTimeFormat` so DST is handled transparently.
  */
 export function getMadridHour(now: Date): number {
-  // `hourCycle: "h23"` forces 00-23 regardless of locale defaults.
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: BROADCAST_TIMEZONE,
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
+  const parts = _madridHourFormatter.formatToParts(now);
   const hourPart = parts.find((p) => p.type === "hour");
   if (!hourPart) {
     // Should never happen with the options above; fail loud rather than
