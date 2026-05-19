@@ -28,6 +28,10 @@
     "loadMore": "Load more",
     "loadingMore": "Loading…",
     "loadMoreError": "We couldn't load more articles. Try again.",
+    "newsletterCallout": {
+      "title": "Get the weekly digest",
+      "body": "Every Sunday, the 10 most relevant articles of the week in your inbox. Email confirmation and one-click unsubscribe."
+    },
     "noResults": {
       "title": "Nothing here",
       "body": "No articles match those filters. Try widening your search."
@@ -177,10 +181,43 @@
       "backHome": "Back to home"
     }
   },
+  "privacy": {
+    "title": "Privacy notice",
+    "intro": "Kernelia collects the minimum amount of data possible. We don't use third-party analytics, we don't share data with advertisers, and we only store what's strictly needed for the newsletter to work.",
+    "lastUpdated": "Last updated: {date}",
+    "sections": {
+      "newsletter": {
+        "title": "Weekly newsletter",
+        "body": "When you subscribe we store your email, the language you picked and the list of categories you'd like to receive. Plus a random token so you can unsubscribe or change preferences in one click, no password. That's it."
+      },
+      "tracking": {
+        "title": "Tracking pixel",
+        "body": "Each weekly digest embeds a 1x1 transparent pixel that tells us whether you opened it. We only record the first open per send (timestamp). We don't log IP or mail client. Apple Mail Privacy and other clients that pre-load images inflate this metric — we treat it as directional, not reliable."
+      },
+      "retention": {
+        "title": "Retention and deletion",
+        "body": "If you unsubscribe we mark the row inactive but keep the email so we don't accidentally re-send after an accidental resubscribe. You can request full deletion by contacting the author (link in the footer). Catalog articles are purged after two years from their publish date; articles the agent rejects are deleted after seven days."
+      },
+      "thirdParties": {
+        "title": "Third parties",
+        "body": "We use Resend to deliver confirmation and digest emails. We use Supabase as our database. Both services see your email strictly to the extent needed to deliver the email or persist the subscription. There are no other processors."
+      },
+      "cookies": {
+        "title": "Cookies",
+        "body": "The site doesn't use tracking cookies. The only cookie is the admin session, which is irrelevant for anonymous visitors."
+      },
+      "contact": {
+        "title": "Contact",
+        "body": "For any question or request (access, rectification, deletion) reach out to the project author via the footer links."
+      }
+    },
+    "backHome": "Back to home"
+  },
   "footer": {
     "source": "Source code",
     "about": "About",
     "stats": "Stats",
+    "privacy": "Privacy",
     "rights": "© {year} Kernelia"
   }
 }

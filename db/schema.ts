@@ -117,6 +117,56 @@ export type NewCategory = typeof categories.$inferInsert;
 export type Article = typeof articles.$inferSelect;
 export type NewArticle = typeof articles.$inferInsert;
 
+/**
+ * Phase 8.I tombstones for hard-deleted articles.
+ *
+ * Why: `runCleanup` periodically purges articles (failed/hidden after 7d,
+ * any status with `published_at < currentYear - 2`). Without a tombstone
+ * table, the next ingest tick would happily re-insert any of those URLs
+ * the moment their source feed surfaced them again — the unique
+ * constraint on `url_hash` only fires while the row actually exists.
+ *
+ * Contract: every hard-delete inserts a row here keyed by `url_hash` (the
+ * same SHA-256 of the canonicalised URL that `articles` uses). The ingest
+ * looks the batch's hashes up here BEFORE INSERT and drops any match.
+ *
+ * Retention: forever. The rows are tiny (~80 bytes) and there is no good
+ * "safe-to-resurface" cutoff — if we decided 30 days ago that an article
+ * wasn't worth keeping, that decision still applies if its source
+ * re-publishes it next year. If the table ever gets uncomfortably large
+ * (millions of rows), we can revisit; for now small + simple wins.
+ *
+ * The `reason` and `deletedInRun` columns are diagnostic only, never
+ * read by hot paths.
+ */
+export const deletedUrls = pgTable(
+  "deleted_urls",
+  {
+    urlHash: text("url_hash").primaryKey(),
+    /** Original URL (canonical form) kept for human grepability in admin logs. */
+    url: text("url").notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Free-form tag set by whoever did the delete. Today: `retention_failed`,
+     * `retention_hidden`, `retention_published_year`. Helpful in postmortems
+     * when a legit article disappears and we need to know which rule fired.
+     */
+    reason: text("reason").notNull(),
+    /** Which cleanup tick produced this tombstone (NULL for manual deletes). */
+    deletedInRun: uuid("deleted_in_run").references(() => cronRuns.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    // `deletedAt` index supports admin queries that want a recent-tombstones
+    // view; no other access patterns need indexing.
+    index("deleted_urls_deleted_at_idx").on(t.deletedAt.desc()),
+  ],
+);
+
+export type DeletedUrl = typeof deletedUrls.$inferSelect;
+export type NewDeletedUrl = typeof deletedUrls.$inferInsert;
+
 // ---------------------------------------------------------------------------
 // Admin backoffice (Phase 7)
 // ---------------------------------------------------------------------------

@@ -28,6 +28,10 @@
     "loadMore": "Cargar más",
     "loadingMore": "Cargando…",
     "loadMoreError": "No pudimos cargar más noticias. Inténtalo de nuevo.",
+    "newsletterCallout": {
+      "title": "Recibe el digest semanal",
+      "body": "Cada domingo, los 10 artículos más relevantes de la semana en tu bandeja. Confirmación por email y baja en un clic."
+    },
     "noResults": {
       "title": "Nada por aquí",
       "body": "No encontramos noticias con esos filtros. Prueba con menos restricciones."
@@ -181,6 +185,39 @@
     "source": "Código fuente",
     "about": "Sobre el proyecto",
     "stats": "Estadísticas",
+    "privacy": "Privacidad",
     "rights": "© {year} Kernelia"
+  },
+  "privacy": {
+    "title": "Aviso de privacidad",
+    "intro": "Kernelia recoge la cantidad mínima de datos posible. No usamos analytics de terceros, no compartimos información con anunciantes y solo guardamos lo imprescindible para que la newsletter funcione.",
+    "lastUpdated": "Última actualización: {date}",
+    "sections": {
+      "newsletter": {
+        "title": "Newsletter semanal",
+        "body": "Si te suscribes a la newsletter guardamos tu email, el idioma elegido y la lista de categorías que quieres recibir. También un token aleatorio para que puedas darte de baja o cambiar tus preferencias con un clic, sin contraseña. Nada más."
+      },
+      "tracking": {
+        "title": "Pixel de seguimiento",
+        "body": "Cada digest semanal incluye un pixel 1x1 transparente que nos dice si lo abriste. Solo guardamos la primera apertura por envío (timestamp). No registramos IP ni cliente de correo. Apple Mail Privacy y otros clientes que pre-cargan imágenes inflan esta métrica — la tratamos como señal directional, no como dato fiable."
+      },
+      "retention": {
+        "title": "Retención y borrado",
+        "body": "Si te das de baja marcamos la fila como inactiva pero conservamos el email para no enviarte por error tras una resuscripción accidental. Puedes pedirnos el borrado total escribiendo al autor (enlace en el pie). Las noticias del catálogo se purgan tras dos años de su fecha de publicación; las que el agente descarta se borran a los siete días."
+      },
+      "thirdParties": {
+        "title": "Terceros",
+        "body": "Usamos Resend para entregar los emails de confirmación y los digest. Usamos Supabase como base de datos. Ambos servicios reciben tu email solo en la medida en que es necesario para entregar el correo o persistir la suscripción. No hay otros procesadores."
+      },
+      "cookies": {
+        "title": "Cookies",
+        "body": "El sitio no usa cookies de seguimiento. La única cookie posible es la de sesión de administrador, irrelevante para los visitantes anónimos."
+      },
+      "contact": {
+        "title": "Contacto",
+        "body": "Cualquier duda o solicitud (acceso, rectificación, supresión de datos) puede dirigirse al autor del proyecto mediante los enlaces del pie de página."
+      }
+    },
+    "backHome": "Volver al inicio"
   }
 }
