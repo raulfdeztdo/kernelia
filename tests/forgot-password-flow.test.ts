@@ -1,3 +1,8 @@
+// Rate-limit tests must drive attempts SEQUENTIALLY: the limiter is a
+// sliding window and the N+1 hit is exactly what verifies the cap.
+// Parallelising would race the counter against itself.
+/* eslint-disable react-review/async-await-in-loop */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   FORGOT_PASSWORD_PER_EMAIL_LIMIT,

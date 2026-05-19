@@ -1,3 +1,9 @@
+// Rate-limit tests must drive attempts SEQUENTIALLY: the limiter is a
+// sliding window keyed on IP + email, and the N+1 hit is exactly what
+// verifies the cap. Parallelising would race the counter against itself
+// and invalidate the test. Disabled file-wide for `async-await-in-loop`.
+/* eslint-disable react-review/async-await-in-loop */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LOGIN_PER_EMAIL_FAILURE_LIMIT,

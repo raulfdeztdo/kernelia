@@ -1,5 +1,11 @@
 "use client";
 
+// This module is consumed exclusively via `components/admin/charts/index.tsx`,
+// which wraps every export here in `next/dynamic({ ssr: false })`. Recharts
+// therefore lives in its own lazy chunk; the static `import "recharts"` you
+// see below is the implementation side, not the entry-point, so React
+// Review's `prefer-dynamic-import` is a false positive here.
+// eslint-disable-next-line react-review/prefer-dynamic-import
 import {
   CartesianGrid,
   Legend,

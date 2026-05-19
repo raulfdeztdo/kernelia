@@ -172,7 +172,15 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   // Loaded ONCE per cron tick to keep DB pressure flat. We also push every
   // article we classify this tick into `recents` so a Wired/Ars/TechCrunch
   // burst arriving in the same tick still dedupes against itself.
-  const recents: RecentDedupeRow[] = dedupeEnabled ? await fetchRecentForDedupe() : [];
+  // Map keyed by article id (not array): `match.matchedId` lookups and
+  // in-tick mutations stay O(1), avoiding the `find()/findIndex()` scan
+  // that lit up React Review's `js-index-maps` rule. Iteration order is
+  // insertion order, which is what `findNearDuplicate` cares about (FIFO
+  // when two near-duplicates arrive in the same tick).
+  const recentsById = new Map<string, RecentDedupeRow>();
+  if (dedupeEnabled) {
+    for (const r of await fetchRecentForDedupe()) recentsById.set(r.id, r);
+  }
   const delayBetweenMs = options.delayBetweenMs ?? 0;
   // `Infinity` disables the budget — used by the local CLI runner.
   const maxWallTimeMs = options.maxWallTimeMs ?? Infinity;
@@ -204,6 +212,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   // a false positive in this exact spot. See app/api/cron/classify
   // for the live `DEFAULT_DELAY_BETWEEN_MS` value and the related
   // Vercel 60s function-cap reasoning.
+  /* eslint-disable react-review/async-await-in-loop */
   for (const [index, article] of pending.entries()) {
     // Budget check BEFORE the inter-article sleep so we don't sit
     // idle just to find out we have no time to actually classify.
@@ -271,11 +280,11 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       const match = dedupeEnabled
         ? findNearDuplicate(
             { id: article.id, title: payload.titleEs },
-            recents.map((r) => ({ id: r.id, title: r.titleEs })),
+            Array.from(recentsById.values(), (r) => ({ id: r.id, title: r.titleEs })),
           )
         : null;
       if (match) {
-        const matchedRow = recents.find((r) => r.id === match.matchedId);
+        const matchedRow = recentsById.get(match.matchedId);
         const candidateHasImage = !!article.imageUrl;
         const originalHasImage = !!matchedRow?.imageUrl;
         const originalIsClassified = matchedRow?.isClassified ?? false;
@@ -288,21 +297,20 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
 
         if (shouldReplace) {
           await onClassifiedReplacingDuplicate(article.id, payload, match);
-          // Swap winner in the in-memory `recents`: the new row takes the
-          // classified slot, the old one is hidden but kept (its title
-          // still needs to be visible to subsequent candidates in the
-          // same tick so we don't promote a third near-duplicate behind
-          // it).
-          const idx = recents.findIndex((r) => r.id === match.matchedId);
-          if (idx >= 0) {
-            recents[idx] = {
+          // Swap winner in the in-memory `recentsById`: the new row takes
+          // the classified slot, the old one is hidden but kept (its
+          // title still needs to be visible to subsequent candidates in
+          // the same tick so we don't promote a third near-duplicate
+          // behind it).
+          if (matchedRow) {
+            recentsById.set(match.matchedId, {
               id: match.matchedId,
-              titleEs: matchedRow!.titleEs,
-              imageUrl: matchedRow!.imageUrl,
+              titleEs: matchedRow.titleEs,
+              imageUrl: matchedRow.imageUrl,
               isClassified: false,
-            };
+            });
           }
-          recents.push({
+          recentsById.set(article.id, {
             id: article.id,
             titleEs: payload.titleEs,
             imageUrl: article.imageUrl,
@@ -318,12 +326,12 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
           });
         } else {
           await onHiddenAsDuplicate(article.id, payload, match);
-          // Push the hidden article into `recents` too — so a third
-          // source arriving in the same tick can dedupe against this one
-          // even though it's hidden. The dedupe query already includes
-          // hidden rows from the DB; this keeps in-tick visibility
-          // consistent.
-          recents.push({
+          // Push the hidden article into `recentsById` too: a third
+          // source arriving in the same tick can dedupe against this
+          // one even though it's hidden. The dedupe query already
+          // includes hidden rows from the DB; this keeps in-tick
+          // visibility consistent.
+          recentsById.set(article.id, {
             id: article.id,
             titleEs: payload.titleEs,
             imageUrl: article.imageUrl,
@@ -339,7 +347,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         }
       } else {
         await onClassified(article.id, payload);
-        recents.push({
+        recentsById.set(article.id, {
           id: article.id,
           titleEs: payload.titleEs,
           imageUrl: article.imageUrl,
@@ -396,6 +404,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       }
     }
   }
+  /* eslint-enable react-review/async-await-in-loop */
 
   const finishedAt = new Date();
   const summary: ClassifySummary = {

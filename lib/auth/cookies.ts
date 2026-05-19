@@ -59,6 +59,10 @@ export function readSessionCookieFromHeader(cookieHeader: string | null): string
   const pairs = cookieHeader.split(";");
   for (const raw of pairs) {
     const part = raw.trim();
+    // `String.prototype.indexOf` on a ~30-char cookie pair, not
+    // `Array.prototype.indexOf` in a hot lookup loop, so `js-set-map-lookups`
+    // is a false positive here.
+    // eslint-disable-next-line react-review/js-set-map-lookups
     const eq = part.indexOf("=");
     if (eq <= 0) continue;
     const name = part.slice(0, eq);

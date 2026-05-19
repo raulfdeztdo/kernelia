@@ -52,7 +52,11 @@ export default async function AdminDashboardPage() {
   // locally as well: same 10 queries took ~660ms in parallel on one run
   // and never resolved on the next. Serial total is ~1.5s locally, well
   // inside the platform cap, with zero pool contention. Plenty of
-  // headroom for a dashboard that's hit rarely.
+  // headroom for a dashboard that's hit rarely. The `server-sequential-
+  // independent-await` and `async-parallel` warnings React Review fires
+  // on each line below are deliberate — disabling per-line to keep the
+  // intent local instead of hiding the rule globally.
+  /* eslint-disable react-review/async-parallel, react-review/server-sequential-independent-await */
   const health = await probeHealth();
   const statusCounts = await getArticleStatusCounts();
   const byCategory = await getCategoryBreakdown();
@@ -63,6 +67,7 @@ export default async function AdminDashboardPage() {
   const broadcastsPerDay30 = await getBroadcastsPerDay(30);
   const broadcastTotals = await getBroadcastTotals();
   const newsletterCounts = await getNewsletterCounts();
+  /* eslint-enable react-review/async-parallel, react-review/server-sequential-independent-await */
 
   const totalTokensLast30 = tokensPerDay30.reduce((acc, r) => acc + r.totalTokens, 0);
   const totalClassifiedLast30 = classifiedPerDay30.reduce((acc, r) => acc + r.classified, 0);

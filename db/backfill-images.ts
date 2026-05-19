@@ -39,6 +39,7 @@ async function main() {
     // the per-source and per-item loops would serialise behind the
     // single connection anyway and obscure the progress logs. Keep
     // sequential and visible.
+    /* eslint-disable react-review/async-await-in-loop */
     for (const source of sources) {
       try {
         const items = await fetchFeed(source);
@@ -59,9 +60,10 @@ async function main() {
         console.log(`[backfill] ${source.name}: ${items.length} items, ${updated} updated`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`[backfill] ${source.name}: FAILED — ${message}`);
+        console.error(`[backfill] ${source.name}: FAILED, ${message}`);
       }
     }
+    /* eslint-enable react-review/async-await-in-loop */
 
     const stillMissing = await db.execute(sql`
       SELECT COUNT(*)::int AS missing FROM articles WHERE image_url IS NULL

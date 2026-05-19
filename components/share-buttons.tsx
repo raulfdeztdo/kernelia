@@ -57,6 +57,12 @@ export function ShareButtons({ url, title }: Props) {
   const mailtoHref = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(url)}`;
 
   return (
+    // The wrapper is NOT an interactive element; it only catches the
+    // bubble phase to stop the card-wide stretched <Link> from
+    // intercepting clicks on the actual buttons inside. The real
+    // semantics live in the children (IconButton, <a href> for mailto,
+    // etc.) so adding a `role` or keyboard handler here would be a lie.
+    // eslint-disable-next-line react-review/click-events-have-key-events, react-review/no-static-element-interactions
     <div
       className="relative z-10 mt-1 flex items-center gap-1.5"
       onClick={(e) => {
