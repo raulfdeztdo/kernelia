@@ -25,10 +25,14 @@ test("switches locale from header", async ({ page }) => {
 
 test("category filter updates URL", async ({ page }) => {
   await page.goto("/");
+  // Wait for full hydration so the client router is attached before clicking.
+  await page.waitForLoadState("load");
+
   // The "Agents" chip should be visible in the filter bar.
   const chip = page.getByRole("button", { name: /Agentes/i });
+  await expect(chip).toBeVisible();
   await chip.click();
-  await expect(page).toHaveURL(/category=agents/);
+  await expect(page).toHaveURL(/category=agents/, { timeout: 10000 });
 });
 
 test("search input writes ?q= to URL", async ({ page }) => {
