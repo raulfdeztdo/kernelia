@@ -51,13 +51,14 @@ export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
       role="group"
       aria-label={tHome("filterCategoriesAria")}
     >
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={() => push([])}
           aria-pressed={selected.length === 0}
           className={cn(
-            "rounded-full border px-3.5 py-1.5 text-xs font-medium uppercase tracking-wider transition",
+            "rounded-full border font-medium uppercase tracking-wider transition",
+            "px-2.5 py-1 text-[10px] sm:px-3.5 sm:py-1.5 sm:text-xs",
             selected.length === 0
               ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-accent-foreground)]"
               : "border-[color:var(--color-border)] text-[color:var(--color-muted-foreground)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-foreground)]",
@@ -75,7 +76,8 @@ export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
               onClick={() => toggle(slug)}
               aria-pressed={active}
               className={cn(
-                "rounded-full border px-3.5 py-1.5 text-xs font-medium uppercase tracking-wider transition",
+                "rounded-full border font-medium uppercase tracking-wider transition",
+                "px-2.5 py-1 text-[10px] sm:px-3.5 sm:py-1.5 sm:text-xs",
                 active
                   ? "border-transparent text-[color:var(--color-background)]"
                   : "border-[color:var(--color-border)] text-[color:var(--color-muted-foreground)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-foreground)]",
@@ -88,7 +90,7 @@ export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
               {count > 0 && (
                 <span
                   className={cn(
-                    "ml-1.5 text-[10px] opacity-80",
+                    "ml-1 hidden text-[10px] opacity-80 sm:inline",
                     active ? "" : "text-[color:var(--color-muted-foreground)]",
                   )}
                 >

@@ -53,7 +53,7 @@ export const WEEKLY_DIGEST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export function digestCacheKey(locale: Locale, categorySlugs: readonly string[]): string {
   if (categorySlugs.length === 0) return `${locale}|<all>`;
-  return `${locale}|${[...categorySlugs].sort().join(",")}`;
+  return `${locale}|${[...categorySlugs].toSorted().join(",")}`;
 }
 
 export async function getWeeklyDigestArticles(

@@ -81,6 +81,13 @@ body {
   border-color: var(--color-border);
 }
 
+button:not(:disabled),
+a,
+[role="button"]:not(:disabled),
+summary {
+  cursor: pointer;
+}
+
 @utility card-hover {
   transition: transform 200ms ease, border-color 200ms ease, background-color 200ms ease;
 }

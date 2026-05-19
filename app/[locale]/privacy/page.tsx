@@ -43,7 +43,6 @@ const SECTIONS = [
   "retention",
   "thirdParties",
   "cookies",
-  "contact",
 ] as const;
 
 /**
@@ -87,6 +86,25 @@ export default async function PrivacyPage({ params }: Props) {
           </p>
         </section>
       ))}
+
+      {/* Contact section — rendered separately to allow a mailto link */}
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">
+          {t("sections.contact.title")}
+        </h2>
+        <p className="text-sm leading-relaxed text-[color:var(--color-foreground)]/90">
+          {t.rich("sections.contact.body", {
+            email: (chunks) => (
+              <a
+                href="mailto:admin@kernelia.dev"
+                className="rounded font-medium text-[color:var(--color-foreground)] underline-offset-4 transition hover:text-[color:var(--color-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
+              >
+                {chunks}
+              </a>
+            ),
+          })}
+        </p>
+      </section>
 
       <footer>
         <Link

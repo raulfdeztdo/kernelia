@@ -30,7 +30,8 @@
     "loadMoreError": "No pudimos cargar más noticias. Inténtalo de nuevo.",
     "newsletterCallout": {
       "title": "¡Recibe tu newsletter semanal!",
-      "body": "Cada domingo, los 10 artículos más relevantes de la semana en tu bandeja. Confirmación por email y baja en un clic."
+      "body": "Cada domingo, los 10 artículos más relevantes de la semana en tu bandeja. Confirmación por email y baja en un clic.",
+      "mobileLink": "¡Suscríbete a nuestra newsletter!"
     },
     "noResults": {
       "title": "Nada por aquí",
@@ -211,11 +212,11 @@
       },
       "cookies": {
         "title": "Cookies",
-        "body": "El sitio no usa cookies de seguimiento. La única cookie posible es la de sesión de administrador, irrelevante para los visitantes anónimos."
+        "body": "El sitio no usa cookies de seguimiento, analítica ni publicidad. Si llegas a suscribirte a la newsletter, se usa una cookie técnica mínima para gestionar tu sesión de preferencias. No se comparte con terceros ni se usa para rastrearte."
       },
       "contact": {
         "title": "Contacto",
-        "body": "Cualquier duda o solicitud (acceso, rectificación, supresión de datos) puede dirigirse al autor del proyecto mediante los enlaces del pie de página."
+        "body": "Cualquier duda o solicitud (acceso, rectificación o supresión de datos) puede dirigirse a nosotros escribiendo a <email>admin@kernelia.dev</email>."
       }
     },
     "backHome": "Volver al inicio"
