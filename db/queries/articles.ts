@@ -650,21 +650,66 @@ export async function listArticlesByCronRun(
   }));
 }
 
+/**
+ * Counts per category, matching exactly what the home feed would
+ * render if the user clicked that category chip.
+ *
+ * The naive count (every classified row whose slug = X) overstates
+ * the number because the public feed applies a `PER_SOURCE_CAP=10`
+ * via a `row_number()` window — a noisy source that emits 200 LLM
+ * articles only contributes 10 of them to the visible feed. We
+ * mirror that exact transformation here so "LLM: 47" in the badge
+ * equals 47 visible articles after filtering, not 47 rows in DB.
+ *
+ * SQL shape:
+ *
+ *   WITH ranked AS (
+ *     SELECT c.slug,
+ *       row_number() OVER (
+ *         PARTITION BY c.slug, a.source_id
+ *         ORDER BY a.published_at DESC, a.id DESC
+ *       ) AS rn
+ *     FROM articles a
+ *     INNER JOIN categories c ON c.id = a.category_id
+ *     WHERE a.status = 'classified' AND c.slug != 'other'
+ *   )
+ *   SELECT slug, COUNT(*) FROM ranked WHERE rn <= 10 GROUP BY slug;
+ *
+ * Partitioning by `(slug, source_id)` is the key insight: filtering
+ * by category and then capping per source (what `listClassifiedArticles`
+ * does at read time) is mathematically the same as capping within
+ * each (category, source) cell. We compute all the cells once and
+ * sum.
+ */
 export async function getCategoryFacets(): Promise<CategoryFacet[]> {
-  const rows = await db
-    .select({
-      slug: categories.slug,
-      count: sql<number>`count(${articles.id})::int`,
-    })
-    .from(articles)
-    .innerJoin(categories, eq(categories.id, articles.categoryId))
-    .where(
-      and(
-        eq(articles.status, "classified"),
-        ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+  const ranked = db.$with("category_facet_ranked").as(
+    db
+      .select({
+        slug: categories.slug,
+        rn: sql<number>`row_number() over (
+          partition by ${categories.slug}, ${articles.sourceId}
+          order by ${articles.publishedAt} desc, ${articles.id} desc
+        )`.as("rn"),
+      })
+      .from(articles)
+      .innerJoin(categories, eq(categories.id, articles.categoryId))
+      .where(
+        and(
+          eq(articles.status, "classified"),
+          ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+        ),
       ),
-    )
-    .groupBy(categories.slug)
-    .orderBy(asc(categories.slug));
+  );
+
+  const rows = await db
+    .with(ranked)
+    .select({
+      slug: ranked.slug,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(ranked)
+    .where(lte(ranked.rn, PER_SOURCE_CAP))
+    .groupBy(ranked.slug)
+    .orderBy(asc(ranked.slug));
   return rows;
 }
