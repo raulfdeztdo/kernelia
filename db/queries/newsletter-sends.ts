@@ -122,15 +122,26 @@ export async function listSubscribersWithStats(): Promise<SubscriberStats[]> {
       unsubscribedAt: newsletterSubscribers.unsubscribedAt,
       createdAt: newsletterSubscribers.createdAt,
       sentCount: sql<number>`count(${newsletterSends.id})::int`,
-      lastSentAt: sql<Date | null>`max(${newsletterSends.sentAt})`,
-      lastOpenedAt: sql<Date | null>`max(${newsletterSends.openedAt})`,
+      // `max()` over a timestamp column comes back as a string from
+      // postgres-js because the raw `sql<...>` template skips Drizzle's
+      // column-level type mapping. Without the coercion below the admin
+      // /broadcasts page crashed with `a.toISOString is not a function`
+      // (formatStamp expected a Date). The narrowing is done here, in
+      // the only DB surface for this column, so consumers downstream get
+      // the typed shape they declare.
+      lastSentAt: sql<string | null>`max(${newsletterSends.sentAt})`,
+      lastOpenedAt: sql<string | null>`max(${newsletterSends.openedAt})`,
       openedCount: sql<number>`count(${newsletterSends.openedAt})::int`,
     })
     .from(newsletterSubscribers)
     .leftJoin(newsletterSends, eq(newsletterSends.subscriberId, newsletterSubscribers.id))
     .groupBy(newsletterSubscribers.id)
     .orderBy(desc(newsletterSubscribers.createdAt));
-  return rows;
+  return rows.map((r) => ({
+    ...r,
+    lastSentAt: r.lastSentAt ? new Date(r.lastSentAt) : null,
+    lastOpenedAt: r.lastOpenedAt ? new Date(r.lastOpenedAt) : null,
+  }));
 }
 
 export interface CronRunNewsletterSend {
