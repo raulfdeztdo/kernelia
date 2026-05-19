@@ -13,6 +13,7 @@ import {
   markArticleClassified,
   markArticleFailed,
   markArticleHiddenAsDuplicate,
+  markArticleHiddenAsNonAi,
   type PendingArticle,
   type RecentDedupeRow,
 } from "@/db/queries/articles";
@@ -59,6 +60,14 @@ export interface ClassifySummary {
    * from "this tick produced 2 net-new classifications".
    */
   dedupedReplaced: number;
+  /**
+   * Phase 8.B: articles the LLM gated out with `is_ai_related: false`
+   * (gadgets, gaming, lifestyle pieces that slip through general-tech
+   * feeds like Hipertextual). Marked `hidden` with tag `non_ai`. Not
+   * counted in `classified` — they never reach the feed, RSS,
+   * newsletter or broadcast.
+   */
+  hiddenNonAi: number;
   tokens: {
     prompt: number;
     completion: number;
@@ -127,6 +136,12 @@ export interface RunClassifyOptions extends ClassifyOptions {
    * touched). Defaults to `true` in production.
    */
   dedupeEnabled?: boolean;
+  /**
+   * Phase 8.B injectable: called when the LLM flags
+   * `is_ai_related: false`. Production hides the row with tag `non_ai`;
+   * tests use a spy to assert the call shape.
+   */
+  onHiddenAsNonAi?: (id: string, update: ClassifiedPayload) => Promise<void>;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -166,6 +181,9 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         oldId: match.matchedId,
         similarity: match.similarity,
       }));
+  const onHiddenAsNonAi =
+    options.onHiddenAsNonAi ??
+    ((id, update) => markArticleHiddenAsNonAi({ id, update: { ...update, id } }));
 
   const pending = await fetchPending(limit);
   // Snapshot of recent classified/hidden articles for content-level dedupe.
@@ -202,6 +220,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   let timedOut = 0;
   let dedupedHidden = 0;
   let dedupedReplaced = 0;
+  let hiddenNonAi = 0;
   let budgetExhausted = false;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
@@ -259,6 +278,29 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       tokens.prompt += result.usage.promptTokens;
       tokens.completion += result.usage.completionTokens;
       tokens.total += result.usage.totalTokens;
+
+      // Phase 8.B hard gate: if the LLM marked this as non-AI, hide it
+      // BEFORE running dedupe. Two reasons:
+      //   1. We don't want non-AI rows polluting the dedupe window —
+      //      they could legitimately near-duplicate AI articles
+      //      (e.g. a GPU launch can look textually similar to an
+      //      AI-chip announcement) and steal the cluster winner.
+      //   2. Hiding early skips one DB read against `recentsById`
+      //      lookup for items that won't ship anyway.
+      // The full ES/EN payload is still persisted so /admin/articles
+      // can audit the decision and an operator can un-hide a
+      // borderline case.
+      if (result.classification.is_ai_related === false) {
+        await onHiddenAsNonAi(article.id, payload);
+        hiddenNonAi++;
+        log.info("article_hidden_non_ai", {
+          articleId: article.id,
+          slug: categorySlug,
+          relevanceScore: payload.relevanceScore,
+          source: article.sourceName,
+        });
+        continue;
+      }
 
       // Content-level dedupe runs AFTER the LLM (we need the ES title) but
       // BEFORE marking classified. Three outcomes when a match is found:
@@ -415,12 +457,13 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
     // many we pulled from the DB — important when the budget cuts
     // the loop short. Includes timeouts (we attempted them, they
     // just didn't complete).
-    processed: classified + failed + timedOut + dedupedHidden,
+    processed: classified + failed + timedOut + dedupedHidden + hiddenNonAi,
     classified,
     failed,
     timedOut,
     dedupedHidden,
     dedupedReplaced,
+    hiddenNonAi,
     budgetExhausted,
     tokens,
   };

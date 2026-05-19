@@ -759,3 +759,138 @@ describe("runClassify · prefer near-duplicates that carry an image", () => {
     expect(onClassifiedReplacingDuplicate).not.toHaveBeenCalled();
   });
 });
+
+describe("runClassify · is_ai_related gate (Phase 8.B)", () => {
+  // Hipertextual-style noise: an article that classifies cleanly (the
+  // LLM still picks a slug to keep the schema happy) but with
+  // `is_ai_related: false`. The orchestrator must hide it instead of
+  // counting it as classified, AND must skip the dedupe pass — non-AI
+  // rows have no business polluting the recents window.
+  const nonAiPayload = {
+    ...validPayload,
+    category_slug: "other" as const,
+    is_ai_related: false,
+    relevance_score: 0.1,
+    title_es: "XPPen lanza una nueva consola con pantalla LCD",
+    title_en: "XPPen launches a new console with LCD display",
+    summary_es:
+      "La compañía anuncia un dispositivo orientado al dibujo digital sin relación con IA.",
+    summary_en:
+      "The company announces a drawing-focused device without any AI angle.",
+  };
+
+  const samplePending = [
+    {
+      id: "noise",
+      title: "XPPen unveils new drawing console",
+      url: "https://hipertextual.com/brands/consola-edicion-xppen",
+      rawExcerpt: "LCD specs, pen pressure, no AI mentioned.",
+      imageUrl: null,
+      language: "es" as const,
+      sourceName: "Hipertextual",
+      sourceLanguage: "es" as const,
+    },
+  ];
+
+  it("hides a non-AI article and skips both onClassified and dedupe", async () => {
+    const onClassified = vi.fn(async () => {});
+    const onHiddenAsDuplicate = vi.fn(async () => {});
+    const onHiddenAsNonAi = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client: makeClient(nonAiPayload),
+      fetchPending: async () => samplePending,
+      onClassified,
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      // Provide a recent that WOULD trip dedupe if the orchestrator
+      // hadn't bailed first — proves we short-circuit before the
+      // dedupe pass even runs.
+      fetchRecentForDedupe: async () => [
+        { id: "old", titleEs: "XPPen anuncia consola con pantalla LCD", imageUrl: null, isClassified: true },
+      ],
+      onHiddenAsDuplicate,
+      onHiddenAsNonAi,
+    });
+
+    expect(summary.hiddenNonAi).toBe(1);
+    expect(summary.classified).toBe(0);
+    expect(summary.dedupedHidden).toBe(0);
+    // `processed` includes the hidden-non-ai row — the LLM call ran.
+    expect(summary.processed).toBe(1);
+    expect(onClassified).not.toHaveBeenCalled();
+    expect(onHiddenAsDuplicate).not.toHaveBeenCalled();
+    expect(onHiddenAsNonAi).toHaveBeenCalledOnce();
+    expect(onHiddenAsNonAi).toHaveBeenCalledWith(
+      "noise",
+      expect.objectContaining({
+        categoryId: "cat-id",
+        titleEs: nonAiPayload.title_es,
+        relevanceScore: 0.1,
+      }),
+    );
+  });
+
+  it("still bills LLM tokens for a hidden-non-ai row (the call already happened)", async () => {
+    const onHiddenAsNonAi = vi.fn(async () => {});
+    const client = makeClient(nonAiPayload, {
+      prompt_tokens: 70,
+      completion_tokens: 30,
+      total_tokens: 100,
+    });
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => samplePending,
+      onClassified: vi.fn(async () => {}),
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      dedupeEnabled: false,
+      onHiddenAsNonAi,
+    });
+
+    expect(summary.tokens.total).toBe(100);
+    expect(summary.hiddenNonAi).toBe(1);
+  });
+
+  it("classifies normally when is_ai_related is undefined (backward compat)", async () => {
+    // Older cached responses don't carry the new flag. The orchestrator
+    // must treat `undefined` as "no opinion" and let the article go
+    // through the normal pipeline — otherwise re-running classify
+    // against a Cerebras cache miss would bulk-hide history.
+    const { is_ai_related: _drop, ...legacyPayload } = nonAiPayload;
+    void _drop;
+    // Fix the relevance back to something normal for this test.
+    const payload = { ...legacyPayload, relevance_score: 0.9, category_slug: "llm" as const };
+
+    const onClassified = vi.fn(async () => {});
+    const onHiddenAsNonAi = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client: makeClient(payload),
+      fetchPending: async () => samplePending,
+      onClassified,
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      dedupeEnabled: false,
+      onHiddenAsNonAi,
+    });
+
+    expect(summary.classified).toBe(1);
+    expect(summary.hiddenNonAi).toBe(0);
+    expect(onClassified).toHaveBeenCalledOnce();
+    expect(onHiddenAsNonAi).not.toHaveBeenCalled();
+  });
+
+  it("schema accepts is_ai_related true/false/absent (back-compat)", () => {
+    const cases = [
+      { ...validPayload, is_ai_related: true },
+      { ...validPayload, is_ai_related: false },
+      validPayload, // absent — undefined
+    ];
+    for (const c of cases) {
+      const parsed = classificationSchema.safeParse(c);
+      expect(parsed.success).toBe(true);
+    }
+  });
+});

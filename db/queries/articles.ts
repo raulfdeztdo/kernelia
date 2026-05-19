@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   articles,
@@ -15,6 +15,19 @@ import {
  * applied via a `row_number()` window function partitioned by source.
  */
 const PER_SOURCE_CAP = 10;
+
+/**
+ * Category slug that classifies cleanly but is hidden from every public
+ * surface (home feed, RSS, newsletter, broadcast). The row stays in DB
+ * so /admin/articles can audit it.
+ *
+ * Phase 8.B: paired with the LLM's `is_ai_related` gate. The classifier
+ * now uses `is_ai_related: false` for non-AI noise (gadgets, gaming,
+ * lifestyle) and only emits "other" for content that IS about AI but
+ * doesn't fit any specific slug — we still keep "other" hidden from
+ * the public to avoid the catch-all becoming a quality drag.
+ */
+export const PUBLIC_HIDDEN_CATEGORY_SLUG = "other";
 
 export async function insertPendingArticles(rows: NewArticle[]): Promise<number> {
   if (rows.length === 0) return 0;
@@ -148,6 +161,32 @@ export async function markArticleFailed(id: string, reason: string): Promise<voi
       classificationError: reason.slice(0, 500),
     })
     .where(eq(articles.id, id));
+}
+
+/**
+ * Hides an article that the classifier flagged as `is_ai_related: false`
+ * (Phase 8.B). The full ES/EN payload is still persisted so the operator
+ * can review the decision in /admin/articles and un-hide it if the LLM
+ * mis-fired on a borderline case.
+ *
+ * Tag: `non_ai` — grep-able from cron logs and the admin UI.
+ */
+export async function markArticleHiddenAsNonAi(
+  params: { id: string; update: ClassifiedUpdate },
+): Promise<void> {
+  await db
+    .update(articles)
+    .set({
+      status: "hidden",
+      categoryId: params.update.categoryId,
+      titleEs: params.update.titleEs,
+      titleEn: params.update.titleEn,
+      summaryEs: params.update.summaryEs,
+      summaryEn: params.update.summaryEn,
+      relevanceScore: params.update.relevanceScore ?? null,
+      classificationError: "non_ai",
+    })
+    .where(eq(articles.id, params.id));
 }
 
 export interface MarkArticleHiddenAsDuplicateParams {
@@ -337,7 +376,12 @@ export async function listClassifiedArticles(
   // The cap MUST live inside the ranked CTE: if it sat at the outer query it
   // would be applied after the cursor cut, and pagination could skip articles
   // that should have made the per-source top-5.
-  const innerConds = [eq(articles.status, "classified")];
+  const innerConds = [
+    eq(articles.status, "classified"),
+    // Phase 8.B: keep `other` out of the public feed. See
+    // `PUBLIC_HIDDEN_CATEGORY_SLUG` above.
+    ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+  ];
 
   if (params.categorySlugs && params.categorySlugs.length > 0) {
     innerConds.push(inArray(categories.slug, params.categorySlugs));
@@ -430,7 +474,10 @@ export async function countClassifiedArticles(
   const titleCol = params.locale === "es" ? articles.titleEs : articles.titleEn;
   const summaryCol = params.locale === "es" ? articles.summaryEs : articles.summaryEn;
 
-  const innerConds = [eq(articles.status, "classified")];
+  const innerConds = [
+    eq(articles.status, "classified"),
+    ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+  ];
   if (params.categorySlugs && params.categorySlugs.length > 0) {
     innerConds.push(inArray(categories.slug, params.categorySlugs));
   }
@@ -501,7 +548,12 @@ export async function listLatestForFeed(
     .from(articles)
     .innerJoin(sources, eq(sources.id, articles.sourceId))
     .leftJoin(categories, eq(categories.id, articles.categoryId))
-    .where(eq(articles.status, "classified"))
+    .where(
+      and(
+        eq(articles.status, "classified"),
+        ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+      ),
+    )
     .orderBy(desc(articles.publishedAt), desc(articles.id))
     .limit(limit);
 }
@@ -519,7 +571,12 @@ export async function getCategoryFacets(): Promise<CategoryFacet[]> {
     })
     .from(articles)
     .innerJoin(categories, eq(categories.id, articles.categoryId))
-    .where(eq(articles.status, "classified"))
+    .where(
+      and(
+        eq(articles.status, "classified"),
+        ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+      ),
+    )
     .groupBy(categories.slug)
     .orderBy(asc(categories.slug));
   return rows;
