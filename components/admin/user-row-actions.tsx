@@ -59,7 +59,7 @@ export function UserRowActions({ userId, email, active, isSelf }: Props) {
   }
 
   if (isSelf) {
-    return <span className="text-xs text-muted-foreground">— tú mismo —</span>;
+    return <span className="text-xs text-muted-foreground">(tú mismo)</span>;
   }
 
   return (

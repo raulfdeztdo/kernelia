@@ -1,5 +1,11 @@
 "use client";
 
+// The `header.tsx` call-site wraps this component in `<Suspense>` as
+// `useSearchParams` requires, and the two `searchParams.get(...)` calls
+// below cannot be destructured because `URLSearchParams.prototype.get`
+// needs its `this` binding. Both lints would just add noise.
+/* eslint-disable react-review/nextjs-no-use-search-params-without-suspense, react-review/react-compiler-destructure-method */
+
 import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 

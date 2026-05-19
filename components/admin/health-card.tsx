@@ -1,3 +1,9 @@
+// Server component (no `"use client"`): every `new Date(...)` below runs
+// on the server during the request, the HTML is sent already-rendered
+// and there is no client hydration step that could disagree. React
+// Review's `rendering-hydration-mismatch-time` rule cannot tell this
+// from a client component and is a false positive throughout this file.
+/* eslint-disable react-review/rendering-hydration-mismatch-time */
 import type { HealthResult } from "@/lib/health";
 
 interface Props {
@@ -24,7 +30,7 @@ export function HealthCard({ result }: Props) {
       >
         <div className="flex items-center gap-2">
           <span className="inline-flex size-2 rounded-full bg-red-400" aria-hidden />
-          <span className="font-medium text-red-300">503 — health check falló</span>
+          <span className="font-medium text-red-300">503, health check falló</span>
         </div>
         <p className="mt-2 text-muted-foreground">
           <code className="text-xs">{result.reason}</code>
@@ -43,7 +49,7 @@ export function HealthCard({ result }: Props) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="inline-flex size-2 rounded-full bg-emerald-400" aria-hidden />
-          <span className="font-medium text-emerald-300">200 — healthy</span>
+          <span className="font-medium text-emerald-300">200, healthy</span>
         </div>
         <span className="text-xs text-muted-foreground">
           Probado a las {new Date(result.ts).toISOString().slice(11, 19)} UTC

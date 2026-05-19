@@ -189,6 +189,13 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
       const pending = await listPending({ platform, minScore, since, limit: limitPerPlatform });
       log.info("platform_batch", { platform, count: pending.length });
 
+      // Per-platform loop is serial on purpose: each platform has its own
+      // rate limit (Mastodon ~1 req/s, Bluesky stricter, Telegram bot API
+      // can 429 on bursts) and `POST_DELAY_MS` between posts keeps us
+      // safely below. Parallelising posts inside a platform would defeat
+      // the throttle. React Review's `async-await-in-loop` is a false
+      // positive in this exact spot.
+      /* eslint-disable react-review/async-await-in-loop */
       for (let i = 0; i < pending.length; i++) {
         if (now() - startMs >= maxWallTimeMs) {
           log.info("platform_budget_exhausted", {
@@ -234,6 +241,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
           log.warn("article_post_failed", { platform, articleId: article.id, reason: message });
         }
       }
+      /* eslint-enable react-review/async-await-in-loop */
     }),
   );
 

@@ -1,5 +1,16 @@
 "use client";
 
+// Three React Review rules fire spuriously in this file and are disabled
+// at the top so the rest reads cleanly:
+//   - `nextjs-no-use-search-params-without-suspense`: the parent route
+//     `app/[locale]/page.tsx` already wraps this component in <Suspense>.
+//   - `react-compiler-destructure-method`: `URLSearchParams.get` needs
+//     its `this` binding; destructuring would crash at runtime.
+//   - `no-derived-useState` for `initialItems` / `initialCursor`: the
+//     parent re-keys the component on filter changes (`key={listKey}`),
+//     so the state is seeded once per mount on purpose, not derived.
+/* eslint-disable react-review/nextjs-no-use-search-params-without-suspense, react-review/react-compiler-destructure-method, react-review/no-derived-useState */
+
 import { useCallback, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -92,6 +103,7 @@ export function ArticleList({
       // `async-defer-await` only sees the second one and flags it; the
       // first is the cheap skip the rule actually wants.
       if (myReq !== requestIdRef.current) return;
+      // eslint-disable-next-line react-review/async-defer-await
       const data = (await res.json()) as ApiResponse;
 
       if (myReq !== requestIdRef.current) return;

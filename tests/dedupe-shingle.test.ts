@@ -42,7 +42,7 @@ describe("normalizeForShingle", () => {
 describe("wordShingles", () => {
   it("produces 1-grams (bag of words) by default", () => {
     const tokens = ["elon", "musk", "pierde", "juicio"];
-    expect([...wordShingles(tokens)].sort()).toEqual(["elon", "juicio", "musk", "pierde"]);
+    expect([...wordShingles(tokens)].toSorted()).toEqual(["elon", "juicio", "musk", "pierde"]);
   });
 
   it("can produce 3-grams when explicitly asked", () => {

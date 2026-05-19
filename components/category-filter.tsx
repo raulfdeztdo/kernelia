@@ -16,6 +16,10 @@ export function CategoryFilter({ selected, facets }: CategoryFilterProps) {
   const tHome = useTranslations("home");
   const { replace } = useRouter();
   const pathname = usePathname();
+  // The call-site in `app/[locale]/page.tsx` already wraps this component
+  // in `<Suspense>` (required for `useSearchParams` not to bail the route
+  // to client-side rendering), so the lint here is a false positive.
+  // eslint-disable-next-line react-review/nextjs-no-use-search-params-without-suspense
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 

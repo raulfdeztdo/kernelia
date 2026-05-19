@@ -99,11 +99,11 @@ export default async function StatsPage({ params }: StatsPageProps) {
         <p className="text-sm text-[color:var(--color-muted-foreground)]">
           {t.rich("api.body", {
             link: (chunks) => (
-              // The link points at the JSON API route, not a page — `next/link`
+              // The link points at the JSON API route, not a page; `next/link`
               // doesn't apply (and would warn at runtime). The lint rule that
               // assumes any `/api/...` href is a page link is the false
               // positive here.
-              // eslint-disable-next-line @next/next/no-html-link-for-pages
+              /* eslint-disable-next-line @next/next/no-html-link-for-pages, react-review/nextjs-no-a-element */
               <a
                 href="/api/stats"
                 className="rounded font-medium text-[color:var(--color-foreground)] underline-offset-4 transition hover:text-[color:var(--color-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"

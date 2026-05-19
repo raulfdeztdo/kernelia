@@ -76,10 +76,12 @@ export async function runNewsletter(
   const send = opts.send ?? sendWeeklyDigest;
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
 
-  const subscribers = await listSubscribers();
-  // Pre-fetch both locales once. If a locale ends up unused (no subscribers
-  // chose it) the cost is one cheap aggregate query.
-  const [esArticles, enArticles] = await Promise.all([
+  // Subscribers list + both locales' digests are independent queries;
+  // race them so the slow one sets the floor instead of stacking. If a
+  // locale ends up unused (no subscribers chose it) the cost is one
+  // cheap aggregate query.
+  const [subscribers, esArticles, enArticles] = await Promise.all([
+    listSubscribers(),
     fetchDigest("es", now),
     fetchDigest("en", now),
   ]);
@@ -97,6 +99,11 @@ export async function runNewsletter(
     digestCounts: { es: esArticles.length, en: enArticles.length },
   };
 
+  // Serial on purpose: Resend's transactional API has a per-second
+  // request limit and the `sendIntervalMs` gap below keeps us under it.
+  // Parallelising would spike to 429s in seconds. React Review's
+  // `async-await-in-loop` is a false positive in this exact spot.
+  /* eslint-disable react-review/async-await-in-loop */
   for (const subscriber of subscribers) {
     if (Date.now() - startedAt > maxWallTimeMs) {
       // Stop pulling new work; the remaining subscribers will be picked up
@@ -138,10 +145,11 @@ export async function runNewsletter(
       });
     }
 
-    // Throttle between sends regardless of success — the next iteration's
+    // Throttle between sends regardless of success: the next iteration's
     // budget check will exit if we're past the wall-clock.
     await sleep(sendIntervalMs);
   }
+  /* eslint-enable react-review/async-await-in-loop */
 
   log.info("newsletter_run_done", {
     attempted: summary.attempted,

@@ -1,5 +1,9 @@
 "use client";
 
+// Consumed only via `components/admin/charts/index.tsx`, which wraps this
+// export in `next/dynamic({ ssr: false })`. Recharts lives in a lazy
+// chunk; the static import below is the implementation side.
+// eslint-disable-next-line react-review/prefer-dynamic-import
 import {
   Cell,
   Legend,

@@ -49,22 +49,10 @@ export async function POST(req: Request): Promise<Response> {
   return NextResponse.redirect(new URL(target, origin), { status: 303 });
 }
 
-/**
- * Defensive GET handler: anyone (a stale email client, a prefetch, a
- * confused user typing the URL) reaching the endpoint directly with GET
- * is bounced to the confirmation page. We do NOT mutate. If the request
- * carries a `?token=` it gets propagated so the page can render the form
- * pre-filled.
- */
-export async function GET(req: Request): Promise<Response> {
-  const url = new URL(req.url);
-  const token = url.searchParams.get("token") ?? "";
-  const lang = url.searchParams.get("lang");
-  const base = lang === "en" ? "/en/newsletter/unsubscribe" : "/newsletter/unsubscribe";
-  const target = new URL(base, url.origin);
-  if (token) target.searchParams.set("token", token);
-  return NextResponse.redirect(target, { status: 303 });
-}
+// Intentionally no GET handler. The email points users at the
+// `/[locale]/newsletter/unsubscribe` page (HTML form), not at this
+// route. Anything that lands here with GET is either a scanner
+// prefetch or a manual URL paste; both are happy with a 405.
 
 async function readBody(
   req: Request,
