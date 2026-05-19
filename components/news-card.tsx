@@ -91,7 +91,13 @@ export function NewsCard({ article, locale }: NewsCardProps) {
             href={article.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="line-clamp-3 outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
+            // Desktop keeps `line-clamp-3` so the grid rows have a
+            // predictable maximum height (titles longer than three
+            // lines truncate). On mobile the cards are stacked one per
+            // row, the user reads them one at a time, and truncated
+            // titles read like clickbait, so the title flows to its
+            // full length.
+            className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline sm:line-clamp-3"
             aria-label={tCard("readOriginal", { source: article.sourceName })}
           >
             {article.title}
