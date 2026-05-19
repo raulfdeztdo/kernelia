@@ -29,4 +29,9 @@ export const CRON_SCHEDULE = {
     cron: "0 10 * * 0",
     description: "Domingos a las 10:00 UTC (digest semanal de la newsletter).",
   },
+  cleanup: {
+    cron: "0 4 * * *",
+    description:
+      "Diario a las 04:00 UTC (06:00 Madrid CEST). Hard-delete de articulos failed/hidden ingestados hace mas de 7 dias.",
+  },
 } as const;

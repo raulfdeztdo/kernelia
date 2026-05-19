@@ -186,6 +186,11 @@ export const cronJobEnum = pgEnum("cron_job", [
   "classify",
   "broadcast",
   "newsletter",
+  // Phase 8.F: daily hard-delete of failed + hidden articles older
+  // than the retention window. Keeps the DB from growing unbounded
+  // with classifier mis-fires (non_ai), duplicates and LLM errors.
+  // See `lib/cleanup/run.ts`.
+  "cleanup",
 ]);
 // `running` is the in-progress placeholder: row is inserted at the top
 // of every cron handler so child writes (article inserts/updates,

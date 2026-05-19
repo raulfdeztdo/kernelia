@@ -19,13 +19,19 @@
 
 import { createLogger } from "@/lib/logger";
 
-export type CronDispatchJob = "ingest" | "classify" | "broadcast" | "newsletter";
+export type CronDispatchJob =
+  | "ingest"
+  | "classify"
+  | "broadcast"
+  | "newsletter"
+  | "cleanup";
 
 export const CRON_DISPATCH_JOBS = [
   "ingest",
   "classify",
   "broadcast",
   "newsletter",
+  "cleanup",
 ] as const satisfies readonly CronDispatchJob[];
 
 const WORKFLOW_FILE = "cron.yml";
