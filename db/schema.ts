@@ -64,7 +64,11 @@ export const articles = pgTable(
     title: text("title").notNull(),
     titleEs: text("title_es"),
     titleEn: text("title_en"),
-    summary: text("summary"),
+    // Note: there used to be a `summary text` column here that mirrored
+    // the raw RSS description. It was dropped in migration 0010
+    // (Phase 8.G) because nobody read it — the LLM-generated
+    // translations (`summary_es` / `summary_en`) live below and the
+    // raw text the classifier consumes is in `raw_excerpt`.
     summaryEs: text("summary_es"),
     summaryEn: text("summary_en"),
     rawExcerpt: text("raw_excerpt"),
