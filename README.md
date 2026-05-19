@@ -18,9 +18,6 @@
     <br />
     <a href="https://kernelia.dev"><strong>kernelia.dev »</strong></a>
     ·
-    <a href="#uso">Documentación</a>
-    <br />
-    <br />
     <a href="https://github.com/raulfdeztdo/kernelia/issues">Reportar Bug</a>
     ·
     <a href="https://github.com/raulfdeztdo/kernelia/issues">Solicitar Funcionalidad</a>
@@ -47,17 +44,7 @@
   <ol>
     <li><a href="#sobre-el-proyecto">Sobre el proyecto</a></li>
     <li><a href="#stack">Stack</a></li>
-    <li>
-      <a href="#primeros-pasos">Primeros pasos</a>
-      <ul>
-        <li><a href="#prerrequisitos">Prerrequisitos</a></li>
-        <li><a href="#instalación">Instalación</a></li>
-        <li><a href="#variables-de-entorno">Variables de entorno</a></li>
-      </ul>
-    </li>
-    <li><a href="#uso">Uso</a></li>
     <li><a href="#funcionalidades">Funcionalidades</a></li>
-    <li><a href="#desarrollo">Desarrollo</a></li>
     <li><a href="#cómo-funciona">Cómo funciona</a></li>
     <li><a href="#estado-del-proyecto">Estado del proyecto</a></li>
     <li><a href="#licencia">Licencia</a></li>
@@ -92,99 +79,16 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
 | LLM | Cerebras `llama3.1-8b` — SDK OpenAI-compatible |
 | Ingesta | rss-parser |
 | Validación | Zod |
-| Auth (backoffice) | Email + bcrypt, cookie HMAC `__Host-` |
-| Email | Resend (confirmación newsletter + password reset) |
+| Email | Resend |
 | Broadcaster | Mastodon · Bluesky · Telegram |
 | Hosting | Vercel (Hobby) |
-| Cron | GitHub Actions (cada 3h ingest, cada 30min classify + broadcast) |
+| Cron | GitHub Actions |
 | Tests | Vitest + Playwright |
-
-## Primeros pasos
-
-### Prerrequisitos
-
-- [Node.js](https://nodejs.org) 22 LTS
-- [pnpm](https://pnpm.io) 11 o superior (`npm install -g pnpm`)
-- Una cuenta de [Supabase](https://supabase.com) (free tier)
-- Una API key de [Cerebras](https://cloud.cerebras.ai) (free tier)
-- Una cuenta de [Resend](https://resend.com) con dominio verificado (para newsletter y password reset)
-
-### Instalación
-
-```bash
-git clone https://github.com/raulfdeztdo/kernelia.git
-cd kernelia
-pnpm install
-cp opencode.example.jsonc opencode.jsonc   # si usas opencode
-```
-
-### Variables de entorno
-
-Copia la plantilla y rellena los valores reales:
-
-```bash
-cp .env.example .env.local
-```
-
-**Base de datos:**
-- `DATABASE_URL` — Connection string del **transaction pooler** de Supabase (puerto 6543), usado en runtime.
-- `DATABASE_URL_DIRECT` — Connection string del **session pooler** (puerto 5432), usado por `drizzle-kit` para migraciones.
-
-**LLM:**
-- `CEREBRAS_API_KEY` — Generada en [cloud.cerebras.ai](https://cloud.cerebras.ai).
-- `CEREBRAS_MODEL` — Modelo a usar (default: `llama3.1-8b`).
-
-**Cron:**
-- `CRON_SECRET` — Genera uno con `openssl rand -hex 32`. Protege los endpoints `/api/cron/*`.
-
-**Backoffice admin:**
-- `SESSION_SECRET` — Mínimo 32 caracteres. Firma las cookies de sesión HMAC.
-- `INITIAL_ADMIN_EMAIL` — Email del primer administrador (el seed lo crea si no existe ningún usuario).
-
-**Email (Resend):**
-- `RESEND_API_KEY` — Generada en [resend.com](https://resend.com).
-- `EMAIL_FROM` — Dirección remitente verificada, p.ej. `Kernelia <newsletter@kernelia.dev>`.
-
-**Broadcaster (opcional):**
-- `MASTODON_INSTANCE_URL` y `MASTODON_ACCESS_TOKEN` — Cuenta bot en Mastodon.
-- `BLUESKY_IDENTIFIER` y `BLUESKY_APP_PASSWORD` — Cuenta bot en Bluesky.
-- `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` — Bot y canal de Telegram.
-- `BROADCAST_ENABLED` — `true` para activar. `false` para pausar sin redeploy.
-- `BROADCAST_MIN_RELEVANCE_SCORE` — Umbral mínimo (default: `0.75`).
-
-**Sitio público:**
-- `NEXT_PUBLIC_SITE_URL` — URL pública sin slash final, p.ej. `https://kernelia.dev`.
-
-Aplica el schema y haz el seed inicial:
-
-```bash
-pnpm db:migrate   # aplica migraciones SQL
-pnpm db:seed      # carga categorías, fuentes RSS y el primer usuario admin
-```
-
-## Uso
-
-```bash
-# Servidor de desarrollo
-pnpm dev
-```
-
-Abre `http://localhost:3000` y verás la home en español. Cambia a inglés desde el selector del header o navegando a `/en`.
-
-El backoffice está en `/admin` — primer acceso por el flujo de "olvidaste contraseña" con el email configurado en `INITIAL_ADMIN_EMAIL`.
-
-Para disparar manualmente los crons:
-
-```bash
-curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/ingest
-curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/classify?limit=10
-curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/broadcast
-```
 
 ## Funcionalidades
 
 **Feed público:**
-- **Listado de noticias** — Ordenado por fecha descendente, paginación append-style (sin recarga).
+- **Listado de noticias** — Ordenado por fecha descendente, paginación append-style sin recarga.
 - **Filtros por categoría** — Multi-selección: LLMs, agentes, investigación, productos, robótica, regulación, seguridad, multimodal, coding AI, otros.
 - **Búsqueda libre** — Por palabras clave en título y resumen, con debounce en cliente e `ILIKE` en servidor.
 - **UI bilingüe** — Español por defecto, inglés disponible. Títulos y resúmenes generados en ambos idiomas.
@@ -195,42 +99,9 @@ curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/broa
 - **Newsletter** — Suscripción opcional con double opt-in. Digest semanal cada domingo.
 
 **Pipeline automático:**
-- **Ingesta** — Cada 3h lee 10+ fuentes RSS, normaliza URLs, deduplica por hash SHA-256.
+- **Ingesta** — Cada 3h lee 15+ fuentes RSS, normaliza URLs, deduplica por hash SHA-256.
 - **Clasificación** — Cada 30min procesa lotes de artículos `pending` con Cerebras: categoría + resumen en ES y EN + relevance score, validados con Zod antes de persistir. Cola round-robin por fuente para evitar monopolios.
 - **Broadcaster** — Publica artículos con `relevance_score >= 0.75` en Mastodon, Bluesky y Telegram. Idempotencia por `(article_id, platform)`.
-
-**Backoffice `/admin`:**
-- **Auth** — Login por email + contraseña (bcrypt cost 12), cookie HMAC `__Host-kernelia-session`, password reset vía Resend.
-- **Dashboard** — Métricas de artículos, categorías, fuentes, tokens y broadcasts con gráficas Recharts.
-- **Monitor de cron** — Últimas 50 ejecuciones de ingest, classify, broadcast y newsletter.
-- **Gestión de artículos** — Cambiar estado (pending / classified / hidden / failed), reasignar categoría, re-clasificar con un clic.
-- **Gestión de usuarios** — Añadir, desactivar o borrar administradores con guardrails (no auto-borrado, nunca cero admins activos).
-- **Broadcasts** — Historial y analytics de publicaciones por plataforma.
-
-## Desarrollo
-
-```bash
-# Servidor de desarrollo
-pnpm dev
-
-# Lint + typecheck
-pnpm lint
-pnpm typecheck
-
-# Tests
-pnpm test          # unit tests (Vitest)
-pnpm test:e2e      # end-to-end (Playwright)
-
-# Build de producción
-pnpm build
-
-# Base de datos
-pnpm db:generate   # genera SQL desde el schema Drizzle
-pnpm db:migrate    # aplica migraciones
-pnpm db:push       # sync directo schema -> DB (sin migración)
-pnpm db:seed       # carga datos iniciales
-pnpm db:studio     # GUI local de Drizzle Studio
-```
 
 ## Cómo funciona
 
@@ -241,7 +112,7 @@ pnpm db:studio     # GUI local de Drizzle Studio
          ▼                                    ▼
   ┌─────────────────┐             ┌─────────────────────┐
   │  Fuentes RSS    │──── feeds ─▶│  Ingest              │
-  │  (10+ medios)   │             │  - rss-parser        │
+  │  (15+ medios)   │             │  - rss-parser        │
   └─────────────────┘             │  - canonicaliza URL  │
                                   │  - hash dedupe       │
                                   └──────────┬───────────┘
@@ -275,11 +146,10 @@ pnpm db:studio     # GUI local de Drizzle Studio
                                   │  - RSC + i18n         │
                                   │  - filtros + búsqueda │
                                   │  - RSS + sitemap      │
-                                  │  - /admin backoffice  │
                                   └──────────────────────┘
 ```
 
-El frontend solo lee. La ingesta, clasificación y distribución viven en endpoints protegidos por `CRON_SECRET` que GitHub Actions invoca periódicamente. Toda la lógica de dominio está en `lib/ingest/`, `lib/ai/` y `lib/broadcast/`, separada de la capa de UI.
+El frontend solo lee. La ingesta, clasificación y distribución viven en endpoints protegidos que GitHub Actions invoca periódicamente. Toda la lógica de dominio está en `lib/ingest/`, `lib/ai/` y `lib/broadcast/`, separada de la capa de UI.
 
 ## Estado del proyecto
 
