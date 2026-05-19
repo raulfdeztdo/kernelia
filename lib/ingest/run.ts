@@ -11,6 +11,13 @@ export interface SourceResult {
   sourceName: string;
   fetched: number;
   inserted: number;
+  /**
+   * Phase 8.I: items from this source that match a tombstoned URL and
+   * were dropped before the INSERT. Pure observability — if a source
+   * keeps emitting the same dead URLs week after week, this number
+   * grows and we can either remove the source or relax the rule.
+   */
+  skippedTombstoned: number;
   error?: string;
 }
 
@@ -19,7 +26,13 @@ export interface IngestSummary {
   finishedAt: string;
   durationMs: number;
   sources: SourceResult[];
-  totals: { fetched: number; inserted: number; failedSources: number };
+  totals: {
+    fetched: number;
+    inserted: number;
+    /** Total rows dropped by the tombstone pre-filter, summed across sources. */
+    skippedTombstoned: number;
+    failedSources: number;
+  };
 }
 
 export interface RunIngestOptions {
@@ -51,9 +64,10 @@ export async function runIngest(options: RunIngestOptions = {}): Promise<IngestS
     (acc, r) => ({
       fetched: acc.fetched + r.fetched,
       inserted: acc.inserted + r.inserted,
+      skippedTombstoned: acc.skippedTombstoned + r.skippedTombstoned,
       failedSources: acc.failedSources + (r.error ? 1 : 0),
     }),
-    { fetched: 0, inserted: 0, failedSources: 0 },
+    { fetched: 0, inserted: 0, skippedTombstoned: 0, failedSources: 0 },
   );
 
   log.info("ingest done", {
@@ -89,17 +103,19 @@ async function ingestSource(
       // for the /admin/cron expand-row detail view (Phase 8.D).
       ingestedInRun: cronRunId,
     }));
-    const inserted = await insertPendingArticles(rows);
+    const { inserted, skippedTombstoned } = await insertPendingArticles(rows);
     log.info("source ok", {
       source: source.name,
       fetched: items.length,
       inserted,
+      skippedTombstoned,
     });
     return {
       sourceId: source.id,
       sourceName: source.name,
       fetched: items.length,
       inserted,
+      skippedTombstoned,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -109,6 +125,7 @@ async function ingestSource(
       sourceName: source.name,
       fetched: 0,
       inserted: 0,
+      skippedTombstoned: 0,
       error: message,
     };
   }

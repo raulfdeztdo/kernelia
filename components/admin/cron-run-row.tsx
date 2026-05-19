@@ -184,16 +184,31 @@ function DetailPanel({ job, data }: { job: CronJob; data: DetailPayload }) {
 
 function CleanupSummary({ summary }: { summary: Record<string, unknown> }) {
   const deleted = (summary["deleted"] as number | undefined) ?? 0;
+  const deletedPublishedYear = (summary["deletedPublishedYear"] as number | undefined) ?? 0;
   const retentionDays = (summary["retentionDays"] as number | undefined) ?? 7;
+  const publishedYearWindow =
+    (summary["publishedYearRetentionWindow"] as number | undefined) ?? 2;
   const cutoff = summary["cutoff"] as string | undefined;
+  const publishedYearCutoff = summary["publishedYearCutoff"] as string | undefined;
+  const tombstoned = (summary["tombstoned"] as number | undefined) ?? 0;
   const sample = (summary["sample"] as string[] | undefined) ?? [];
   return (
     <div className="space-y-2 text-sm">
       <p>
         <span className="font-semibold tabular-nums">{deleted}</span> articulos
-        hard-deleted (status <code>failed</code> o <code>hidden</code> ingestados
-        antes de {cutoff?.slice(0, 19).replace("T", " ") ?? "—"} UTC, retencion{" "}
+        hard-deleted por la regla failed/hidden (ingestados antes de{" "}
+        {cutoff?.slice(0, 19).replace("T", " ") ?? "—"} UTC, retencion{" "}
         {retentionDays}d).
+      </p>
+      <p>
+        <span className="font-semibold tabular-nums">{deletedPublishedYear}</span>{" "}
+        articulos hard-deleted por la regla de antiguedad (publicados antes de{" "}
+        {publishedYearCutoff?.slice(0, 10) ?? "—"}, ventana {publishedYearWindow}{" "}
+        a&ntilde;os).
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Tombstones escritos: <span className="font-mono">{tombstoned}</span>. El
+        ingest los respeta para no reinsertar URLs ya purgadas.
       </p>
       {sample.length > 0 ? (
         <details className="text-xs text-muted-foreground">
