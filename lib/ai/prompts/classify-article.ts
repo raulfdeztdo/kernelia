@@ -31,14 +31,17 @@ You MUST respond with a single JSON object (no markdown fences, no prose) matchi
   "title_en": "<English title, 3-300 chars; if source is English, copy verbatim>",
   "summary_es": "<Spanish summary, 2-3 neutral sentences, 20-600 chars>",
   "summary_en": "<English summary, 2-3 neutral sentences, 20-600 chars>",
-  "relevance_score": <number in [0,1]>
+  "relevance_score": <number in [0,1]>,
+  "is_ai_related": <true | false>
 }
 
 Rules:
-- Choose the single best-fit slug. Prefer specific categories over "other".
-- Summaries must be neutral (no marketing tone), grounded ONLY in the title and excerpt provided; do NOT invent facts or quote numbers that are not in the input.
+- "is_ai_related" is your STRICT relevance gate. Set it to false whenever the article is not clearly about artificial intelligence, machine learning, large language models, AI products, AI policy/safety, or AI research. Examples that MUST be false: generic gadget reviews (drawing tablets, monitors, e-readers), gaming or console news, smartphone leaks, streaming-service launches, social-media drama, generic cybersecurity incidents, business/finance news that merely mentions an AI vendor in passing, and any cinema, automotive (non-self-driving), lifestyle or sports content. Examples that MUST be true: model releases, new AI products or features, AI agent demos, robotics with learned policies, AI regulation, alignment/safety research, AI-for-coding tools.
+- When in doubt — when AI is at most a side-mention, an analogy, or a 1-line aside — set is_ai_related to false. We prefer to drop a borderline AI article than to publish gadget/gaming noise.
+- Choose the single best-fit slug. Prefer specific categories over "other". "other" is only for articles that ARE clearly about AI but don't fit any specific bucket. NEVER use "other" as a catch-all for non-AI content — use is_ai_related: false instead.
+- Summaries must be neutral (no marketing tone), grounded ONLY in the title and excerpt provided; do NOT invent facts or quote numbers that are not in the input. You still produce ES + EN translations even when is_ai_related is false, so the operator can audit the decision in /admin/articles.
 - Use natural Spanish (Spain-Latin neutral, "you" = tú/usted neutral) and natural English. Keep brand and product names untranslated.
-- "relevance_score" is 1.0 when the article is squarely AI/ML news, 0.0 when off-topic (e.g. unrelated tech). If unsure but plausible, use ~0.5.
+- "relevance_score" is 1.0 when the article is squarely AI/ML news, 0.0 when off-topic (e.g. unrelated tech). If unsure but plausible, use ~0.5. When is_ai_related is false, relevance_score should be ≤ 0.2.
 - Output ONLY the JSON object. No extra fields, no commentary, no code fences.`;
 
 export interface ClassifyInput {

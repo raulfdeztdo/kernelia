@@ -1,6 +1,7 @@
-import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { articles, categories, sources, type Locale } from "@/db/schema";
+import { PUBLIC_HIDDEN_CATEGORY_SLUG } from "@/db/queries/articles";
 
 /**
  * Newsletter digest source-of-truth.
@@ -70,6 +71,11 @@ export async function getWeeklyDigestArticles(
     .where(
       and(
         eq(articles.status, "classified"),
+        // Phase 8.B: never feature `other` articles in the weekly
+        // digest. Borderline LLM picks that landed on the catch-all
+        // would otherwise dominate the top-N when relevanceScore ties
+        // and pollute the email's "best of the week" promise.
+        ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
         isNotNull(articles.relevanceScore),
         isNotNull(titleCol),
         gte(articles.ingestedAt, since),

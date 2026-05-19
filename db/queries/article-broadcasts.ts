@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull, notExists, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, ne, notExists, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   articleBroadcasts,
@@ -7,6 +7,7 @@ import {
   type BroadcastPlatform,
   type NewArticleBroadcast,
 } from "@/db/schema";
+import { PUBLIC_HIDDEN_CATEGORY_SLUG } from "./articles";
 
 /**
  * The only DB surface for `article_broadcasts`. The Phase 8.A broadcaster
@@ -72,6 +73,10 @@ export async function listPendingForBroadcast(
     .where(
       and(
         eq(articles.status, "classified"),
+        // Phase 8.B: never publish `other` to social channels — same
+        // rationale as the home feed and the weekly digest, see
+        // `PUBLIC_HIDDEN_CATEGORY_SLUG`.
+        ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
         isNotNull(articles.titleEs),
         isNotNull(articles.relevanceScore),
         gte(articles.relevanceScore, minScore),
