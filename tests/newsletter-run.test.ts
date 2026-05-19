@@ -9,12 +9,17 @@ import type { DigestArticle } from "@/lib/newsletter/digest";
  * skip-on-empty, partial-failure tally.
  */
 
-function buildSub(id: string, locale: "es" | "en"): ActiveSubscriber {
+function buildSub(
+  id: string,
+  locale: "es" | "en",
+  preferredCategories: string[] = [],
+): ActiveSubscriber {
   return {
     id,
     email: `${id}@example.com`,
     locale,
     unsubscribeToken: `tok-${id}`,
+    preferredCategories,
   };
 }
 
@@ -186,6 +191,46 @@ describe("runNewsletter", () => {
     // "send" rows that the admin UI would over-count.
     expect(deleteSend).toHaveBeenCalledWith("send-1");
     expect(attachResendId).not.toHaveBeenCalled();
+  });
+
+  it("Phase 8.H: passes each subscriber's preferredCategories to fetchDigest and caches by (locale, slugs)", async () => {
+    // Two subscribers in the same locale, one filtering by ["llm"], one
+    // by ["agents"], plus a third with no preference. Expect 3 distinct
+    // digest fetches. A fourth subscriber sharing slug set with #1 must
+    // hit the cache — no extra fetch.
+    const fetchDigest = vi.fn(async () => [buildArticle("x")]);
+    await runNewsletter({
+      listSubscribers: async () => [
+        buildSub("a", "es", ["llm"]),
+        buildSub("b", "es", ["agents"]),
+        buildSub("c", "es", []),
+        buildSub("d", "es", ["llm"]),
+      ],
+      fetchDigest,
+      send,
+      sleep,
+      recordSend,
+      attachResendId,
+      deleteSend,
+      maxWallTimeMs: 60_000,
+    });
+
+    // The pre-warm fetches "all" for es + en, then the loop resolves
+    // the two custom buckets on demand. The second "llm" subscriber
+    // hits the cache → no extra call.
+    //
+    // Expected unique (locale, key) tuples:
+    //   ("es", "<all>"), ("en", "<all>"), ("es", "llm"), ("es", "agents")
+    // = 4 fetchDigest calls total.
+    expect(fetchDigest).toHaveBeenCalledTimes(4);
+
+    const allSlugArgs = fetchDigest.mock.calls.map(
+      (c: unknown[]) => c[2] as readonly string[],
+    );
+    const sortedSets = allSlugArgs.map((s) => [...s].sort().join(","));
+    expect(sortedSets).toContain("");
+    expect(sortedSets).toContain("llm");
+    expect(sortedSets).toContain("agents");
   });
 
   it("sends without tracking when the pre-create row insert fails (best-effort degradation)", async () => {

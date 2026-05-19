@@ -335,6 +335,28 @@ export const newsletterSubscribers = pgTable(
     unsubscribeToken: text("unsubscribe_token").notNull(),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
+    /**
+     * Phase 8.H: which category slugs the subscriber wants in their
+     * weekly digest. Stored as a Postgres `text[]`. Semantics:
+     *
+     *   - Empty array `{}` (the column default) = "all categories" —
+     *     the subscriber explicitly opted in to no filter. This is
+     *     also the back-compat default for rows that pre-date the
+     *     migration: their digest stays identical to before.
+     *   - Non-empty array = the subscriber only wants articles
+     *     whose category slug is in the array.
+     *
+     * We deliberately do NOT use NULL-vs-empty to encode "all" — keeps
+     * the digest query's filter expression simple (a single
+     * `cardinality(prefs) = 0 OR slug = ANY(prefs)` check) and avoids
+     * an off-by-NULL footgun. Slugs are not constrained at DB level
+     * (the category list is just data in `categories.slug`); the
+     * subscribe endpoint validates them against the live category set.
+     */
+    preferredCategories: text("preferred_categories")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

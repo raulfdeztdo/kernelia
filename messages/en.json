@@ -139,7 +139,20 @@
       "invalid": "That email doesn't look valid. Check the format.",
       "rate": "Too many attempts. Try again in a few minutes.",
       "error": "We couldn't process your request. Try again later.",
-      "hint": "No spam, your email isn't shared. Unsubscribe from any digest in one click."
+      "hint": "No spam, your email isn't shared. Unsubscribe from any digest in one click.",
+      "categoriesLabel": "Categories",
+      "categoriesHint": "Pick the categories you want to receive. If you pick none, you'll get all of them."
+    },
+    "preferences": {
+      "title": "Your preferences",
+      "intro": "Pick the categories you want in the weekly digest. If you pick none, you'll get all of them.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Your preferences have been updated.",
+      "invalid": "The link is no longer valid.",
+      "error": "We couldn't save the changes. Try again later.",
+      "categoriesLabel": "Categories",
+      "backHome": "Back to home"
     },
     "confirm": {
       "title": "Confirm subscription?",

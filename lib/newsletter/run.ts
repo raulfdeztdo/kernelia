@@ -1,4 +1,4 @@
-import { getWeeklyDigestArticles } from "@/lib/newsletter/digest";
+import { digestCacheKey, getWeeklyDigestArticles } from "@/lib/newsletter/digest";
 import { listActiveSubscribers } from "@/db/queries/newsletter";
 import {
   attachResendId as defaultAttachResendId,
@@ -46,8 +46,18 @@ export interface NewsletterRunOptions {
   now?: Date;
   /** Inject subscriber list. */
   listSubscribers?: () => Promise<ActiveSubscriber[]>;
-  /** Inject digest fetcher. */
-  fetchDigest?: (locale: "es" | "en", now: Date) => Promise<DigestArticle[]>;
+  /**
+   * Inject digest fetcher. Receives the subscriber's category
+   * preferences as a third argument — empty array means "no filter"
+   * (= all categories). Tests can ignore the slugs param and return
+   * a single fixed list per locale; production resolves it to
+   * `getWeeklyDigestArticles(locale, { now, categorySlugs })`.
+   */
+  fetchDigest?: (
+    locale: "es" | "en",
+    now: Date,
+    categorySlugs: readonly string[],
+  ) => Promise<DigestArticle[]>;
   /** Inject sender (skip Resend in tests). */
   send?: typeof sendWeeklyDigest;
   /** Inject sleep. */
@@ -94,7 +104,10 @@ export async function runNewsletter(
   const sendIntervalMs = opts.sendIntervalMs ?? DEFAULT_SEND_INTERVAL_MS;
   const now = opts.now ?? new Date();
   const listSubscribers = opts.listSubscribers ?? listActiveSubscribers;
-  const fetchDigest = opts.fetchDigest ?? ((locale, now) => getWeeklyDigestArticles(locale, { now }));
+  const fetchDigest =
+    opts.fetchDigest ??
+    ((locale, now, categorySlugs) =>
+      getWeeklyDigestArticles(locale, { now, categorySlugs }));
   const send = opts.send ?? sendWeeklyDigest;
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const cronRunId = opts.cronRunId ?? null;
@@ -102,16 +115,39 @@ export async function runNewsletter(
   const attachResendId = opts.attachResendId ?? defaultAttachResendId;
   const deleteSend = opts.deleteSend ?? defaultDeleteSend;
 
-  // Subscribers list + both locales' digests are independent queries;
-  // race them so the slow one sets the floor instead of stacking. If a
-  // locale ends up unused (no subscribers chose it) the cost is one
-  // cheap aggregate query.
-  const [subscribers, esArticles, enArticles] = await Promise.all([
-    listSubscribers(),
-    fetchDigest("es", now),
-    fetchDigest("en", now),
+  const subscribers = await listSubscribers();
+
+  // Phase 8.H: digests are now keyed by (locale, sorted-category-slugs) so
+  // a subscriber with `preferredCategories = ["llm"]` gets a top-N
+  // computed over LLM only, not the global top-N filtered down. The
+  // cache is shared across subscribers — most fall into one of a few
+  // buckets (commonly "all" + a couple of explicit picks), so the
+  // per-subscriber cost stays near 1 query per unique bucket.
+  //
+  // The cache is intentionally local to this run: stale across ticks
+  // is not a concern (weekly cadence) and we'd rather pay a few extra
+  // selects than thread shared state through cron invocations.
+  const digestCache = new Map<string, DigestArticle[]>();
+  async function resolveDigest(
+    locale: "es" | "en",
+    categorySlugs: readonly string[],
+  ): Promise<DigestArticle[]> {
+    const key = digestCacheKey(locale, categorySlugs);
+    const hit = digestCache.get(key);
+    if (hit) return hit;
+    const fresh = await fetchDigest(locale, now, categorySlugs);
+    digestCache.set(key, fresh);
+    return fresh;
+  }
+
+  // Pre-warm the "all categories" digest for each locale: nearly every
+  // subscriber falls into this bucket, and fetching them in parallel
+  // up front lets the per-subscriber loop hit the cache. Per-slug
+  // buckets are resolved lazily inside the loop.
+  const [esAllArticles, enAllArticles] = await Promise.all([
+    resolveDigest("es", []),
+    resolveDigest("en", []),
   ]);
-  const articlesByLocale = { es: esArticles, en: enArticles } as const;
 
   const origin = getSiteUrl();
   const weekLabel = formatWeekLabel(now);
@@ -122,7 +158,7 @@ export async function runNewsletter(
     skippedNoArticles: 0,
     failed: 0,
     budgetExhausted: 0,
-    digestCounts: { es: esArticles.length, en: enArticles.length },
+    digestCounts: { es: esAllArticles.length, en: enAllArticles.length },
   };
 
   // Serial on purpose: Resend's transactional API has a per-second
@@ -139,7 +175,9 @@ export async function runNewsletter(
     }
     summary.attempted += 1;
 
-    const articles = articlesByLocale[subscriber.locale];
+    /* eslint-disable react-review/async-await-in-loop */
+    const articles = await resolveDigest(subscriber.locale, subscriber.preferredCategories);
+    /* eslint-enable react-review/async-await-in-loop */
     if (articles.length === 0) {
       summary.skippedNoArticles += 1;
       continue;
@@ -150,7 +188,15 @@ export async function runNewsletter(
     // them from accidentally unsubscribing the recipient. See the docstring
     // on `app/api/newsletter/unsubscribe/route.ts`.
     const langPrefix = subscriber.locale === "en" ? "/en" : "";
-    const unsubscribeUrl = `${origin.replace(/\/$/, "")}${langPrefix}/newsletter/unsubscribe?token=${encodeURIComponent(
+    const baseOrigin = origin.replace(/\/$/, "");
+    const unsubscribeUrl = `${baseOrigin}${langPrefix}/newsletter/unsubscribe?token=${encodeURIComponent(
+      subscriber.unsubscribeToken,
+    )}`;
+    // Phase 8.H: same long-lived token, different page. Letting the
+    // subscriber tune their category selection without unsubscribing
+    // is a soft alternative we surface in the footer next to the
+    // unsubscribe link.
+    const preferencesUrl = `${baseOrigin}${langPrefix}/newsletter/preferences?token=${encodeURIComponent(
       subscriber.unsubscribeToken,
     )}`;
 
@@ -177,6 +223,7 @@ export async function runNewsletter(
         to: subscriber.email,
         locale: subscriber.locale,
         unsubscribeUrl,
+        preferencesUrl,
         articles,
         weekLabel,
         trackingPixelUrl,

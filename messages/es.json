@@ -139,7 +139,20 @@
       "invalid": "Ese email no parece válido. Revisa el formato.",
       "rate": "Demasiados intentos. Inténtalo de nuevo en unos minutos.",
       "error": "No hemos podido procesar tu solicitud. Inténtalo más tarde.",
-      "hint": "Sin spam, sin compartir tu email. Te puedes dar de baja desde cualquier digest."
+      "hint": "Sin spam, sin compartir tu email. Te puedes dar de baja desde cualquier digest.",
+      "categoriesLabel": "Categorías",
+      "categoriesHint": "Marca las categorías que quieras recibir. Si no marcas ninguna, llegarán todas."
+    },
+    "preferences": {
+      "title": "Tus preferencias",
+      "intro": "Elige las categorías que quieras recibir en el digest semanal. Si no marcas ninguna, llegarán todas.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "saved": "Hemos actualizado tus preferencias.",
+      "invalid": "El enlace no es válido o ya no está activo.",
+      "error": "No hemos podido guardar los cambios. Inténtalo más tarde.",
+      "categoriesLabel": "Categorías",
+      "backHome": "Volver al inicio"
     },
     "confirm": {
       "title": "¿Confirmar suscripción?",

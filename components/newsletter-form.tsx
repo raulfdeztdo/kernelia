@@ -7,6 +7,21 @@ interface Props {
   /** Resolved at render time on the server; passed through to the endpoint
    *  so the locale matches the page the visitor was on. */
   locale: "es" | "en";
+  /**
+   * Phase 8.H: the canonical list of category slugs the user can pick
+   * (already filtered to the publicly visible ones — `other` is excluded
+   * by the caller). Passed in instead of imported here so the component
+   * stays a pure presentation island and the page owns the source of
+   * truth (which also lets the home + about pages share the constant).
+   */
+  categorySlugs: readonly string[];
+  /**
+   * Localised labels for each slug. Same `slug → label` shape that the
+   * `categories` i18n namespace produces. The component reads it
+   * defensively (falls back to the slug) so a missing key doesn't
+   * crash render.
+   */
+  categoryLabels: Record<string, string>;
 }
 
 /**
@@ -22,12 +37,26 @@ interface Props {
  * so success copy stays the same for first-subscribe vs re-arm. The
  * recipient finds out via the confirmation email.
  */
-export function NewsletterForm({ locale }: Props) {
+export function NewsletterForm({ locale, categorySlugs, categoryLabels }: Props) {
   const t = useTranslations("newsletter.form");
   const [email, setEmail] = useState("");
+  // Empty Set = "all categories" — matches the DB contract (empty array
+  // means no filter). The user can opt INTO a narrow list; the default
+  // is the broad digest so a typical subscriber doesn't need to think
+  // about it.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "invalid" | "rate" | "error">(
     "idle",
   );
+
+  function toggle(slug: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -37,11 +66,19 @@ export function NewsletterForm({ locale }: Props) {
       const res = await fetch("/api/newsletter/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, locale }),
+        body: JSON.stringify({
+          email,
+          locale,
+          // Send only the slugs the user actually ticked. The flow
+          // treats an empty array as "all categories", so we don't
+          // need to expand the list client-side.
+          preferredCategories: [...selected],
+        }),
       });
       if (res.ok) {
         setStatus("ok");
         setEmail("");
+        setSelected(new Set());
         return;
       }
       if (res.status === 429) {
@@ -88,6 +125,42 @@ export function NewsletterForm({ locale }: Props) {
           {status === "loading" ? t("submitting") : t("submit")}
         </button>
       </div>
+      {categorySlugs.length > 0 ? (
+        <fieldset
+          className="space-y-2 rounded-md border border-[color:var(--color-border)]/60 p-3"
+          disabled={status === "loading"}
+        >
+          <legend className="px-1 text-sm font-medium">{t("categoriesLabel")}</legend>
+          <p className="text-xs text-[color:var(--color-muted-foreground)]/80">
+            {t("categoriesHint")}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {categorySlugs.map((slug) => {
+              const checked = selected.has(slug);
+              return (
+                <label
+                  key={slug}
+                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition ${
+                    checked
+                      ? "border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]"
+                      : "border-[color:var(--color-border)] text-[color:var(--color-muted-foreground)] hover:border-[color:var(--color-accent)]/60"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    name="preferredCategories"
+                    value={slug}
+                    checked={checked}
+                    onChange={() => toggle(slug)}
+                    className="sr-only"
+                  />
+                  {categoryLabels[slug] ?? slug}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      ) : null}
       {status === "ok" ? (
         <p
           id={messageId}

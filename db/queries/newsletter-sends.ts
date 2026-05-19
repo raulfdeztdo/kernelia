@@ -104,6 +104,12 @@ export interface SubscriberStats {
   lastOpenedAt: Date | null;
   /** Total opens. Apple Mail Privacy inflates this; treat as directional. */
   openedCount: number;
+  /**
+   * Phase 8.H: category slugs the subscriber filters the digest by.
+   * Empty array = no filter (all categories). The admin table renders
+   * "Todas" / "All" for the empty case and lists the slugs otherwise.
+   */
+  preferredCategories: string[];
 }
 
 /**
@@ -125,6 +131,7 @@ export async function listSubscribersWithStats(): Promise<SubscriberStats[]> {
       lastSentAt: sql<Date | null>`max(${newsletterSends.sentAt})`,
       lastOpenedAt: sql<Date | null>`max(${newsletterSends.openedAt})`,
       openedCount: sql<number>`count(${newsletterSends.openedAt})::int`,
+      preferredCategories: newsletterSubscribers.preferredCategories,
     })
     .from(newsletterSubscribers)
     .leftJoin(newsletterSends, eq(newsletterSends.subscriberId, newsletterSubscribers.id))

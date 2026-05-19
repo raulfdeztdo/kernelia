@@ -202,6 +202,7 @@ function SubscribersSection({
               <th className="px-3 py-2 font-medium">Email</th>
               <th className="px-3 py-2 font-medium">Idioma</th>
               <th className="px-3 py-2 font-medium">Estado</th>
+              <th className="px-3 py-2 font-medium">Categorías</th>
               <th className="px-3 py-2 font-medium">Envios</th>
               <th className="px-3 py-2 font-medium">Ultimo envio</th>
               <th className="px-3 py-2 font-medium">Aperturas</th>
@@ -212,7 +213,7 @@ function SubscribersSection({
           <tbody>
             {subscribers.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-4 text-muted-foreground">
+                <td colSpan={9} className="px-3 py-4 text-muted-foreground">
                   Aun no hay suscriptores.
                 </td>
               </tr>
@@ -264,6 +265,22 @@ function SubscriberRow({
       <td className="px-3 py-2 break-all">{sub.email}</td>
       <td className="px-3 py-2 uppercase tracking-wide text-muted-foreground">{sub.locale}</td>
       <td className={`px-3 py-2 font-medium ${SUB_TONE_CLASS[status.tone]}`}>{status.label}</td>
+      <td className="px-3 py-2 text-xs text-muted-foreground">
+        {sub.preferredCategories.length === 0 ? (
+          <span className="italic">Todas</span>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {sub.preferredCategories.map((slug) => (
+              <code
+                key={slug}
+                className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px]"
+              >
+                {slug}
+              </code>
+            ))}
+          </div>
+        )}
+      </td>
       <td className="px-3 py-2 tabular-nums">{sub.sentCount}</td>
       <td className="px-3 py-2 tabular-nums text-muted-foreground">
         {formatStamp(sub.lastSentAt)}

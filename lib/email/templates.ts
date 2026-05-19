@@ -65,6 +65,15 @@ interface EmailShellParams {
   unsubscribeUrl?: string;
   /** Optional translated unsubscribe label (defaults to ES). */
   unsubscribeLabel?: string;
+  /**
+   * Phase 8.H: optional URL to the per-subscriber preferences page. When
+   * set, the footer renders a "Change preferences" link next to
+   * Unsubscribe so a recipient can re-tune their category selection
+   * without having to unsubscribe-and-resubscribe.
+   */
+  preferencesUrl?: string;
+  /** Optional translated preferences label (defaults to locale). */
+  preferencesLabel?: string;
   /** Translated tagline shown under the logo. */
   tagline?: string;
   /**
@@ -97,6 +106,8 @@ export function emailShell(params: EmailShellParams): string {
     preheader,
     unsubscribeUrl,
     unsubscribeLabel,
+    preferencesUrl,
+    preferencesLabel,
     tagline,
     trackingPixelUrl,
   } = params;
@@ -105,6 +116,8 @@ export function emailShell(params: EmailShellParams): string {
   const logoUrl = `${origin}/logo-kernelia.svg`;
   const taglineText = tagline ?? (locale === "en" ? "AI signal, no noise" : "Señal IA, sin ruido");
   const unsubLabel = unsubscribeLabel ?? (locale === "en" ? "Unsubscribe" : "Darse de baja");
+  const prefsLabel =
+    preferencesLabel ?? (locale === "en" ? "Change preferences" : "Cambiar preferencias");
 
   // Preheader: hidden inline text that email clients use for the
   // preview snippet. The followup `&zwnj;` + spaces stop Gmail from
@@ -115,6 +128,12 @@ export function emailShell(params: EmailShellParams): string {
 
   const footerUnsub = unsubscribeUrl
     ? ` · <a href="${escapeHtml(unsubscribeUrl)}" style="color:${BRAND.muted};text-decoration:underline">${escapeHtml(unsubLabel)}</a>`
+    : "";
+  // Preferences link sits BEFORE unsubscribe so the user sees the
+  // softer option first — most people who want to "stop receiving X"
+  // actually want to narrow the digest, not opt out entirely.
+  const footerPrefs = preferencesUrl
+    ? ` · <a href="${escapeHtml(preferencesUrl)}" style="color:${BRAND.muted};text-decoration:underline">${escapeHtml(prefsLabel)}</a>`
     : "";
 
   const trackingNotice = trackingPixelUrl
@@ -163,7 +182,7 @@ ${content}
     </td></tr>
     <!-- Footer -->
     <tr><td align="center" style="padding:24px 16px 8px;font-size:12px;color:${BRAND.muted};line-height:1.6;">
-      <a href="${escapeHtml(origin)}" style="color:${BRAND.accent};text-decoration:none;">kernelia.dev</a>${footerUnsub}
+      <a href="${escapeHtml(origin)}" style="color:${BRAND.accent};text-decoration:none;">kernelia.dev</a>${footerPrefs}${footerUnsub}
       ${trackingNotice}
     </td></tr>
     <tr><td align="center" style="padding:0 16px 16px;font-size:11px;color:${BRAND.mutedFaint};">
