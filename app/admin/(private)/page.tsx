@@ -1,3 +1,4 @@
+// Admin dashboard — metrics, charts, health card, cron schedule.
 import Link from "next/link";
 import {
   getArticleStatusCounts,

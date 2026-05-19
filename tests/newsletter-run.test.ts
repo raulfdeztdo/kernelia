@@ -227,7 +227,7 @@ describe("runNewsletter", () => {
     const allSlugArgs = fetchDigest.mock.calls.map(
       (c: unknown[]) => c[2] as readonly string[],
     );
-    const sortedSets = allSlugArgs.map((s) => [...s].sort().join(","));
+    const sortedSets = allSlugArgs.map((s) => [...s].toSorted().join(","));
     expect(sortedSets).toContain("");
     expect(sortedSets).toContain("llm");
     expect(sortedSets).toContain("agents");

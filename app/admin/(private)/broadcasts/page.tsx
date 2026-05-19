@@ -147,17 +147,17 @@ export default async function AdminBroadcastsPage({ searchParams }: PageProps) {
                       {b.categorySlug ? (
                         <code className="text-xs">{b.categorySlug}</code>
                       ) : (
-                        "—"
+                        <span>{"—"}</span>
                       )}
                     </td>
                     <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                      {b.relevanceScore != null ? b.relevanceScore.toFixed(2) : "—"}
+                      {b.relevanceScore != null ? b.relevanceScore.toFixed(2) : <span>{"—"}</span>}
                     </td>
                     <td className="px-3 py-2">
                       {b.externalId ? (
                         <code className="text-xs text-muted-foreground">{b.externalId}</code>
                       ) : (
-                        "—"
+                        <span>{"—"}</span>
                       )}
                     </td>
                   </tr>

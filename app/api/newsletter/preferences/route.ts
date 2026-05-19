@@ -46,6 +46,12 @@ export async function POST(req: Request): Promise<Response> {
   // 400 a preferences POST.
   const preferredCategories = parsed.success ? parsed.data : [];
 
+  // NextResponse.redirect() returns a Response — it does NOT throw.
+  // React Review's nextjs-no-redirect-in-try-catch fires here as a
+  // false positive because it can't distinguish `NextResponse.redirect`
+  // (safe, returns a value) from `next/navigation`'s `redirect()` (which
+  // throws a NEXT_REDIRECT error that try/catch would swallow).
+  /* eslint-disable react-review/nextjs-no-redirect-in-try-catch */
   try {
     const row = await updatePreferredCategoriesByToken(token, preferredCategories);
     if (row) {
@@ -71,6 +77,7 @@ export async function POST(req: Request): Promise<Response> {
       origin,
     );
   }
+  /* eslint-enable react-review/nextjs-no-redirect-in-try-catch */
 }
 
 async function readBody(req: Request): Promise<{
