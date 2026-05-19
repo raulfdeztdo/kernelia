@@ -277,7 +277,9 @@ function ArticlesTable({
               <td className="px-2 py-1 tabular-nums text-muted-foreground">
                 {stage === "ingested"
                   ? r.ingestedAt
-                    ? new Date(r.ingestedAt).toISOString().replace("T", " ").slice(0, 19)
+                    ? // ISO string → deterministic; not a hydration-mismatch source.
+                      // eslint-disable-next-line react-review/rendering-hydration-mismatch-time
+                      new Date(r.ingestedAt).toISOString().replace("T", " ").slice(0, 19)
                     : "—"
                   : r.relevanceScore !== null
                     ? r.relevanceScore.toFixed(2)
@@ -328,6 +330,8 @@ function BroadcastsTable({ rows }: { rows: CronRunBroadcast[] }) {
                 </a>
               </td>
               <td className="px-2 py-1 tabular-nums text-muted-foreground">
+                {/* ISO string → deterministic; eslint-disable is a false positive. */}
+                {/* eslint-disable-next-line react-review/rendering-hydration-mismatch-time */}
                 {new Date(r.postedAt).toISOString().replace("T", " ").slice(0, 19)}
               </td>
               <td className="px-2 py-1 text-muted-foreground">{r.externalId ?? "—"}</td>
@@ -368,11 +372,15 @@ function NewsletterSendsTable({ rows }: { rows: CronRunNewsletterSend[] }) {
                 {r.subscriberLocale}
               </td>
               <td className="px-2 py-1 tabular-nums text-muted-foreground">
+                {/* ISO string → deterministic; eslint-disable is a false positive. */}
+                {/* eslint-disable-next-line react-review/rendering-hydration-mismatch-time */}
                 {new Date(r.sentAt).toISOString().replace("T", " ").slice(0, 19)}
               </td>
               <td className="px-2 py-1 tabular-nums">
                 {r.openedAt ? (
                   <span className="text-accent">
+                    {/* ISO string → deterministic; eslint-disable is a false positive. */}
+                    {/* eslint-disable-next-line react-review/rendering-hydration-mismatch-time */}
                     {new Date(r.openedAt).toISOString().replace("T", " ").slice(0, 19)}
                   </span>
                 ) : (
