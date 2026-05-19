@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/auth/cron";
 import { newsletterStatus, runNewsletter } from "@/lib/newsletter/run";
-import { logCronRun } from "@/lib/cron-logging";
+import { beginCronRun, endCronRun } from "@/lib/cron-logging";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,26 +23,36 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const startedAt = new Date();
+  // Phase 8.D: PR 4 will use `cronRunId` to stamp per-subscriber
+  // newsletter sends. For PR 3 we already wire the begin/end pair so
+  // the row carries the same lifecycle as the other jobs.
+  const cronRunId = await beginCronRun({ job: "newsletter", startedAt });
   try {
-    const summary = await runNewsletter({ maxWallTimeMs: WALL_TIME_BUDGET_MS });
-    await logCronRun({
-      job: "newsletter",
-      status: newsletterStatus(summary),
+    const summary = await runNewsletter({ maxWallTimeMs: WALL_TIME_BUDGET_MS, cronRunId });
+    await endCronRun(
+      {
+        id: cronRunId,
+        status: newsletterStatus(summary),
+        finishedAt: new Date(),
+        summary: summary as unknown as Record<string, unknown>,
+      },
+      "newsletter",
       startedAt,
-      finishedAt: new Date(),
-      summary: summary as unknown as Record<string, unknown>,
-    });
+    );
     return NextResponse.json(summary);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await logCronRun({
-      job: "newsletter",
-      status: "failed",
+    await endCronRun(
+      {
+        id: cronRunId,
+        status: "failed",
+        finishedAt: new Date(),
+        summary: { error: message },
+        errorMessage: message,
+      },
+      "newsletter",
       startedAt,
-      finishedAt: new Date(),
-      summary: { error: message },
-      errorMessage: message,
-    });
+    );
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

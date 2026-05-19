@@ -137,7 +137,10 @@ export interface ClassifiedUpdate {
   relevanceScore?: number;
 }
 
-export async function markArticleClassified(update: ClassifiedUpdate): Promise<void> {
+export async function markArticleClassified(
+  update: ClassifiedUpdate,
+  cronRunId: string | null = null,
+): Promise<void> {
   await db
     .update(articles)
     .set({
@@ -149,16 +152,26 @@ export async function markArticleClassified(update: ClassifiedUpdate): Promise<v
       summaryEn: update.summaryEn,
       classificationError: null,
       relevanceScore: update.relevanceScore ?? null,
+      // Phase 8.D: stamp the tick that produced this classification.
+      // A reclassify (manual or scheduled) overwrites the previous
+      // value, which is what we want — the admin detail shows the
+      // most recent attribution.
+      classifiedInRun: cronRunId,
     })
     .where(eq(articles.id, update.id));
 }
 
-export async function markArticleFailed(id: string, reason: string): Promise<void> {
+export async function markArticleFailed(
+  id: string,
+  reason: string,
+  cronRunId: string | null = null,
+): Promise<void> {
   await db
     .update(articles)
     .set({
       status: "failed",
       classificationError: reason.slice(0, 500),
+      classifiedInRun: cronRunId,
     })
     .where(eq(articles.id, id));
 }
@@ -172,7 +185,7 @@ export async function markArticleFailed(id: string, reason: string): Promise<voi
  * Tag: `non_ai` — grep-able from cron logs and the admin UI.
  */
 export async function markArticleHiddenAsNonAi(
-  params: { id: string; update: ClassifiedUpdate },
+  params: { id: string; update: ClassifiedUpdate; cronRunId?: string | null },
 ): Promise<void> {
   await db
     .update(articles)
@@ -185,6 +198,7 @@ export async function markArticleHiddenAsNonAi(
       summaryEn: params.update.summaryEn,
       relevanceScore: params.update.relevanceScore ?? null,
       classificationError: "non_ai",
+      classifiedInRun: params.cronRunId ?? null,
     })
     .where(eq(articles.id, params.id));
 }
@@ -199,6 +213,8 @@ export interface MarkArticleHiddenAsDuplicateParams {
   dupOfId: string;
   /** Jaccard similarity that triggered the match (for audit trail). */
   similarity: number;
+  /** Phase 8.D: cron tick that produced the dedupe decision. */
+  cronRunId?: string | null;
 }
 
 /**
@@ -226,6 +242,7 @@ export async function markArticleHiddenAsDuplicate(
       summaryEn: params.update.summaryEn,
       relevanceScore: params.update.relevanceScore ?? null,
       classificationError: tag,
+      classifiedInRun: params.cronRunId ?? null,
     })
     .where(eq(articles.id, params.id));
 }
@@ -238,6 +255,8 @@ export interface ClassifyReplacingDuplicateParams {
   oldId: string;
   /** Jaccard similarity for the audit tag. */
   similarity: number;
+  /** Phase 8.D: cron tick that produced the swap. */
+  cronRunId?: string | null;
 }
 
 /**
@@ -254,13 +273,14 @@ export async function classifyReplacingDuplicate(
   params: ClassifyReplacingDuplicateParams,
 ): Promise<void> {
   const tag = `dup_replaced_by:${params.newId}:${params.similarity.toFixed(3)}`;
+  const runId = params.cronRunId ?? null;
   await db.transaction(async (tx) => {
     // 1. Hide the old winner first. If this throws (e.g. row gone),
     //    we bail before touching the new one — better to leave the new
     //    one pending for the next tick than to publish two duplicates.
     await tx
       .update(articles)
-      .set({ status: "hidden", classificationError: tag })
+      .set({ status: "hidden", classificationError: tag, classifiedInRun: runId })
       .where(eq(articles.id, params.oldId));
     // 2. Promote the new article to classified.
     await tx
@@ -274,6 +294,7 @@ export async function classifyReplacingDuplicate(
         summaryEn: params.newUpdate.summaryEn,
         classificationError: null,
         relevanceScore: params.newUpdate.relevanceScore ?? null,
+        classifiedInRun: runId,
       })
       .where(eq(articles.id, params.newId));
   });
@@ -561,6 +582,72 @@ export async function listLatestForFeed(
 export interface CategoryFacet {
   slug: string;
   count: number;
+}
+
+export interface CronRunArticle {
+  id: string;
+  title: string;
+  url: string;
+  status: Article["status"];
+  /** Localised slug (might be NULL on rows that ingested but never classified). */
+  categorySlug: string | null;
+  sourceName: string;
+  /** `null` for ingest-stage rows that never got classified. */
+  relevanceScore: number | null;
+  /** Reason tag from `classificationError` (e.g. `non_ai`, `dup_of:<id>`). */
+  classificationError: string | null;
+  /** `ingestedAt` for stage='ingested', null otherwise. */
+  ingestedAt: Date | null;
+}
+
+/**
+ * Lists every article touched by a given cron tick. Used by the
+ * admin /admin/cron expand-row detail view. The `stage` param selects
+ * which FK column to filter on:
+ *
+ *   - `ingested`: rows the ingest tick first inserted (matches
+ *     `articles.ingested_in_run`).
+ *   - `classified`: rows the classify tick updated (matches
+ *     `articles.classified_in_run`) — includes status='classified',
+ *     'hidden' (dedupe / non_ai), and 'failed'.
+ *
+ * Ordered by `ingestedAt desc` so the most recent items sit on top —
+ * the same ordering the admin articles table uses by default.
+ */
+export async function listArticlesByCronRun(
+  runId: string,
+  stage: "ingested" | "classified",
+): Promise<CronRunArticle[]> {
+  const filterCol = stage === "ingested" ? articles.ingestedInRun : articles.classifiedInRun;
+  const rows = await db
+    .select({
+      id: articles.id,
+      title: sql<string>`coalesce(${articles.titleEs}, ${articles.title})`,
+      url: articles.url,
+      status: articles.status,
+      categorySlug: categories.slug,
+      sourceName: sources.name,
+      relevanceScore: articles.relevanceScore,
+      classificationError: articles.classificationError,
+      ingestedAt: articles.ingestedAt,
+    })
+    .from(articles)
+    .innerJoin(sources, eq(sources.id, articles.sourceId))
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(eq(filterCol, runId))
+    .orderBy(desc(articles.ingestedAt))
+    .limit(500);
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    url: r.url,
+    status: r.status,
+    categorySlug: r.categorySlug,
+    sourceName: r.sourceName,
+    relevanceScore: r.relevanceScore,
+    classificationError: r.classificationError,
+    ingestedAt: stage === "ingested" ? r.ingestedAt : null,
+  }));
 }
 
 export async function getCategoryFacets(): Promise<CategoryFacet[]> {

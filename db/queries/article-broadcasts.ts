@@ -114,6 +114,12 @@ export interface RecordBroadcastParams {
   articleId: string;
   platform: BroadcastPlatform;
   externalId?: string | null;
+  /**
+   * Phase 8.D: cron tick that produced this post. Optional for
+   * back-compat — pre-migration rows already have `cron_run_id` NULL
+   * and the admin detail view simply shows "unknown run" for them.
+   */
+  cronRunId?: string | null;
 }
 
 /**
@@ -128,6 +134,7 @@ export async function recordBroadcast(params: RecordBroadcastParams): Promise<bo
     articleId: params.articleId,
     platform: params.platform,
     externalId: params.externalId ?? null,
+    cronRunId: params.cronRunId ?? null,
   };
   const inserted = await db
     .insert(articleBroadcasts)
@@ -152,6 +159,42 @@ export interface RecentBroadcast {
  * admin if we ever add a "broadcasts" page; for now the cron monitor
  * surfaces the per-tick summary which is usually enough.
  */
+export interface CronRunBroadcast {
+  id: string;
+  articleId: string;
+  articleTitle: string;
+  articleUrl: string;
+  platform: BroadcastPlatform;
+  postedAt: Date;
+  externalId: string | null;
+}
+
+/**
+ * Phase 8.D: lists every (article, platform) pair that a specific
+ * broadcast cron tick posted to. Powers the admin /admin/cron
+ * expand-row detail for broadcast jobs.
+ *
+ * Joined with `articles` so the UI can show the headline and URL
+ * without a second round-trip.
+ */
+export async function listBroadcastsByCronRun(runId: string): Promise<CronRunBroadcast[]> {
+  const rows = await db
+    .select({
+      id: articleBroadcasts.id,
+      articleId: articleBroadcasts.articleId,
+      articleTitle: sql<string>`coalesce(${articles.titleEs}, ${articles.title})`,
+      articleUrl: articles.url,
+      platform: articleBroadcasts.platform,
+      postedAt: articleBroadcasts.postedAt,
+      externalId: articleBroadcasts.externalId,
+    })
+    .from(articleBroadcasts)
+    .innerJoin(articles, eq(articles.id, articleBroadcasts.articleId))
+    .where(eq(articleBroadcasts.cronRunId, runId))
+    .orderBy(desc(articleBroadcasts.postedAt));
+  return rows;
+}
+
 export async function listRecentBroadcasts(limit = 50): Promise<RecentBroadcast[]> {
   return db
     .select({

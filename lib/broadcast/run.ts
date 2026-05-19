@@ -90,6 +90,12 @@ export interface RunBroadcastOptions {
    * window.
    */
   respectWindow?: boolean;
+  /**
+   * Phase 8.D: cron-run id stamped into `article_broadcasts.cron_run_id`
+   * for every post this tick records. Null leaves the column NULL
+   * (back-compat with rows that pre-date the migration).
+   */
+  cronRunId?: string | null;
   // Injectables (defaults wired to the real DB + HTTP clients).
   listPending?: (params: {
     platform: BroadcastPlatform;
@@ -101,6 +107,7 @@ export interface RunBroadcastOptions {
     articleId: string;
     platform: BroadcastPlatform;
     externalId?: string | null;
+    cronRunId?: string | null;
   }) => Promise<boolean>;
   /** Map of platform → post function. Defaults to the real HTTP clients. */
   platformPosters?: Partial<Record<BroadcastPlatform, PlatformPostFn>>;
@@ -170,6 +177,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   const lookbackMs = options.lookbackMs ?? DEFAULT_LOOKBACK_MS;
   const maxWallTimeMs = options.maxWallTimeMs ?? Infinity;
   const respectWindow = options.respectWindow ?? true;
+  const cronRunId = options.cronRunId ?? null;
   const sleep = options.sleep ?? defaultSleep;
   const listPending = options.listPending ?? listPendingForBroadcast;
   const record = options.record ?? recordBroadcast;
@@ -267,6 +275,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
             articleId: article.id,
             platform,
             externalId: result.externalId,
+            cronRunId,
           });
           if (recorded) {
             posted[platform]++;

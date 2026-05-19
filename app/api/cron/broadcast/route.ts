@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/auth/cron";
 import { runBroadcast } from "@/lib/broadcast/run";
-import { broadcastStatus, logCronRun } from "@/lib/cron-logging";
+import { beginCronRun, broadcastStatus, endCronRun } from "@/lib/cron-logging";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,29 +29,41 @@ export async function GET(request: Request): Promise<Response> {
   const force = new URL(request.url).searchParams.get("force") === "1";
 
   const startedAt = new Date();
+  // Pre-insert the `cron_runs` row in `status: 'running'` so the
+  // broadcast inserts further down can stamp `article_broadcasts.cron_run_id`.
+  // If this fails (`null`), the run still proceeds — it just loses
+  // the FK and the admin detail view degrades gracefully.
+  const cronRunId = await beginCronRun({ job: "broadcast", startedAt });
   try {
     const summary = await runBroadcast({
       maxWallTimeMs: WALL_TIME_BUDGET_MS,
       respectWindow: !force,
+      cronRunId,
     });
-    await logCronRun({
-      job: "broadcast",
-      status: broadcastStatus(summary),
+    await endCronRun(
+      {
+        id: cronRunId,
+        status: broadcastStatus(summary),
+        finishedAt: new Date(),
+        summary: summary as unknown as Record<string, unknown>,
+      },
+      "broadcast",
       startedAt,
-      finishedAt: new Date(),
-      summary: summary as unknown as Record<string, unknown>,
-    });
+    );
     return NextResponse.json(summary);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await logCronRun({
-      job: "broadcast",
-      status: "failed",
+    await endCronRun(
+      {
+        id: cronRunId,
+        status: "failed",
+        finishedAt: new Date(),
+        summary: { error: message },
+        errorMessage: message,
+      },
+      "broadcast",
       startedAt,
-      finishedAt: new Date(),
-      summary: { error: message },
-      errorMessage: message,
-    });
+    );
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

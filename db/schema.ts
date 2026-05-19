@@ -80,12 +80,29 @@ export const articles = pgTable(
     // those stay out of broadcast naturally and never flood the channels
     // with backlog.
     relevanceScore: real("relevance_score"),
+    // Phase 8.D traceability: which cron tick first inserted this row
+    // (set by the ingest job) and which tick produced its current
+    // classification (set by classify; rewritten on reclassify). Both
+    // nullable for back-compat with rows that pre-date the migration —
+    // those just show up without a "run" badge in the admin detail
+    // view. ON DELETE SET NULL so pruning old cron_runs (if we ever
+    // add a retention job) doesn't take articles down with them.
+    ingestedInRun: uuid("ingested_in_run").references(() => cronRuns.id, {
+      onDelete: "set null",
+    }),
+    classifiedInRun: uuid("classified_in_run").references(() => cronRuns.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => [
     uniqueIndex("articles_url_hash_unique").on(t.urlHash),
     index("articles_published_at_idx").on(t.publishedAt.desc()),
     index("articles_status_idx").on(t.status),
     index("articles_category_id_idx").on(t.categoryId),
+    // Used by the admin cron-run detail view to fetch "what did this
+    // tick ingest/classify?" without a sequential scan of the table.
+    index("articles_ingested_in_run_idx").on(t.ingestedInRun),
+    index("articles_classified_in_run_idx").on(t.classifiedInRun),
   ],
 );
 
@@ -170,7 +187,13 @@ export const cronJobEnum = pgEnum("cron_job", [
   "broadcast",
   "newsletter",
 ]);
-export const cronStatusEnum = pgEnum("cron_run_status", ["ok", "partial", "failed"]);
+// `running` is the in-progress placeholder: row is inserted at the top
+// of every cron handler so child writes (article inserts/updates,
+// broadcast records) can reference the FK while the loop is still
+// going. At the end of the handler the status is flipped to one of
+// `ok` / `partial` / `failed`. A row stuck in `running` means the
+// handler crashed mid-tick (rare, but the admin UI can flag it).
+export const cronStatusEnum = pgEnum("cron_run_status", ["running", "ok", "partial", "failed"]);
 
 export const cronRuns = pgTable(
   "cron_runs",
@@ -237,6 +260,11 @@ export const articleBroadcasts = pgTable(
      */
     externalId: text("external_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Phase 8.D traceability: cron tick that produced this broadcast.
+    // Nullable for back-compat with rows from before the migration.
+    cronRunId: uuid("cron_run_id").references(() => cronRuns.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => [
     // The unique index is the idempotency contract: at most one row per
@@ -244,6 +272,9 @@ export const articleBroadcasts = pgTable(
     // failing with a unique violation if a parallel tick races us.
     uniqueIndex("article_broadcasts_article_platform_unique").on(t.articleId, t.platform),
     index("article_broadcasts_platform_posted_at_idx").on(t.platform, t.postedAt.desc()),
+    // Powers the admin cron-run detail view: "what did this broadcast
+    // tick post?" without scanning the whole table.
+    index("article_broadcasts_cron_run_id_idx").on(t.cronRunId),
   ],
 );
 

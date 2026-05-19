@@ -47,6 +47,12 @@ export interface NewsletterRunOptions {
   send?: typeof sendWeeklyDigest;
   /** Inject sleep. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Phase 8.D: cron-run id. Threaded through so PR 4 can persist
+   * per-subscriber send rows pointing back at the run. For PR 3 this
+   * is plumbed end-to-end but unused inside the loop.
+   */
+  cronRunId?: string | null;
 }
 
 export interface NewsletterRunSummary {

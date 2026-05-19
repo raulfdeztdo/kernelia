@@ -142,6 +142,13 @@ export interface RunClassifyOptions extends ClassifyOptions {
    * tests use a spy to assert the call shape.
    */
   onHiddenAsNonAi?: (id: string, update: ClassifiedPayload) => Promise<void>;
+  /**
+   * Phase 8.D: cron-run id stamped into `articles.classified_in_run`
+   * for every row this tick touches (classified, hidden as dup,
+   * hidden as non-AI, failed). `null` (default) leaves the column
+   * NULL — the run still works, just without per-tick attribution.
+   */
+  cronRunId?: string | null;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -152,9 +159,11 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   const startedAt = new Date();
   const limit = options.limit ?? DEFAULT_BATCH_SIZE;
 
+  const cronRunId = options.cronRunId ?? null;
   const fetchPending = options.fetchPending ?? listPendingArticles;
-  const onClassified = options.onClassified ?? ((id, update) => markArticleClassified({ id, ...update }));
-  const onFailed = options.onFailed ?? markArticleFailed;
+  const onClassified =
+    options.onClassified ?? ((id, update) => markArticleClassified({ id, ...update }, cronRunId));
+  const onFailed = options.onFailed ?? ((id, reason) => markArticleFailed(id, reason, cronRunId));
   const resolveCategoryId =
     options.resolveCategoryId ??
     (async (slug) => {
@@ -171,6 +180,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         update: { ...update, id },
         dupOfId: match.matchedId,
         similarity: match.similarity,
+        cronRunId,
       }));
   const onClassifiedReplacingDuplicate =
     options.onClassifiedReplacingDuplicate ??
@@ -180,10 +190,11 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         newUpdate: { ...update, id: newId },
         oldId: match.matchedId,
         similarity: match.similarity,
+        cronRunId,
       }));
   const onHiddenAsNonAi =
     options.onHiddenAsNonAi ??
-    ((id, update) => markArticleHiddenAsNonAi({ id, update: { ...update, id } }));
+    ((id, update) => markArticleHiddenAsNonAi({ id, update: { ...update, id }, cronRunId }));
 
   const pending = await fetchPending(limit);
   // Snapshot of recent classified/hidden articles for content-level dedupe.
