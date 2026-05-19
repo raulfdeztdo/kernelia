@@ -84,4 +84,56 @@ export const seedSources: ReadonlyArray<Omit<NewSource, "id" | "createdAt">> = [
     language: "es",
     active: true,
   },
+  {
+    // General tech feed (no AI-specific tag survives: the obvious
+    // `/tag/inteligencia-artificial/feed` 410s). We accept the noise of
+    // non-AI items (cinema, Apple gadgets, etc.) because the classifier
+    // already filters by `category_slug` and assigns a low
+    // `relevance_score` to anything off-topic. Net: we still pick up the
+    // AI pieces this site does well, at the cost of a few extra LLM
+    // tokens per ingest tick.
+    name: "Hipertextual",
+    url: "https://hipertextual.com/",
+    rssUrl: "https://hipertextual.com/feed",
+    language: "es",
+    active: true,
+  },
+  {
+    name: "Maldita Tecnología",
+    url: "https://maldita.es/malditatecnologia/",
+    rssUrl: "https://maldita.es/malditatecnologia/feed/",
+    language: "es",
+    active: true,
+  },
+  {
+    // Primary source for OpenAI launches / Codex / product news. Lower
+    // cadence than the press (1-3 posts/week typically) so the volume
+    // impact on the ingest tick is small. Anthropic's news page has no
+    // public RSS — they're covered indirectly via Wired / Ars / TC.
+    name: "OpenAI News",
+    url: "https://openai.com/news/",
+    rssUrl: "https://openai.com/news/rss.xml",
+    language: "en",
+    active: true,
+  },
+  {
+    // The Keyword's AI sub-feed: Gemini / Workspace AI / Cloud AI
+    // announcements. Distinct from DeepMind, which is research-heavy.
+    name: "Google AI Blog",
+    url: "https://blog.google/technology/ai/",
+    rssUrl: "https://blog.google/technology/ai/rss/",
+    language: "en",
+    active: true,
+  },
+  {
+    // Replaces the old `blogs.microsoft.com/ai` feed, which has been
+    // dormant since 2022. Microsoft Research is the lab arm and covers
+    // AI alongside other CS topics; the classifier will skip the
+    // non-AI items the same way it does with Hipertextual.
+    name: "Microsoft Research",
+    url: "https://www.microsoft.com/en-us/research/",
+    rssUrl: "https://www.microsoft.com/en-us/research/feed/",
+    language: "en",
+    active: true,
+  },
 ];
