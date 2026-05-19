@@ -584,6 +584,43 @@ export interface CategoryFacet {
   count: number;
 }
 
+/**
+ * Hard-deletes articles with `status IN ('failed', 'hidden')` ingested
+ * before `cutoff`. Cascades via `ON DELETE CASCADE` on
+ * `article_broadcasts.article_id` (and `newsletter_sends` doesn't
+ * reference `articles`, so nothing else to clean up).
+ *
+ * Returns the count of rows deleted. Used by the daily `cleanup`
+ * cron tick (Phase 8.F) to stop the table from growing unbounded
+ * with classifier mis-fires (`classification_error = 'non_ai'`),
+ * dedupe hides (`dup_of:*`, `dup_replaced_by:*`) and LLM errors.
+ *
+ * We intentionally do NOT delete `status = 'classified'` rows —
+ * those are visible (or could become visible if reclassified) and
+ * deleting them would corrupt the public feed history. Pending rows
+ * are also preserved because the next classify tick still needs them.
+ *
+ * The `RETURNING id` shape gives us a deterministic count without a
+ * separate SELECT round-trip.
+ */
+export async function hardDeleteOldNonClassifiedArticles(
+  cutoff: Date,
+): Promise<{ deleted: number; sample: string[] }> {
+  const rows = await db
+    .delete(articles)
+    .where(
+      and(
+        inArray(articles.status, ["failed", "hidden"]),
+        lt(articles.ingestedAt, cutoff),
+      ),
+    )
+    .returning({ id: articles.id });
+  // First 10 ids as a debugging breadcrumb — surfaces in the cron
+  // summary so an operator can audit "what got nuked" without paging
+  // through the full delete log.
+  return { deleted: rows.length, sample: rows.slice(0, 10).map((r) => r.id) };
+}
+
 export interface CronRunArticle {
   id: string;
   title: string;

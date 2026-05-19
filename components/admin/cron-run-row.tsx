@@ -26,6 +26,7 @@ const JOB_LABEL: Record<CronJob, string> = {
   classify: "Classify",
   broadcast: "Broadcast",
   newsletter: "Newsletter",
+  cleanup: "Cleanup",
 };
 const STATUS_LABEL: Record<CronRunStatus, string> = {
   running: "Ejecutando…",
@@ -75,7 +76,16 @@ interface NewsletterSendsPayload {
   sends: CronRunNewsletterSend[];
 }
 
-type DetailPayload = ArticlesPayload | BroadcastsPayload | NewsletterSendsPayload;
+interface CleanupPayload {
+  kind: "cleanup_summary";
+  summary: Record<string, unknown>;
+}
+
+type DetailPayload =
+  | ArticlesPayload
+  | BroadcastsPayload
+  | NewsletterSendsPayload
+  | CleanupPayload;
 
 export function CronRunRow({ run, summaryOneLiner }: CronRunRowProps) {
   const [open, setOpen] = useState(false);
@@ -166,7 +176,39 @@ function DetailPanel({ job, data }: { job: CronJob; data: DetailPayload }) {
   if (data.kind === "broadcasts") {
     return <BroadcastsTable rows={data.broadcasts} />;
   }
-  return <NewsletterSendsTable rows={data.sends} />;
+  if (data.kind === "newsletter_sends") {
+    return <NewsletterSendsTable rows={data.sends} />;
+  }
+  return <CleanupSummary summary={data.summary} />;
+}
+
+function CleanupSummary({ summary }: { summary: Record<string, unknown> }) {
+  const deleted = (summary["deleted"] as number | undefined) ?? 0;
+  const retentionDays = (summary["retentionDays"] as number | undefined) ?? 7;
+  const cutoff = summary["cutoff"] as string | undefined;
+  const sample = (summary["sample"] as string[] | undefined) ?? [];
+  return (
+    <div className="space-y-2 text-sm">
+      <p>
+        <span className="font-semibold tabular-nums">{deleted}</span> articulos
+        hard-deleted (status <code>failed</code> o <code>hidden</code> ingestados
+        antes de {cutoff?.slice(0, 19).replace("T", " ") ?? "—"} UTC, retencion{" "}
+        {retentionDays}d).
+      </p>
+      {sample.length > 0 ? (
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer">Ver primeros {sample.length} ids</summary>
+          <ul className="mt-1 space-y-0.5">
+            {sample.map((id) => (
+              <li key={id} className="font-mono">
+                {id}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
+  );
 }
 
 const STATUS_BADGE: Record<string, string> = {

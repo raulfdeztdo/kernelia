@@ -1,0 +1,1 @@
+ALTER TYPE "public"."cron_job" ADD VALUE 'cleanup';

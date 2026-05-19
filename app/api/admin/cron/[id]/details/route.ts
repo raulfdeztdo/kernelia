@@ -49,7 +49,14 @@ export async function GET(
     const broadcasts = await listBroadcastsByCronRun(run.id);
     return NextResponse.json({ kind: "broadcasts", broadcasts });
   }
-  // newsletter: list of per-subscriber sends with open status (Phase 8.E).
-  const sends = await listSendsByCronRun(run.id);
-  return NextResponse.json({ kind: "newsletter_sends", sends });
+  if (run.job === "newsletter") {
+    // List of per-subscriber sends with open status (Phase 8.E).
+    const sends = await listSendsByCronRun(run.id);
+    return NextResponse.json({ kind: "newsletter_sends", sends });
+  }
+  // cleanup: there are no surviving rows to list (they were just
+  // deleted) — return the stored summary so the UI can show "N
+  // articles purged, cutoff X" and a sample of ids the deleter saved
+  // for debugging.
+  return NextResponse.json({ kind: "cleanup_summary", summary: run.summary });
 }

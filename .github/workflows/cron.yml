@@ -38,6 +38,12 @@ on:
     # propio wall-clock budget (~52s) y un sleep de 600ms entre envios
     # para no saturar el rate-limit de Resend (2/sec en free tier).
     - cron: "0 10 * * 0"
+    # Cleanup diario a las 04:00 UTC (06:00 Madrid CEST / 05:00 CET).
+    # Fuera de la ventana broadcast (08-13, 16-23 local) y del primer
+    # ingest del dia (00:00 UTC) para que el DELETE no race con otros
+    # writers. Hard-delete de articulos failed/hidden mas viejos de
+    # 7 dias — ver lib/cleanup/run.ts.
+    - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
       job:
@@ -50,6 +56,7 @@ on:
           - classify
           - broadcast
           - newsletter
+          - cleanup
 
 concurrency:
   group: cron-${{ github.event.schedule || inputs.job }}
@@ -210,4 +217,37 @@ jobs:
             --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
             --header "Authorization: Bearer ${CRON_SECRET}" \
             "${BASE_URL}/api/cron/newsletter")
+          echo "${response}"
+
+  cleanup:
+    name: Cleanup old failed/hidden articles
+    # Diario a las 04:00 UTC, o dispatch manual.
+    if: github.event.schedule == '0 4 * * *' || inputs.job == 'cleanup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: Production
+    steps:
+      - name: Hit /api/cron/cleanup
+        env:
+          BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
+          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
+          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
+          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
+          BASE_URL="${BASE_URL%/}"
+          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
+            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL})." >&2
+            exit 1
+          fi
+          # Cleanup es un unico DELETE — sin LLM, sin Resend, sin wall-
+          # clock budget. Si falla es un problema real (DB hiccup), no
+          # algo a re-intentar; el siguiente tick mañana lo recupera.
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 90 \
+            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL}/api/cron/cleanup")
           echo "${response}"

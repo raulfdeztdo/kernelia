@@ -64,6 +64,13 @@
       "when": 1779206874996,
       "tag": "0008_newsletter_sends",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779208193554,
+      "tag": "0009_cleanup_cron_job",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,11 @@ interface PageProps {
 }
 
 const isJob = (v: unknown): v is CronJob =>
-  v === "ingest" || v === "classify" || v === "broadcast" || v === "newsletter";
+  v === "ingest" ||
+  v === "classify" ||
+  v === "broadcast" ||
+  v === "newsletter" ||
+  v === "cleanup";
 const isStatus = (v: unknown): v is CronRunStatus =>
   v === "running" || v === "ok" || v === "partial" || v === "failed";
 
@@ -100,6 +104,7 @@ function FilterBar({ job, status }: { job?: CronJob; status?: CronRunStatus }) {
           <option value="classify">Classify</option>
           <option value="broadcast">Broadcast</option>
           <option value="newsletter">Newsletter</option>
+          <option value="cleanup">Cleanup</option>
         </select>
       </label>
       <label className="space-y-1 text-xs">

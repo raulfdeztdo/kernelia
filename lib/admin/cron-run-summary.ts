@@ -27,6 +27,9 @@ export function summariseRun(run: CronRun): string {
     const dc = (s["digestCounts"] as { es?: number; en?: number } | undefined) ?? {};
     return `attempted=${s["attempted"] ?? 0}  sent=${s["sent"] ?? 0}  failed=${s["failed"] ?? 0}  skippedNoArticles=${s["skippedNoArticles"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? 0}  articles[es=${dc.es ?? 0},en=${dc.en ?? 0}]`;
   }
+  if (run.job === "cleanup") {
+    return `deleted=${s["deleted"] ?? 0}  retentionDays=${s["retentionDays"] ?? 7}  cutoff=${(s["cutoff"] as string | undefined)?.slice(0, 19) ?? "—"}`;
+  }
   // ingest
   const totals = (s["totals"] as Record<string, unknown> | undefined) ?? {};
   return `fetched=${totals["fetched"] ?? 0}  inserted=${totals["inserted"] ?? 0}  failedSources=${totals["failedSources"] ?? 0}`;
