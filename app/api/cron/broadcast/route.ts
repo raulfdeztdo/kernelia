@@ -22,10 +22,17 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // `?force=1` (sent by manual `workflow_dispatch` and by the admin
+  // panel) bypasses the Europe/Madrid window check so admins can
+  // publish on demand at any hour. Scheduled GitHub Actions ticks
+  // never set this param, so the window is honoured automatically.
+  const force = new URL(request.url).searchParams.get("force") === "1";
+
   const startedAt = new Date();
   try {
     const summary = await runBroadcast({
       maxWallTimeMs: WALL_TIME_BUDGET_MS,
+      respectWindow: !force,
     });
     await logCronRun({
       job: "broadcast",

@@ -17,12 +17,13 @@ on:
     # devolviendo 200 antes del cap de 60s de Vercel Hobby. Bandwidth real:
     # ~6-8 articulos/tick x 48 ticks/dia = ~290-380 art/dia.
     - cron: "*/30 * * * *"
-    # Broadcast cada 30 minutos en `:15` y `:45` — 15min offset sobre
-    # classify para darle tiempo a terminar antes de que publiquemos.
-    # El handler tiene su propio budget (~52s) y publica en las 3
-    # plataformas (Mastodon, Bluesky, Telegram) en paralelo con
-    # idempotencia per-plataforma via `article_broadcasts`.
-    - cron: "15,45 * * * *"
+    # Broadcast cada hora a `:30` UTC. El handler decide en runtime
+    # si el reloj local Europe/Madrid esta en una ventana valida
+    # (08-13 y 16-23, ver lib/broadcast/window.ts) y publica
+    # exactamente 1 articulo/plataforma/tick. Si no esta en ventana
+    # bail-out limpio antes de tocar DB. DST se respeta porque la
+    # conversion UTC->local se hace via `Intl.DateTimeFormat`.
+    - cron: "30 * * * *"
     # Newsletter semanal: domingos a las 10:00 UTC. El handler tiene su
     # propio wall-clock budget (~52s) y un sleep de 600ms entre envios
     # para no saturar el rate-limit de Resend (2/sec en free tier).
@@ -125,8 +126,8 @@ jobs:
 
   broadcast:
     name: Broadcast classified articles
-    # `15,45 * * * *` for scheduled runs, or explicit dispatch.
-    if: github.event.schedule == '15,45 * * * *' || inputs.job == 'broadcast'
+    # `30 * * * *` for scheduled runs, or explicit dispatch.
+    if: github.event.schedule == '30 * * * *' || inputs.job == 'broadcast'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: Production
@@ -150,11 +151,21 @@ jobs:
           # wall-clock budget and never returns 5xx for "I ran out of
           # time". A 5xx from here is a real incident, not something
           # to paper over with --retry.
+          #
+          # Manual `workflow_dispatch` runs add `?force=1` so the
+          # handler skips the Europe/Madrid window check and publishes
+          # immediately — the operator is expected to know what they
+          # are doing. Scheduled ticks omit the flag and honour the
+          # window (see lib/broadcast/window.ts).
+          QUERY=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            QUERY="?force=1"
+          fi
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
             --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
             --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/broadcast")
+            "${BASE_URL}/api/cron/broadcast${QUERY}")
           echo "${response}"
 
   newsletter:

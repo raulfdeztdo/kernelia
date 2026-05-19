@@ -54,12 +54,18 @@ export function ingestStatus(totals: { failedSources: number; inserted: number }
  * Maps a broadcast-cron summary into a `cron_run_status`. Partial = at
  * least one platform had a failed post or formatting skip; ok =
  * everything that was eligible posted cleanly (or there was nothing to
- * post, which is also fine).
+ * post, which is also fine — including out-of-window ticks that bail
+ * before doing any work).
  */
 export function broadcastStatus(summary: {
   failed: { mastodon: number; bluesky: number; telegram: number };
   skipped: number;
+  /** Optional for backward-compat with older callers/tests. */
+  skippedWindow?: boolean;
 }): CronRunStatus {
+  // An out-of-window tick is a clean no-op by design (see
+  // lib/broadcast/window.ts), never partial.
+  if (summary.skippedWindow) return "ok";
   const totalFailed =
     summary.failed.mastodon + summary.failed.bluesky + summary.failed.telegram;
   if (totalFailed > 0 || summary.skipped > 0) return "partial";
