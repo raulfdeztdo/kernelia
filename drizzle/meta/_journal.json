@@ -92,6 +92,13 @@
       "when": 1779222297886,
       "tag": "0012_deleted_urls_tombstones",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779270000000,
+      "tag": "0013_enable_rls_public_tables",
+      "breakpoints": true
     }
   ]
 }
