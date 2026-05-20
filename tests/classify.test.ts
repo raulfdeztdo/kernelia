@@ -108,6 +108,37 @@ describe("classificationSchema", () => {
     });
     expect(oneChar.success).toBe(true);
   });
+
+  // Cerebras Llama 3.1 occasionally emits broken \uXXXX escapes for
+  // Spanish accented chars in json_object mode. After JSON.parse those
+  // become literal C0/C1 control chars in the payload, which then
+  // render as tofu in the newsletter (e.g. "codificaci0n"
+  // instead of "codificación"). The substitution is non-deterministic
+  // so there's no recovery — the only safe move is to reject the
+  // classification and let the row land in 'failed'.
+  it("rejects titles containing C0 control chars", () => {
+    const r = classificationSchema.safeParse({
+      ...validPayload,
+      title_es: "codificaci0n de aplicaciones agenticas",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects summaries containing C1 control chars", () => {
+    const r = classificationSchema.safeParse({
+      ...validPayload,
+      summary_es: `Resumen con un ESC intercalado entre palabras suficientes`,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("tolerates legitimate whitespace (\\t \\n \\r) inside summaries", () => {
+    const r = classificationSchema.safeParse({
+      ...validPayload,
+      summary_es: "Línea uno.\n\tLínea dos con tab.\r\nLínea tres con CRLF.",
+    });
+    expect(r.success).toBe(true);
+  });
 });
 
 describe("classifyArticle", () => {
