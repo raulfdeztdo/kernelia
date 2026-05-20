@@ -196,13 +196,6 @@ export interface BroadcastByArticleRow {
 }
 
 export interface ListBroadcastsByArticleParams {
-  /**
-   * Filter by platform — only articles that have a broadcast on this
-   * platform are included. The other-platform cells are still populated
-   * so the operator sees the full picture once the article makes the
-   * page (filtering is on the article identity, not the cells shown).
-   */
-  platform?: BroadcastPlatformValue;
   /** Articles per page. Defaults to 10. Capped at 100. */
   pageSize?: number;
   /** Zero-indexed page number. */
@@ -228,37 +221,28 @@ export async function listAdminBroadcastsByArticle(
   const page = Math.max(params.page ?? 0, 0);
   const offset = page * pageSize;
 
-  const platformFilter = params.platform
-    ? eq(articleBroadcasts.platform, params.platform)
-    : undefined;
-
   // Step 1: page of article IDs ordered by their newest broadcast. We
   // also pull `max(posted_at)` so the caller can ORDER BY consistently
   // in the second round-trip (Postgres doesn't guarantee insertion
   // order out of an `inArray()` filter).
-  const idsBase = db
+  const idRows = await db
     .select({
       articleId: articleBroadcasts.articleId,
       lastPostedAt: sql<string>`max(${articleBroadcasts.postedAt})`,
     })
-    .from(articleBroadcasts);
-  const idsFiltered = platformFilter ? idsBase.where(platformFilter) : idsBase;
-  const idRows = await idsFiltered
+    .from(articleBroadcasts)
     .groupBy(articleBroadcasts.articleId)
     .orderBy(desc(sql<string>`max(${articleBroadcasts.postedAt})`))
     .limit(pageSize)
     .offset(offset);
 
-  // Step 2: total count for the pager. One COUNT(DISTINCT article_id),
-  // same WHERE clause as the page query so the totals never disagree
-  // with the rows shown.
-  const totalBase = db
+  // Step 2: total count for the pager. One COUNT(DISTINCT article_id)
+  // so the pager total never disagrees with the rows shown.
+  const totalRow = await db
     .select({
       total: sql<number>`count(distinct ${articleBroadcasts.articleId})::int`,
     })
     .from(articleBroadcasts);
-  const totalFiltered = platformFilter ? totalBase.where(platformFilter) : totalBase;
-  const totalRow = await totalFiltered;
   const total = totalRow[0]?.total ?? 0;
 
   if (idRows.length === 0) {

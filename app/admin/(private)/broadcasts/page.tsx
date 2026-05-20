@@ -17,9 +17,6 @@ const PLATFORM_LABEL: Record<BroadcastPlatformValue, string> = {
   telegram: "Telegram",
 };
 
-const isPlatform = (v: unknown): v is BroadcastPlatformValue =>
-  v === "mastodon" || v === "bluesky" || v === "telegram";
-
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
@@ -29,8 +26,14 @@ interface PageProps {
  *
  *   1. Totals per platform (last 7d / 30d / all-time + last-posted).
  *   2. Stacked bar chart of posts/platform/day (30d).
- *   3. Recent broadcasts table joined with the article, filterable by
- *      platform via `?platform=mastodon|bluesky|telegram`.
+ *   3. Recent broadcasts table joined with the article, paginated.
+ *
+ * Phase 8.J removed the platform filter: the pivoted table renders all
+ * three platform cells per row, so slicing by platform only changed
+ * which articles appeared (those that landed on that network) — not
+ * the visible columns. In the steady state every article goes to all
+ * three networks, so the filter never changed anything and just
+ * cluttered the UI.
  */
 const PAGE_SIZE = 10;
 
@@ -46,14 +49,12 @@ function parsePage(raw: unknown): number {
 
 export default async function AdminBroadcastsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
-  const platformFilter = isPlatform(sp.platform) ? sp.platform : undefined;
   const page = parsePage(sp.page);
 
   const [totals, perDay, recent, subscribers] = await Promise.all([
     getBroadcastTotals(),
     getBroadcastsPerDay(30),
     listAdminBroadcastsByArticle({
-      platform: platformFilter,
       pageSize: PAGE_SIZE,
       page,
     }),
@@ -124,7 +125,6 @@ export default async function AdminBroadcastsPage({ searchParams }: PageProps) {
         <h2 id="recent-heading" className="text-lg font-medium">
           Últimos posts
         </h2>
-        <FilterBar platform={platformFilter} />
         {/*
          * Phase 8.J: pivoted view. One row per article; each platform
          * column carries its own posted-at + external-id pair. Far less
@@ -201,7 +201,6 @@ export default async function AdminBroadcastsPage({ searchParams }: PageProps) {
           totalPages={totalPages}
           pageDisplay={pageDisplay}
           total={recent.total}
-          platform={platformFilter}
         />
       </section>
 
@@ -395,24 +394,19 @@ function Pager({
   totalPages,
   pageDisplay,
   total,
-  platform,
 }: {
   page: number;
   totalPages: number;
   pageDisplay: number;
   total: number;
-  platform?: BroadcastPlatformValue;
 }) {
   // Plain GET-link pagination: keeps the page server-renderable, no
-  // client JS, no scroll restoration bugs. The `?platform=` filter is
-  // preserved across page transitions so the operator doesn't lose
-  // their context when paging through (e.g.) Mastodon-only history.
+  // client JS, no scroll restoration bugs. Only `?page=` carries state
+  // — the table is unfiltered (Phase 8.J removed the platform filter,
+  // see the page docstring) so there's nothing else to preserve.
   const buildHref = (target: number) => {
-    const params = new URLSearchParams();
-    if (platform) params.set("platform", platform);
-    if (target > 0) params.set("page", String(target));
-    const qs = params.toString();
-    return qs ? `/admin/broadcasts?${qs}` : "/admin/broadcasts";
+    if (target <= 0) return "/admin/broadcasts";
+    return `/admin/broadcasts?page=${target}`;
   };
   const prevHref = page > 0 ? buildHref(page - 1) : null;
   const nextHref = page + 1 < totalPages ? buildHref(page + 1) : null;
@@ -448,38 +442,6 @@ function Pager({
         )}
       </div>
     </div>
-  );
-}
-
-function FilterBar({ platform }: { platform?: BroadcastPlatformValue }) {
-  return (
-    <form action="/admin/broadcasts" method="get" className="flex flex-wrap items-end gap-3">
-      <label className="space-y-1 text-xs">
-        <span className="block uppercase tracking-wide text-muted-foreground">Plataforma</span>
-        <select
-          name="platform"
-          defaultValue={platform ?? ""}
-          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
-        >
-          <option value="">Todas</option>
-          <option value="mastodon">Mastodon</option>
-          <option value="bluesky">Bluesky</option>
-          <option value="telegram">Telegram</option>
-        </select>
-      </label>
-      <button
-        type="submit"
-        className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
-      >
-        Filtrar
-      </button>
-      <Link
-        href="/admin/broadcasts"
-        className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-surface-2"
-      >
-        Limpiar
-      </Link>
-    </form>
   );
 }
 
