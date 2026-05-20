@@ -21,7 +21,28 @@ export function summariseRun(run: CronRun): string {
   if (run.job === "broadcast") {
     if (s["skippedWindow"]) return "skippedWindow=true (fuera de ventana Europe/Madrid)";
     const posted = (s["posted"] as Record<string, number> | undefined) ?? {};
-    return `mastodon=${posted["mastodon"] ?? 0}  bluesky=${posted["bluesky"] ?? 0}  telegram=${posted["telegram"] ?? 0}  failed=${s["failed"] ?? 0}  skipped=${s["skipped"] ?? 0}`;
+    // `failed` for broadcasts is `Record<platform, number>`, NOT a scalar
+    // (each platform's failures are tracked independently because a
+    // Mastodon outage shouldn't block Bluesky/Telegram on the same
+    // article). Interpolating it raw produced `[object Object]` in the
+    // collapsed cell — render the total here so the one-liner stays
+    // scannable. The per-platform detail still lives in the expanded
+    // JSON for any operator who needs to dig in.
+    //
+    // Belt-and-braces: tolerate both shapes so older `cron_runs` rows
+    // (which logged `failed` as a scalar before runBroadcast bumped it
+    // to a Record) keep rendering cleanly.
+    const failedField = s["failed"];
+    const failedTotal =
+      typeof failedField === "number"
+        ? failedField
+        : failedField && typeof failedField === "object"
+          ? Object.values(failedField as Record<string, unknown>).reduce<number>(
+              (acc, v) => acc + (typeof v === "number" ? v : 0),
+              0,
+            )
+          : 0;
+    return `mastodon=${posted["mastodon"] ?? 0}  bluesky=${posted["bluesky"] ?? 0}  telegram=${posted["telegram"] ?? 0}  failed=${failedTotal}  skipped=${s["skipped"] ?? 0}`;
   }
   if (run.job === "newsletter") {
     const dc = (s["digestCounts"] as { es?: number; en?: number } | undefined) ?? {};

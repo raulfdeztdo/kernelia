@@ -20,6 +20,7 @@ import {
 import { findNearDuplicate, type DedupeMatch } from "@/lib/dedupe/shingle";
 import { createLogger } from "@/lib/logger";
 import { classifyArticle, type ClassifyOptions } from "./classify";
+import { MIN_PUBLISHABLE_TITLE_LENGTH } from "./schemas";
 
 const log = createLogger("classify");
 
@@ -301,7 +302,18 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       // The full ES/EN payload is still persisted so /admin/articles
       // can audit the decision and an operator can un-hide a
       // borderline case.
-      if (result.classification.is_ai_related === false) {
+      //
+      // Phase 8.I refinement: the LLM sometimes returns a 1-2 char
+      // title (Hipertextual's single-word headlines like "X" or "Q*")
+      // that survives the relaxed Zod min(1) but is useless on the
+      // feed. Treat it as a non-AI hide so the row is audit-visible
+      // in /admin/articles without polluting the public surface.
+      const titleEsTrim = payload.titleEs.trim();
+      const titleEnTrim = payload.titleEn.trim();
+      const titleTooShort =
+        titleEsTrim.length < MIN_PUBLISHABLE_TITLE_LENGTH ||
+        titleEnTrim.length < MIN_PUBLISHABLE_TITLE_LENGTH;
+      if (result.classification.is_ai_related === false || titleTooShort) {
         await onHiddenAsNonAi(article.id, payload);
         hiddenNonAi++;
         log.info("article_hidden_non_ai", {
@@ -309,6 +321,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
           slug: categorySlug,
           relevanceScore: payload.relevanceScore,
           source: article.sourceName,
+          reason: titleTooShort ? "title_too_short" : "llm_flag",
         });
         continue;
       }

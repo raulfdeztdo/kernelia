@@ -81,6 +81,33 @@ describe("classificationSchema", () => {
     expect(CATEGORY_SLUGS).toContain("other");
     expect(new Set(CATEGORY_SLUGS).size).toBe(CATEGORY_SLUGS.length);
   });
+
+  // Cerebras Llama occasionally returns `"true"`/`"false"` instead of
+  // proper JSON booleans. Without coercion, every Hipertextual tick
+  // would push gadget rows to `failed` instead of hiding them — losing
+  // the audit trail in /admin/articles. The preprocessor in the schema
+  // accepts the obvious string forms so the gate keeps working.
+  it("coerces stringified is_ai_related booleans", () => {
+    const truthy = classificationSchema.safeParse({ ...validPayload, is_ai_related: "true" });
+    const falsy = classificationSchema.safeParse({ ...validPayload, is_ai_related: "false" });
+    expect(truthy.success).toBe(true);
+    expect(falsy.success).toBe(true);
+    if (truthy.success) expect(truthy.data.is_ai_related).toBe(true);
+    if (falsy.success) expect(falsy.data.is_ai_related).toBe(false);
+  });
+
+  // Hipertextual sends 1-word headlines that the LLM mirrors as-is in
+  // both languages. The schema relaxes title to min(1) so the row
+  // parses; the orchestrator (lib/ai/run.ts) is responsible for hiding
+  // it as non-AI when it's shorter than MIN_PUBLISHABLE_TITLE_LENGTH.
+  it("accepts 1-character titles (orchestrator hides them downstream)", () => {
+    const oneChar = classificationSchema.safeParse({
+      ...validPayload,
+      title_es: "X",
+      title_en: "X",
+    });
+    expect(oneChar.success).toBe(true);
+  });
 });
 
 describe("classifyArticle", () => {
@@ -880,6 +907,41 @@ describe("runClassify · is_ai_related gate (Phase 8.B)", () => {
     expect(summary.hiddenNonAi).toBe(0);
     expect(onClassified).toHaveBeenCalledOnce();
     expect(onHiddenAsNonAi).not.toHaveBeenCalled();
+  });
+
+  // Belt-and-braces for the malformed-title path: when the LLM returns
+  // a title shorter than `MIN_PUBLISHABLE_TITLE_LENGTH` in either
+  // locale, the orchestrator must treat it as a non-AI hide. Without
+  // this, single-word Hipertextual headlines would publish a one-char
+  // card on the home page — visually broken and unrecoverable from
+  // the operator side.
+  it("hides as non-AI when the LLM returns a too-short title", async () => {
+    const onClassified = vi.fn(async () => {});
+    const onHiddenAsNonAi = vi.fn(async () => {});
+
+    const shortTitle = {
+      ...validPayload,
+      title_es: "X",
+      title_en: "X",
+      // is_ai_related left undefined: the gate fires solely because of
+      // the title length, proving the orchestrator-side check works
+      // independently of the LLM flag.
+    };
+
+    const summary = await runClassify({
+      client: makeClient(shortTitle),
+      fetchPending: async () => samplePending,
+      onClassified,
+      onFailed: vi.fn(async () => {}),
+      resolveCategoryId: async () => "cat-id",
+      dedupeEnabled: false,
+      onHiddenAsNonAi,
+    });
+
+    expect(summary.hiddenNonAi).toBe(1);
+    expect(summary.classified).toBe(0);
+    expect(onClassified).not.toHaveBeenCalled();
+    expect(onHiddenAsNonAi).toHaveBeenCalledOnce();
   });
 
   it("schema accepts is_ai_related true/false/absent (back-compat)", () => {

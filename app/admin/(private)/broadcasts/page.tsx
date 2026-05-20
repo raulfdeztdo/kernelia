@@ -1,8 +1,9 @@
 import Link from "next/link";
 import {
+  BROADCAST_PLATFORMS,
   getBroadcastTotals,
   getBroadcastsPerDay,
-  listAdminBroadcasts,
+  listAdminBroadcastsByArticle,
   type BroadcastPlatformValue,
 } from "@/db/queries/admin-broadcasts";
 import { listSubscribersWithStats } from "@/db/queries/newsletter-sends";
@@ -31,18 +32,37 @@ interface PageProps {
  *   3. Recent broadcasts table joined with the article, filterable by
  *      platform via `?platform=mastodon|bluesky|telegram`.
  */
+const PAGE_SIZE = 10;
+
+function parsePage(raw: unknown): number {
+  if (typeof raw !== "string") return 0;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  // Cap to a sane upper bound: with PAGE_SIZE = 10 this caps at 10k
+  // articles which is well past the broadcaster's expected lifetime
+  // backlog. Prevents `?page=99999999` from issuing a giant OFFSET.
+  return Math.min(n, 1000);
+}
+
 export default async function AdminBroadcastsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const platformFilter = isPlatform(sp.platform) ? sp.platform : undefined;
+  const page = parsePage(sp.page);
 
   const [totals, perDay, recent, subscribers] = await Promise.all([
     getBroadcastTotals(),
     getBroadcastsPerDay(30),
-    listAdminBroadcasts({ platform: platformFilter, limit: 100 }),
+    listAdminBroadcastsByArticle({
+      platform: platformFilter,
+      pageSize: PAGE_SIZE,
+      page,
+    }),
     listSubscribersWithStats(),
   ]);
 
   const total30 = perDay.reduce((acc, r) => acc + r.total, 0);
+  const totalPages = Math.max(1, Math.ceil(recent.total / PAGE_SIZE));
+  const pageDisplay = Math.min(page + 1, totalPages);
 
   return (
     <div className="space-y-8">
@@ -105,70 +125,84 @@ export default async function AdminBroadcastsPage({ searchParams }: PageProps) {
           Últimos posts
         </h2>
         <FilterBar platform={platformFilter} />
+        {/*
+         * Phase 8.J: pivoted view. One row per article; each platform
+         * column carries its own posted-at + external-id pair. Far less
+         * scanning than the old (article × platform) layout where a
+         * tri-broadcast article fanned out to three rows.
+         */}
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 font-medium">Publicado (UTC)</th>
-                <th className="px-3 py-2 font-medium">Plataforma</th>
                 <th className="px-3 py-2 font-medium">Artículo</th>
                 <th className="px-3 py-2 font-medium">Categoría</th>
                 <th className="px-3 py-2 font-medium">Score</th>
-                <th className="px-3 py-2 font-medium">External ID</th>
+                {BROADCAST_PLATFORMS.map((p) => (
+                  <th key={p} className="px-3 py-2 font-medium">
+                    {PLATFORM_LABEL[p]}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {recent.length === 0 ? (
+              {recent.rows.length === 0 ? (
                 <tr>
                   <td className="px-3 py-4 text-muted-foreground" colSpan={6}>
                     Sin posts que coincidan con el filtro.
                   </td>
                 </tr>
               ) : (
-                recent.map((b) => (
-                  <tr key={b.id} className="border-t border-border align-top last:border-b">
-                    <td className="px-3 py-2 tabular-nums">
-                      <time dateTime={b.postedAt.toISOString()}>
-                        {b.postedAt.toISOString().replace("T", " ").slice(0, 19)}
-                      </time>
-                    </td>
-                    <td className="px-3 py-2">{PLATFORM_LABEL[b.platform]}</td>
-                    <td className="px-3 py-2">
+                recent.rows.map((row) => (
+                  <tr
+                    key={row.articleId}
+                    className="border-t border-border align-top last:border-b"
+                  >
+                    <td className="px-3 py-2 md:max-w-[360px]">
                       <a
-                        href={b.articleUrl}
+                        href={row.articleUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-medium underline-offset-2 hover:text-accent hover:underline"
+                        className="font-medium underline-offset-2 hover:text-accent hover:underline md:line-clamp-2"
                       >
-                        {b.articleTitle}
+                        {row.articleTitle}
                       </a>
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
-                      {b.categorySlug ? (
-                        <code className="text-xs">{b.categorySlug}</code>
+                      {row.categorySlug ? (
+                        <code className="text-xs">{row.categorySlug}</code>
                       ) : (
                         <span>{"—"}</span>
                       )}
                     </td>
                     <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                      {b.relevanceScore != null ? b.relevanceScore.toFixed(2) : <span>{"—"}</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      {b.externalId ? (
-                        <code className="text-xs text-muted-foreground">{b.externalId}</code>
+                      {row.relevanceScore != null ? (
+                        row.relevanceScore.toFixed(2)
                       ) : (
                         <span>{"—"}</span>
                       )}
                     </td>
+                    {BROADCAST_PLATFORMS.map((platform) => {
+                      const cell = row.cells[platform];
+                      return (
+                        <td key={platform} className="px-3 py-2 align-top">
+                          <PlatformCell cell={cell} />
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Mostrando los 100 posts más recientes que coincidan con el filtro.
-        </p>
+        <Pager
+          page={page}
+          totalPages={totalPages}
+          pageDisplay={pageDisplay}
+          total={recent.total}
+          platform={platformFilter}
+        />
       </section>
 
       <SubscribersSection subscribers={subscribers} />
@@ -317,6 +351,101 @@ function Cell({
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={`mt-0.5 text-lg font-semibold tabular-nums ${toneClass}`}>
         {value.toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+function PlatformCell({
+  cell,
+}: {
+  cell:
+    | {
+        postedAt: Date;
+        externalId: string | null;
+      }
+    | null;
+}) {
+  if (!cell) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="space-y-1">
+      <time
+        dateTime={cell.postedAt.toISOString()}
+        className="block whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+      >
+        {cell.postedAt.toISOString().replace("T", " ").slice(0, 16)}
+      </time>
+      {cell.externalId ? (
+        <code className="block break-all text-[10px] text-muted-foreground">
+          {cell.externalId}
+        </code>
+      ) : (
+        <span className="block text-[10px] text-muted-foreground italic">
+          sin external_id
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Pager({
+  page,
+  totalPages,
+  pageDisplay,
+  total,
+  platform,
+}: {
+  page: number;
+  totalPages: number;
+  pageDisplay: number;
+  total: number;
+  platform?: BroadcastPlatformValue;
+}) {
+  // Plain GET-link pagination: keeps the page server-renderable, no
+  // client JS, no scroll restoration bugs. The `?platform=` filter is
+  // preserved across page transitions so the operator doesn't lose
+  // their context when paging through (e.g.) Mastodon-only history.
+  const buildHref = (target: number) => {
+    const params = new URLSearchParams();
+    if (platform) params.set("platform", platform);
+    if (target > 0) params.set("page", String(target));
+    const qs = params.toString();
+    return qs ? `/admin/broadcasts?${qs}` : "/admin/broadcasts";
+  };
+  const prevHref = page > 0 ? buildHref(page - 1) : null;
+  const nextHref = page + 1 < totalPages ? buildHref(page + 1) : null;
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-xs text-muted-foreground tabular-nums">
+        Página {pageDisplay} de {totalPages} · {total.toLocaleString()} artículos
+      </span>
+      <div className="flex gap-2">
+        {prevHref ? (
+          <Link
+            href={prevHref}
+            className="rounded-md border border-border px-3 py-1.5 hover:bg-surface-2"
+          >
+            ← Anterior
+          </Link>
+        ) : (
+          <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground opacity-50">
+            ← Anterior
+          </span>
+        )}
+        {nextHref ? (
+          <Link
+            href={nextHref}
+            className="rounded-md border border-border px-3 py-1.5 hover:bg-surface-2"
+          >
+            Siguiente →
+          </Link>
+        ) : (
+          <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground opacity-50">
+            Siguiente →
+          </span>
+        )}
       </div>
     </div>
   );
