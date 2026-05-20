@@ -40,6 +40,36 @@ const aiRelatedFlexible = z.preprocess((v) => {
 }, z.boolean().optional());
 
 /**
+ * Cerebras Llama 3.1 in `response_format: json_object` mode occasionally
+ * emits broken `\uXXXX` escapes for Spanish accented characters: instead
+ * of `ó` for `ó` it produces escapes like \u0015, \u001B, etc.
+ * After `JSON.parse` those become literal C0 control characters embedded
+ * in the title/summary, which then render as tofu glyphs in the
+ * newsletter and have no recoverable original (the substituted codepoints
+ * are non-deterministic across runs).
+ *
+ * The only safe move is to detect them and fail the classification —
+ * the orchestrator marks the article `failed`, it stays out of every
+ * public surface, and `/admin/articles` shows the issue.
+ *
+ * We tolerate \t (U+0009), \n (U+000A), \r (U+000D) only — newlines in
+ * summaries do happen legitimately when the model formats multi-line
+ * blurbs. Everything else in U+0000..U+001F and U+007F..U+009F is
+ * rejected. Written with explicit \u escapes so the source file stays
+ * free of the very chars we're guarding against.
+ */
+const CONTROL_CHAR_RE =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/u;
+
+const noControlCharsString = (label: string) =>
+  z.string().refine(
+    (s) => !CONTROL_CHAR_RE.test(s),
+    {
+      message: `${label} contains C0/C1 control characters (broken LLM unicode escapes)`,
+    },
+  );
+
+/**
  * Title min length is relaxed to 1: some Hipertextual items come back
  * with a 1-2 character translation when the source title is a single
  * word ("X", "Q*") and Cerebras refuses to pad it. The orchestrator
@@ -49,10 +79,10 @@ const aiRelatedFlexible = z.preprocess((v) => {
  */
 export const classificationSchema = z.object({
   category_slug: z.enum(CATEGORY_SLUGS),
-  title_es: z.string().min(1).max(300),
-  title_en: z.string().min(1).max(300),
-  summary_es: z.string().min(20).max(600),
-  summary_en: z.string().min(20).max(600),
+  title_es: noControlCharsString("title_es").pipe(z.string().min(1).max(300)),
+  title_en: noControlCharsString("title_en").pipe(z.string().min(1).max(300)),
+  summary_es: noControlCharsString("summary_es").pipe(z.string().min(20).max(600)),
+  summary_en: noControlCharsString("summary_en").pipe(z.string().min(20).max(600)),
   relevance_score: z.coerce.number().min(0).max(1),
   /**
    * Hard AI-relevance gate. `false` means the article is NOT about AI
