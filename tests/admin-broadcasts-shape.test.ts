@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  BroadcastByArticleRow,
   BroadcastListRow,
   BroadcastTotalsRow,
   BroadcastsPerDayRow,
@@ -50,5 +51,28 @@ describe("admin-broadcasts row shapes", () => {
     };
     expect(sample.articleTitle).toBe("Title");
     expect(sample.platform).toBe("bluesky");
+  });
+
+  // Phase 8.J pivoted row: one article, three platform cells. The
+  // table column-order depends on these keys staying in the row, and
+  // the page treats `cells[platform] === null` as "not posted here"
+  // — both are pinned here so neither can silently regress.
+  it("BroadcastByArticleRow exposes per-platform cells with optional null", () => {
+    const sample: BroadcastByArticleRow = {
+      articleId: "a-1",
+      articleTitle: "Title",
+      articleUrl: "https://example.com",
+      categorySlug: "llm",
+      relevanceScore: 0.83,
+      lastPostedAt: new Date("2026-05-18T10:00:00Z"),
+      cells: {
+        mastodon: { postedAt: new Date(), externalId: "12345" },
+        bluesky: null,
+        telegram: { postedAt: new Date(), externalId: null },
+      },
+    };
+    expect(sample.cells.mastodon).not.toBeNull();
+    expect(sample.cells.bluesky).toBeNull();
+    expect(sample.cells.telegram?.externalId).toBeNull();
   });
 });

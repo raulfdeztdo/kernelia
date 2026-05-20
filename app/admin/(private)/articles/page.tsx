@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import {
   ADMIN_ARTICLES_SORT_COLUMNS,
   listAdminArticles,
@@ -281,7 +282,12 @@ function SortableHeader({ col, current, dir, filters, children }: SortableHeader
     : naturalDefault;
 
   const href = buildSortHref(col, nextDir, filters);
-  const arrow = isActive ? (dir === "asc" ? " ↑" : " ↓") : " ↕";
+  // lucide-react icons keep the column header looking consistent across
+  // platforms (the old emoji arrows rendered differently on macOS /
+  // Linux / Windows and looked unpolished next to the rest of the
+  // admin UI). The icon is decorative — sort state is already exposed
+  // semantically via `aria-sort`.
+  const SortIcon = isActive ? (dir === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
 
   return (
     <th className="px-3 py-2 font-medium">
@@ -291,9 +297,10 @@ function SortableHeader({ col, current, dir, filters, children }: SortableHeader
         aria-sort={isActive ? (dir === "asc" ? "ascending" : "descending") : "none"}
       >
         {children}
-        <span aria-hidden className="text-[10px] opacity-60">
-          {arrow}
-        </span>
+        <SortIcon
+          aria-hidden
+          className={`h-3 w-3 ${isActive ? "opacity-90" : "opacity-50"}`}
+        />
       </Link>
     </th>
   );

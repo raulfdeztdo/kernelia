@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   articleBroadcasts,
@@ -157,3 +157,184 @@ export async function listAdminBroadcasts(
   const filtered = where ? base.where(where) : base;
   return filtered.orderBy(desc(articleBroadcasts.postedAt)).limit(limit);
 }
+
+/**
+ * Phase 8.J: one row per ARTICLE, with per-platform broadcast cells.
+ *
+ * The original `listAdminBroadcasts` returns one row per (article,
+ * platform) tuple — three rows for an article posted to all three
+ * networks. That made the admin table noisy when the operator wanted
+ * to see "where did article X go and when". This pivoted view collapses
+ * each article to a single row and exposes the three platforms as
+ * dedicated columns, each carrying its own `postedAt` and
+ * `externalId`.
+ *
+ * Implementation is two round-trips: first pick the page of article
+ * IDs ordered by `max(posted_at)` (with platform filter applied at the
+ * broadcast level), then fetch every broadcast for those IDs joined
+ * with the article. We pivot in JS rather than in SQL because the
+ * Postgres pivot would need three correlated subqueries per row;
+ * fetching ≤30 rows and grouping them in memory is cheaper and easier
+ * to read.
+ */
+export interface BroadcastPerPlatformCell {
+  postedAt: Date;
+  externalId: string | null;
+}
+
+export interface BroadcastByArticleRow {
+  articleId: string;
+  articleTitle: string;
+  articleUrl: string;
+  categorySlug: string | null;
+  /** LLM relevance at the time the article was classified. */
+  relevanceScore: number | null;
+  /** Newest `posted_at` across the three platform cells. Drives ORDER BY. */
+  lastPostedAt: Date;
+  /** Per-platform broadcast. `null` if the article wasn't posted there. */
+  cells: Record<BroadcastPlatformValue, BroadcastPerPlatformCell | null>;
+}
+
+export interface ListBroadcastsByArticleParams {
+  /**
+   * Filter by platform — only articles that have a broadcast on this
+   * platform are included. The other-platform cells are still populated
+   * so the operator sees the full picture once the article makes the
+   * page (filtering is on the article identity, not the cells shown).
+   */
+  platform?: BroadcastPlatformValue;
+  /** Articles per page. Defaults to 10. Capped at 100. */
+  pageSize?: number;
+  /** Zero-indexed page number. */
+  page?: number;
+}
+
+export interface BroadcastsByArticlePage {
+  rows: BroadcastByArticleRow[];
+  /** Total matching articles (NOT broadcasts) — drives the pager. */
+  total: number;
+}
+
+const PLATFORMS_LIST: readonly BroadcastPlatformValue[] = [
+  "mastodon",
+  "bluesky",
+  "telegram",
+];
+
+export async function listAdminBroadcastsByArticle(
+  params: ListBroadcastsByArticleParams = {},
+): Promise<BroadcastsByArticlePage> {
+  const pageSize = Math.min(Math.max(params.pageSize ?? 10, 1), 100);
+  const page = Math.max(params.page ?? 0, 0);
+  const offset = page * pageSize;
+
+  const platformFilter = params.platform
+    ? eq(articleBroadcasts.platform, params.platform)
+    : undefined;
+
+  // Step 1: page of article IDs ordered by their newest broadcast. We
+  // also pull `max(posted_at)` so the caller can ORDER BY consistently
+  // in the second round-trip (Postgres doesn't guarantee insertion
+  // order out of an `inArray()` filter).
+  const idsBase = db
+    .select({
+      articleId: articleBroadcasts.articleId,
+      lastPostedAt: sql<string>`max(${articleBroadcasts.postedAt})`,
+    })
+    .from(articleBroadcasts);
+  const idsFiltered = platformFilter ? idsBase.where(platformFilter) : idsBase;
+  const idRows = await idsFiltered
+    .groupBy(articleBroadcasts.articleId)
+    .orderBy(desc(sql<string>`max(${articleBroadcasts.postedAt})`))
+    .limit(pageSize)
+    .offset(offset);
+
+  // Step 2: total count for the pager. One COUNT(DISTINCT article_id),
+  // same WHERE clause as the page query so the totals never disagree
+  // with the rows shown.
+  const totalBase = db
+    .select({
+      total: sql<number>`count(distinct ${articleBroadcasts.articleId})::int`,
+    })
+    .from(articleBroadcasts);
+  const totalFiltered = platformFilter ? totalBase.where(platformFilter) : totalBase;
+  const totalRow = await totalFiltered;
+  const total = totalRow[0]?.total ?? 0;
+
+  if (idRows.length === 0) {
+    return { rows: [], total };
+  }
+
+  // Step 3: fetch every broadcast for those article IDs (regardless of
+  // the platform filter — once an article makes the page we want to
+  // show its full posting fingerprint, not just the filtered cell).
+  // Joined with the article + category so the page can render the
+  // title, URL, slug and relevance score in one pass.
+  const articleIds = idRows.map((r) => r.articleId);
+  const broadcastsForPage = await db
+    .select({
+      articleId: articleBroadcasts.articleId,
+      platform: articleBroadcasts.platform,
+      postedAt: articleBroadcasts.postedAt,
+      externalId: articleBroadcasts.externalId,
+      articleTitle: articles.title,
+      articleUrl: articles.url,
+      categorySlug: categories.slug,
+      relevanceScore: articles.relevanceScore,
+    })
+    .from(articleBroadcasts)
+    .innerJoin(articles, eq(articles.id, articleBroadcasts.articleId))
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(inArray(articleBroadcasts.articleId, articleIds));
+
+  // Pivot in memory. The two-pass design keeps the SQL trivial; pivots
+  // in Postgres need correlated subqueries per platform that read worse
+  // than this loop.
+  const byArticle = new Map<
+    string,
+    {
+      articleTitle: string;
+      articleUrl: string;
+      categorySlug: string | null;
+      relevanceScore: number | null;
+      cells: Record<BroadcastPlatformValue, BroadcastPerPlatformCell | null>;
+    }
+  >();
+  for (const b of broadcastsForPage) {
+    let row = byArticle.get(b.articleId);
+    if (!row) {
+      row = {
+        articleTitle: b.articleTitle,
+        articleUrl: b.articleUrl,
+        categorySlug: b.categorySlug,
+        relevanceScore: b.relevanceScore,
+        cells: { mastodon: null, bluesky: null, telegram: null },
+      };
+      byArticle.set(b.articleId, row);
+    }
+    row.cells[b.platform] = { postedAt: b.postedAt, externalId: b.externalId };
+  }
+
+  // Reorder per the Step 1 ranking so the page presents newest-first
+  // regardless of Postgres' return order in Step 3.
+  const rows: BroadcastByArticleRow[] = idRows.flatMap((idRow) => {
+    const r = byArticle.get(idRow.articleId);
+    if (!r) return [];
+    return [
+      {
+        articleId: idRow.articleId,
+        articleTitle: r.articleTitle,
+        articleUrl: r.articleUrl,
+        categorySlug: r.categorySlug,
+        relevanceScore: r.relevanceScore,
+        lastPostedAt: new Date(idRow.lastPostedAt),
+        cells: r.cells,
+      },
+    ];
+  });
+
+  return { rows, total };
+}
+
+/** Re-exported so the page can iterate platforms in a stable order. */
+export const BROADCAST_PLATFORMS = PLATFORMS_LIST;
