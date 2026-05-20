@@ -1,4 +1,19 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, lt, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { db } from "@/db";
 import {
   articles,
@@ -16,6 +31,26 @@ import {
  * applied via a `row_number()` window function partitioned by source.
  */
 const PER_SOURCE_CAP = 10;
+
+/**
+ * Minimum LLM `relevance_score` an article needs to appear on the public
+ * home feed. The classifier's score is a 0..1 confidence-ish signal for
+ * "how clearly is this an AI news item"; below 0.5 we hit a steady
+ * stream of tangentially-related items (vendor business news, broad
+ * cybersecurity, AI-adjacent gadgets) that crowd out the strong picks
+ * on the limited above-the-fold real estate.
+ *
+ * Looser than the broadcaster's `BROADCAST_MIN_RELEVANCE_SCORE` (0.75),
+ * stricter than the previous "anything classified". Below this threshold
+ * the article stays in DB and is reachable via /admin/articles, just not
+ * on the public feed. The RSS endpoint (`listLatestForFeed`) and the
+ * weekly digest already have their own gates and are not affected.
+ *
+ * Articles with `relevance_score IS NULL` are also excluded — those are
+ * pre-Phase-8.A back-fills that pre-date the score field and never had
+ * their relevance assessed.
+ */
+export const PUBLIC_FEED_MIN_RELEVANCE_SCORE = 0.5;
 
 /**
  * Category slug that classifies cleanly but is hidden from every public
@@ -446,6 +481,13 @@ export async function listClassifiedArticles(
     // Phase 8.B: keep `other` out of the public feed. See
     // `PUBLIC_HIDDEN_CATEGORY_SLUG` above.
     ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+    // Phase 8.K: filter weak classifications out of the public feed.
+    // See `PUBLIC_FEED_MIN_RELEVANCE_SCORE` for the rationale. `gte`
+    // also drops NULL scores (legacy pre-Phase-8.A rows), which is
+    // intentional — those rows have no relevance signal so we can't
+    // tell whether they belong on the feed.
+    isNotNull(articles.relevanceScore),
+    gte(articles.relevanceScore, PUBLIC_FEED_MIN_RELEVANCE_SCORE),
   ];
 
   if (params.categorySlugs && params.categorySlugs.length > 0) {
@@ -542,6 +584,11 @@ export async function countClassifiedArticles(
   const innerConds = [
     eq(articles.status, "classified"),
     ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+    // Mirror the relevance gate in `listClassifiedArticles` so the
+    // "N noticias" pill never disagrees with what the listing actually
+    // renders.
+    isNotNull(articles.relevanceScore),
+    gte(articles.relevanceScore, PUBLIC_FEED_MIN_RELEVANCE_SCORE),
   ];
   if (params.categorySlugs && params.categorySlugs.length > 0) {
     innerConds.push(inArray(categories.slug, params.categorySlugs));
