@@ -3,7 +3,7 @@ import { isAuthorizedCron } from "@/lib/auth/cron";
 import { runClassify, DEFAULT_BATCH_SIZE } from "@/lib/ai/run";
 import { beginCronRun, classifyStatus, endCronRun } from "@/lib/cron-logging";
 
-// Cerebras free tier ~30 RPM on llama3.1-8b but TPM cap kicks in earlier;
+// Cerebras free tier ~30 RPM on gpt-oss-120b but TPM cap kicks in earlier;
 // 3s gap (~20 RPM) holds steady even when several batches run within a minute.
 const DEFAULT_DELAY_BETWEEN_MS = 3000;
 

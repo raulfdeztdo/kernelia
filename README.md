@@ -76,7 +76,7 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
 | i18n | next-intl (ES default, EN) |
 | Base de datos | Supabase Postgres |
 | ORM | Drizzle |
-| LLM | Cerebras `llama3.1-8b` — SDK OpenAI-compatible |
+| LLM | Cerebras `gpt-oss-120b` — SDK OpenAI-compatible |
 | Ingesta | rss-parser |
 | Validación | Zod |
 | Email | Resend |
@@ -126,7 +126,7 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
                                          ▼
   ┌─────────────────┐         ┌──────────────────────────┐
   │  Cerebras LLM   │◀────────│  Classify agent           │
-  │  (llama3.1-8b)  │         │  - prompt + Zod schema   │
+  │  (gpt-oss-120b) │         │  - prompt + Zod schema   │
   └────────┬────────┘         │  - category + summary    │
            │                  │  - ES + EN + score        │
            └──── classified ──▶  update articles          │

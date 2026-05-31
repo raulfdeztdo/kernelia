@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 
 export const CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
-export const CEREBRAS_DEFAULT_MODEL = "llama3.1-8b";
+export const CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b";
 
 /**
  * Per-request hard timeout for LLM calls. Cerebras' median latency is

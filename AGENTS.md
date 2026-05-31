@@ -29,7 +29,7 @@ Production: <https://kernelia.dev>
 - **Runtime:** Node 22 LTS, TypeScript strict, pnpm.
 - **Framework:** Next.js 15 App Router with `[locale]` segment (next-intl).
 - **DB:** Supabase Postgres via Drizzle ORM + `postgres` driver (pool `max: 1`).
-- **LLM:** Cerebras `llama3.1-8b` via the OpenAI-compatible SDK.
+- **LLM:** Cerebras `gpt-oss-120b` via the OpenAI-compatible SDK.
 - **UI:** Tailwind v4 + shadcn/ui + Lucide icons.
 - **Cron:** GitHub Actions hits `/api/cron/{ingest,classify}` with `CRON_SECRET`.
 - **Hosting:** Vercel Hobby (60s function cap). Free-tier across the board.
