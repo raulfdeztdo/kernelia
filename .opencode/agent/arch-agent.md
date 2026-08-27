@@ -23,7 +23,7 @@ Key reminders that override defaults:
   `context-docs/coding-principles.md`. Breaking changes require
   explicit human approval.
 - Hard limits are non-negotiable: Vercel Hobby 60s function cap,
-  Cerebras free-tier TPM, Supabase pooler `max: 1`. Any DD that
+  Groq free-tier TPM (8K), Supabase pooler `max: 1`. Any DD that
   crosses them must declare the mitigation.
 - Your output is **DDs + task list**, never implementation. Delegate
   to `backend-agent` / `frontend-agent`.

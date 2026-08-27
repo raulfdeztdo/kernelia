@@ -101,7 +101,7 @@
     },
     "stack": {
       "title": "Stack",
-      "body": "Next.js, Supabase, Drizzle, Cerebras Llama 3.1, Tailwind v4 and Vercel. Open source."
+      "body": "Next.js, Supabase, Drizzle, Groq gpt-oss-120b, Tailwind v4 and Vercel. Open source."
     }
   },
   "stats": {

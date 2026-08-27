@@ -7,7 +7,7 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
 - Modo: `greenfield`.
 - Tipo: aplicacion web publica, sin auth, agregador de noticias IA con clasificacion automatica.
 - Restricciones:
-  - Coste objetivo: free tier (Vercel Hobby, Supabase Free, Cerebras free).
+  - Coste objetivo: free tier (Vercel Hobby, Supabase Free, Groq free).
   - Bilingue ES/EN desde el dia 1.
   - SEO-friendly (RSC + metadata por locale).
 
@@ -27,7 +27,7 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
     `logout`, `forgot-password`, `reset-password`, gestion de articulos
     y usuarios).
   - `lib/` — utilidades compartidas (clients, helpers).
-  - `lib/ai/` — cliente Cerebras + prompts + schemas Zod.
+  - `lib/ai/` — cliente LLM (agnostico de proveedor) + prompts + schemas Zod.
   - `lib/ingest/` — RSS parser, dedupe, normalizacion.
   - `lib/auth/` — hash de contrasenya (bcrypt), tokens de password-reset,
     sesiones HMAC, rate-limit, helpers de cookie. **Server-only**; nunca
@@ -57,7 +57,8 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
 - i18n: **next-intl**.
 - ORM: **Drizzle** + `drizzle-kit` para migraciones.
 - DB: **Supabase Postgres** (connection pool por `postgres` driver).
-- LLM: **Cerebras** via SDK OpenAI-compatible (`openai` npm con `baseURL` de Cerebras).
+- LLM: **Groq** (`openai/gpt-oss-120b`) via SDK OpenAI-compatible (`openai` npm con `baseURL`).
+  El proveedor se configura por entorno (`LLM_BASE_URL` / `LLM_MODEL`): cambiarlo no requiere tocar codigo.
 - Validacion: **Zod**.
 - Ingesta: `rss-parser`, `cheerio` (parseo de HTML cuando haga falta enriquecer).
 - Tests: **Vitest** (unit), **Playwright** (e2e).
@@ -79,7 +80,7 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
 - Seeds: `db/seed.ts` con fuentes RSS iniciales y categorias canonicas.
 - Integraciones externas:
   - Feeds RSS de medios IA (lista en `db/seed.ts`).
-  - Cerebras API (clasificacion + resumen).
+  - API del LLM (clasificacion + resumen).
 - Dedupe: hash SHA-256 de `url` canonica + `published_at` truncado a hora.
 
 ## 6. Testing

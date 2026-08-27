@@ -8,7 +8,7 @@ Estado vivo del plan de ejecucion. Se actualiza al cerrar cada fase con la fecha
 
 ## Resumen
 
-Kernelia es un agregador de noticias sobre IA con clasificacion automatica via LLM. Web publica, sin auth, UI bilingue ES/EN. Stack: Next.js 15 + Supabase + Drizzle + Cerebras + Vercel. No es un MVP de descarte: se prueba en dev y se publica una `v0.1.0` como version inicial cuando este lista.
+Kernelia es un agregador de noticias sobre IA con clasificacion automatica via LLM. Web publica, sin auth, UI bilingue ES/EN. Stack: Next.js 15 + Supabase + Drizzle + Groq + Vercel. No es un MVP de descarte: se prueba en dev y se publica una `v0.1.0` como version inicial cuando este lista.
 
 ## Estado global
 

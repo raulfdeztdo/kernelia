@@ -297,7 +297,8 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   let consecutiveApiErrors = 0;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
-  // Deliberately serial: Cerebras free tier enforces a TPM cap and we
+  // Deliberately serial: the provider's free tier enforces a TPM cap
+  // (Groq: 8K tokens/min) and we
   // wait `delayBetweenMs` (typically 3000ms) between articles to stay
   // under it. Paralelising with Promise.all would trip 429s in seconds
   // and burn the quota; React Review's `async-await-in-loop` lint is
