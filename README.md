@@ -32,7 +32,7 @@
     <img src="https://img.shields.io/badge/Tailwind-4-38BDF8?style=flat&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
     <img src="https://img.shields.io/badge/Supabase-3FCF8E?style=flat&logo=supabase&logoColor=white" alt="Supabase" />
     <img src="https://img.shields.io/badge/Drizzle-C5F74F?style=flat&logo=drizzle&logoColor=black" alt="Drizzle ORM" />
-    <img src="https://img.shields.io/badge/Cerebras-F05032?style=flat&logoColor=white" alt="Cerebras" />
+    <img src="https://img.shields.io/badge/Groq-F55036?style=flat&logo=groq&logoColor=white" alt="Groq" />
     <img src="https://img.shields.io/badge/Vercel-000000?style=flat&logo=vercel&logoColor=white" alt="Vercel" />
     <img src="https://img.shields.io/badge/pnpm-F69220?style=flat&logo=pnpm&logoColor=white" alt="pnpm" />
   </p>
@@ -64,7 +64,7 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
 - **Auto-mantenido** — Un cron ingesta nuevas publicaciones cada 3h, el agente IA las clasifica cada 30min y el broadcaster las distribuye a redes sociales sin intervención humana.
 - **Bilingüe** — Interfaz nativa en español e inglés. Títulos y resúmenes generados en ambos idiomas por el agente.
 - **Newsletter semanal** — Digest opcional cada domingo con los artículos más relevantes de la semana.
-- **Coste cero** — Stack íntegramente en planes gratuitos (Vercel + Supabase + Cerebras + Resend).
+- **Coste cero** — Stack íntegramente en planes gratuitos (Vercel + Supabase + Groq + Resend).
 
 ## Stack
 
@@ -76,7 +76,7 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
 | i18n | next-intl (ES default, EN) |
 | Base de datos | Supabase Postgres |
 | ORM | Drizzle |
-| LLM | Cerebras `gpt-oss-120b` — SDK OpenAI-compatible |
+| LLM | Groq `openai/gpt-oss-120b` — SDK OpenAI-compatible |
 | Ingesta | rss-parser |
 | Validación | Zod |
 | Email | Resend |
@@ -100,7 +100,7 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
 
 **Pipeline automático:**
 - **Ingesta** — Cada 3h lee 15+ fuentes RSS, normaliza URLs, deduplica por hash SHA-256.
-- **Clasificación** — Cada 30min procesa lotes de artículos `pending` con Cerebras: categoría + resumen en ES y EN + relevance score, validados con Zod antes de persistir. Cola round-robin por fuente para evitar monopolios.
+- **Clasificación** — Cada 30min procesa lotes de artículos `pending` con el LLM: categoría + resumen en ES y EN + relevance score, validados con Zod antes de persistir. Cola round-robin por fuente para evitar monopolios.
 - **Broadcaster** — Publica artículos con `relevance_score >= 0.75` en Mastodon, Bluesky y Telegram. Idempotencia por `(article_id, platform)`.
 
 ## Cómo funciona
@@ -125,7 +125,7 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
                                          │ select pending (round-robin)
                                          ▼
   ┌─────────────────┐         ┌──────────────────────────┐
-  │  Cerebras LLM   │◀────────│  Classify agent           │
+  │    Groq LLM     │◀────────│  Classify agent           │
   │  (gpt-oss-120b) │         │  - prompt + Zod schema   │
   └────────┬────────┘         │  - category + summary    │
            │                  │  - ES + EN + score        │
@@ -160,7 +160,7 @@ El plan de ejecución vivo está en [`PLAN.md`](./PLAN.md).
 | 0 — Limpieza y rebranding | ✅ done |
 | 1 — Bootstrap Next.js | ✅ done |
 | 2 — Modelo de datos e ingesta RSS | ✅ done |
-| 3 — Agente IA (Cerebras) | ✅ done |
+| 3 — Agente IA (LLM) | ✅ done |
 | 4 — Web: listado, filtros, búsqueda | ✅ done |
 | 5 — Pulido, SEO, accesibilidad | ✅ done |
 | 6 — Release v0.1.0 a producción | ✅ done |

@@ -11,11 +11,16 @@ on:
   schedule:
     # Ingesta cada 3 horas en punto.
     - cron: "0 */3 * * *"
-    # Clasificacion cada 30 minutos en `:00` y `:30`. `limit=8` es un techo:
-    # el handler arranca con un wall-clock budget (~52s, ver
-    # WALL_TIME_BUDGET_MS en app/api/cron/classify/route.ts) y sale limpio
-    # devolviendo 200 antes del cap de 60s de Vercel Hobby. Bandwidth real:
-    # ~6-8 articulos/tick x 48 ticks/dia = ~290-380 art/dia.
+    # Clasificacion cada 30 minutos en `:00` y `:30`. `limit=3` es un techo
+    # marcado por el TPM del free tier de Groq (8K tokens/min): medido
+    # sobre articulos reales, gpt-oss-120b cuesta ~1.6K tokens (noticias
+    # en ingles) y hasta ~2.1K (Hipertextual, excerpt largo en español).
+    # Dimensionado contra el peor mix, no contra la media: 4 articulos de
+    # Hipertextual son ~8.5K y devuelven 429. El handler ademas arranca
+    # con un wall-clock budget (~52s, ver WALL_TIME_BUDGET_MS en
+    # app/api/cron/classify/route.ts) y sale limpio devolviendo 200 antes
+    # del cap de 60s de Vercel Hobby. Capacidad: 3 art/tick x 48 ticks =
+    # 144/dia, contra un pico medido de 64 art/dia.
     - cron: "*/30 * * * *"
     # Broadcast cada hora a `:05` UTC. El handler decide en runtime
     # si el reloj local Europe/Madrid esta en una ventana valida
@@ -111,7 +116,7 @@ jobs:
     timeout-minutes: 5
     environment: Production
     steps:
-      - name: Hit /api/cron/classify?limit=8
+      - name: Hit /api/cron/classify?limit=3
         env:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -132,13 +137,13 @@ jobs:
           # No --retry: the handler now enforces its own wall-clock
           # budget and always returns 200 (with `budgetExhausted:
           # true` when it bails early). A 5xx here means a real
-          # platform incident — retrying just burns Cerebras tokens
+          # platform incident — retrying just burns provider tokens
           # and snowballs the TPM throttle into the next franja.
           response=$(curl --silent --show-error --fail-with-body \
             --max-time 90 \
             --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
             --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/classify?limit=8")
+            "${BASE_URL}/api/cron/classify?limit=3")
           echo "${response}"
 
   broadcast:

@@ -29,7 +29,8 @@ Production: <https://kernelia.dev>
 - **Runtime:** Node 22 LTS, TypeScript strict, pnpm.
 - **Framework:** Next.js 15 App Router with `[locale]` segment (next-intl).
 - **DB:** Supabase Postgres via Drizzle ORM + `postgres` driver (pool `max: 1`).
-- **LLM:** Cerebras `gpt-oss-120b` via the OpenAI-compatible SDK.
+- **LLM:** Groq `openai/gpt-oss-120b` via the OpenAI-compatible SDK. Provider is env-driven
+  (`LLM_BASE_URL` / `LLM_MODEL`); swapping vendors needs no code change.
 - **UI:** Tailwind v4 + shadcn/ui + Lucide icons.
 - **Cron:** GitHub Actions hits `/api/cron/{ingest,classify}` with `CRON_SECRET`.
 - **Hosting:** Vercel Hobby (60s function cap). Free-tier across the board.
@@ -102,7 +103,7 @@ backend-agent  ⟂  frontend-agent     ← parallel where possible
 | `app/api/admin/` | Admin endpoints: `login`, `logout`, `forgot-password`, `reset-password`, `articles/*`, `users/*`. |
 | `app/api/cron/` | Cron endpoints: `ingest`, `classify`, `broadcast`. Bearer-auth via `CRON_SECRET`. |
 | `components/` | UI; `components/ui/` is shadcn primitives. |
-| `lib/ai/` | Cerebras client, prompts, Zod schemas, `classifyArticle`, `runClassify`. |
+| `lib/ai/` | LLM client (provider-agnostic), prompts, Zod schemas, `classifyArticle`, `runClassify`. |
 | `lib/ingest/` | RSS parser, dedupe, normalisation. |
 | `lib/broadcast/` | Auto-publication to Mastodon + Bluesky + Telegram. Per-platform clients + orchestrator + text formatter. Server-only. |
 | `lib/auth/` | Password hashing (bcrypt), password-reset tokens, HMAC-signed session cookie, in-memory rate-limit. Server-only. |

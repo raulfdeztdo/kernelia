@@ -16,6 +16,27 @@ describe("classifyStatus", () => {
     // sustained budget exhaustion (indicates Cerebras is slow / overloaded).
     expect(classifyStatus({ processed: 4, failed: 0, budgetExhausted: true })).toBe("partial");
   });
+
+  it("returns 'failed' when the LLM provider was down for the whole tick", () => {
+    // A provider outage (402 quota, 401 key, 404 model) leaves every
+    // article `pending` — zero `failed` rows — so without this branch the
+    // run would log as a quiet `ok`/`partial` and nobody would notice the
+    // feed had stopped moving.
+    expect(
+      classifyStatus({
+        processed: 3,
+        failed: 0,
+        budgetExhausted: false,
+        providerOutage: "provider_http_402",
+      }),
+    ).toBe("failed");
+  });
+
+  it("ignores a null providerOutage (healthy tick)", () => {
+    expect(
+      classifyStatus({ processed: 8, failed: 0, budgetExhausted: false, providerOutage: null }),
+    ).toBe("ok");
+  });
 });
 
 describe("ingestStatus", () => {
