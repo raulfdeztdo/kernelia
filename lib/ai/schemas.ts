@@ -19,10 +19,11 @@ export const LANGUAGES = ["es", "en"] as const;
 export type Language = (typeof LANGUAGES)[number];
 
 /**
- * Cerebras Llama occasionally returns `is_ai_related` as a string
- * (`"true"` / `"false"`) instead of a JSON boolean — pure model
- * unpredictability that Hipertextual's noisy feed reproduces almost
- * every tick. Coerce the obvious cases on the way in so a clean
+ * Some models return `is_ai_related` as a string (`"true"` / `"false"`)
+ * instead of a JSON boolean — first observed on Cerebras' Llama, which
+ * we no longer run, but this is generic model unpredictability and the
+ * coercion is worth keeping across provider swaps. Coerce the obvious
+ * cases on the way in so a clean
  * `false` (the gating signal) still reaches the orchestrator instead
  * of failing schema validation and pushing the row to `failed`.
  *
@@ -40,8 +41,8 @@ const aiRelatedFlexible = z.preprocess((v) => {
 }, z.boolean().optional());
 
 /**
- * Cerebras Llama 3.1 in `response_format: json_object` mode occasionally
- * emits broken `\uXXXX` escapes for Spanish accented characters: instead
+ * Some models in `response_format: json_object` mode emit broken
+ * `\uXXXX` escapes for Spanish accented characters: instead
  * of `ó` for `ó` it produces escapes like \u0015, \u001B, etc.
  * After `JSON.parse` those become literal C0 control characters embedded
  * in the title/summary, which then render as tofu glyphs in the
@@ -72,7 +73,7 @@ const noControlCharsString = (label: string) =>
 /**
  * Title min length is relaxed to 1: some Hipertextual items come back
  * with a 1-2 character translation when the source title is a single
- * word ("X", "Q*") and Cerebras refuses to pad it. The orchestrator
+ * word ("X", "Q*") and the model refuses to pad it. The orchestrator
  * downgrades anything shorter than 3 to `is_ai_related: false` so
  * these rows still get hidden cleanly — see `lib/ai/run.ts` for the
  * post-parse normalisation.

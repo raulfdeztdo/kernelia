@@ -10,7 +10,7 @@
  *
  * Why shingles + Jaccard and not LLM embeddings:
  *   - Deterministic. Same titles → same verdict, run after run.
- *   - Zero token cost. The classify pipeline already burns Cerebras tokens;
+ *   - Zero token cost. The classify pipeline already burns LLM tokens;
  *     dedupe shouldn't add to that budget.
  *   - Fast. O(n) per comparison, O(N*M) total per cron tick — fine for
  *     the ~10 candidates × ~100 recent articles we actually compare.

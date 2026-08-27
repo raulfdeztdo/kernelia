@@ -65,7 +65,7 @@ aquí para que no se pierda contexto entre handoffs.
 3. Decidir si todo el trabajo pertenece al mismo slice arquitectónico
    o si debe separarse en varios DDs.
 4. Identificar restricciones: dominio, escala, integraciones, free-tier
-   limits (Vercel 60s, Cerebras TPM, Supabase pooler `max:1`), legado.
+   limits (Vercel 60s, Groq TPM 8K, Supabase pooler `max:1`), legado.
 5. Usar `system-design` para evaluar arquitectura objetivo vs. heredada.
 6. Decidir baseline (`BOOTSTRAP`/`ALIGN`/`SKIPPED`) y handoff visual
    (`REQUIRED`/`SKIPPED`) explícitamente.
@@ -98,6 +98,6 @@ aquí para que no se pierda contexto entre handoffs.
 - Si el proyecto ya existe (Kernelia), la continuidad arquitectónica
   es la opción por defecto. Cualquier ruptura importante requiere
   aprobación humana explícita.
-- Los free-tier limits del proyecto (Vercel 60s, Cerebras TPM, etc.)
+- Los free-tier limits del proyecto (Vercel 60s, Groq TPM, etc.)
   son restricciones duras: cualquier DD que las cruce debe declarar
   cómo se mitiga.
