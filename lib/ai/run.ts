@@ -1,10 +1,4 @@
-import {
-  APIConnectionError,
-  APIConnectionTimeoutError,
-  APIUserAbortError,
-  InternalServerError,
-  RateLimitError,
-} from "openai";
+import { APIError } from "openai";
 import { getCategoryMap } from "@/db/queries/categories";
 import {
   classifyReplacingDuplicate,
@@ -19,12 +13,21 @@ import {
 } from "@/db/queries/articles";
 import { findNearDuplicate, type DedupeMatch } from "@/lib/dedupe/shingle";
 import { createLogger } from "@/lib/logger";
-import { classifyArticle, type ClassifyOptions } from "./classify";
+import { ClassificationContentError, classifyArticle, type ClassifyOptions } from "./classify";
 import { MIN_PUBLISHABLE_TITLE_LENGTH } from "./schemas";
 
 const log = createLogger("classify");
 
-export const DEFAULT_BATCH_SIZE = 10;
+/**
+ * Articles per tick. Sized against Groq's free-tier TPM cap for
+ * `gpt-oss-120b` (8K tokens/min): at ~1.2K tokens per article a batch
+ * of 6 asks for ~7.2K within the burst minute, which fits; the old
+ * batch of 10 asked for ~12K and would 429 partway through.
+ *
+ * Not a throughput concern: 6 × 48 ticks/day = 288 articles/day of
+ * capacity against a measured peak of 64/day.
+ */
+export const DEFAULT_BATCH_SIZE = 3;
 
 export interface ClassifySummary {
   startedAt: string;
@@ -34,12 +37,28 @@ export interface ClassifySummary {
   classified: number;
   failed: number;
   /**
-   * Articles whose LLM call timed out or was aborted. NOT marked as
-   * `failed` in the DB — they stay `pending` so the next cron tick
-   * retries them. Distinct from `failed` (terminal: schema error,
-   * unknown category, etc.).
+   * Articles whose LLM call failed for a PROVIDER-side reason: timeout,
+   * abort, 429 throttle, 5xx, network hiccup, 402 quota wall, 404
+   * model-removed… NOT marked `failed` in the DB — they stay `pending`
+   * so a later cron tick retries them once the provider recovers.
+   * Distinct from `failed`, which is reserved for defects in *this
+   * article's* LLM output (schema error, unknown category, non-JSON).
    */
   timedOut: number;
+  /**
+   * Set when the loop aborted early because the LLM provider is down
+   * for everyone (quota exhausted, bad key, model gone, or a run of
+   * consecutive API errors). Holds the short reason string; `null` on
+   * a healthy tick. The untouched pending rows keep `status='pending'`.
+   *
+   * Added after the 2026-08 incident: Cerebras started answering 402
+   * "Payment required" to every call and the old code treated that as
+   * a per-article defect, so it marched through the whole batch marking
+   * every article `failed` — and the cleanup cron hard-deletes
+   * `failed` rows 7 days later. 243 articles were queued for deletion
+   * that way before anyone noticed the feed had stopped moving.
+   */
+  providerOutage: string | null;
   /**
    * `true` when we exited the loop early because the wall-clock budget
    * was about to be exceeded. The remaining pending items stay in
@@ -156,6 +175,46 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * HTTP statuses that mean "this provider will reject every call in this
+ * batch", not "this call was unlucky":
+ *   401 bad/revoked API key · 402 quota exhausted or billing lapsed ·
+ *   403 key lacks access to the model · 404 model id no longer served.
+ * All four have bitten this project already (404 when Cerebras retired
+ * llama3.1-8b, 402 when the free quota ran out).
+ */
+const HARD_OUTAGE_STATUSES = new Set([401, 402, 403, 404]);
+
+/**
+ * Consecutive provider errors before we stop the batch. 3 tolerates an
+ * isolated 429/5xx blip mid-run while still cutting a real outage short
+ * after ~3 wasted calls instead of `limit` of them.
+ */
+const MAX_CONSECUTIVE_API_ERRORS = 3;
+
+/**
+ * Short, loggable reason when the error came from the provider itself,
+ * or `null` when it can't be attributed to it (a bare timeout, a DNS
+ * blip — no HTTP status to reason about).
+ *
+ * A non-null return only *arms* the breaker; it takes
+ * `MAX_CONSECUTIVE_API_ERRORS` of them in a row to actually stop the
+ * batch, which is what separates "one throttled call" from "the
+ * provider is refusing everything this tick".
+ */
+function providerOutageReason(err: unknown): string | null {
+  if (!(err instanceof APIError)) return null;
+  const { status } = err;
+  if (typeof status !== "number") return null;
+  // Hard statuses are provider-wide from the first response. 429 and 5xx
+  // are per-call by nature, but an unbroken run of them means the same
+  // thing in practice, so the streak counter decides.
+  if (HARD_OUTAGE_STATUSES.has(status) || status === 429 || status >= 500) {
+    return `provider_http_${status}`;
+  }
+  return null;
+}
+
 export async function runClassify(options: RunClassifyOptions = {}): Promise<ClassifySummary> {
   const startedAt = new Date();
   const limit = options.limit ?? DEFAULT_BATCH_SIZE;
@@ -216,7 +275,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   const maxWallTimeMs = options.maxWallTimeMs ?? Infinity;
   // Worst-case allowance for "delay + LLM call + DB write" for a
   // single iteration. The LLM call is hard-capped by the SDK timeout
-  // (CEREBRAS_DEFAULT_TIMEOUT_MS = 15_000) so the worst case is
+  // (LLM_DEFAULT_TIMEOUT_MS = 15_000) so the worst case is
   // 3s delay + 15s LLM (timeout) + ~1s DB+slack = 19s. If we don't
   // have at least this much headroom left we bail out cleanly instead
   // of starting an iteration that could blow through the Vercel cap.
@@ -234,6 +293,8 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   let dedupedReplaced = 0;
   let hiddenNonAi = 0;
   let budgetExhausted = false;
+  let providerOutage: string | null = null;
+  let consecutiveApiErrors = 0;
   const tokens = { prompt: 0, completion: 0, total: 0 };
 
   // Deliberately serial: Cerebras free tier enforces a TPM cap and we
@@ -270,11 +331,17 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         options,
       );
 
+      // A completed call proves the provider is answering again.
+      consecutiveApiErrors = 0;
+
       // Hoist the deep member access read three times below.
       const { category_slug: categorySlug } = result.classification;
       const categoryId = await resolveCategoryId(categorySlug);
       if (!categoryId) {
-        throw new Error(`Unknown category slug: ${categorySlug}`);
+        // Terminal: the model picked a slug outside the closed list, so
+        // this specific response is unusable no matter how healthy the
+        // provider is.
+        throw new ClassificationContentError(`Unknown category slug: ${categorySlug}`);
       }
 
       const payload: ClassifiedPayload = {
@@ -429,37 +496,52 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // Transient errors leave the row in `pending` so the next cron
-      // tick retries it. Marking these `failed` would lose them
-      // forever to `listPendingArticles`'s status filter.
+
+      // Only a defect in THIS article's LLM output is terminal. Anything
+      // else — every `APIError` (402 quota, 401 bad key, 404 model gone,
+      // 429 throttle, 5xx), every network/timeout/abort error, and any
+      // unrecognised throw — is a provider-side condition that says
+      // nothing about the article, so the row stays `pending` and a
+      // later tick retries it.
       //
-      // What counts as transient:
-      // - Timeouts / user aborts: the LLM didn't *reject* the article,
-      //   the request just ran out the clock.
-      // - 429 RateLimitError: Cerebras TPM throttle. The next tick (in
-      //   the next franja) will have fresh budget.
-      // - 5xx InternalServerError: provider-side hiccup.
-      // - APIConnectionError (non-timeout subclass): DNS/TCP hiccup.
-      //
-      // Everything else (schema validation, unknown category, 4xx
-      // request errors, etc.) is terminal: the LLM rejected the article
-      // for a reason that won't fix itself, so we mark it failed and
-      // the operator can re-classify from /admin/articles if needed.
-      if (
-        err instanceof APIConnectionTimeoutError ||
-        err instanceof APIUserAbortError ||
-        err instanceof RateLimitError ||
-        err instanceof InternalServerError ||
-        err instanceof APIConnectionError
-      ) {
+      // This is deliberately fail-SAFE by default: an error we didn't
+      // anticipate keeps the article, it doesn't burn it. The previous
+      // code had the polarity inverted (allow-list of transient errors,
+      // everything else terminal) and a provider-wide 402 outage marked
+      // 243 articles `failed`, which the cleanup cron then hard-deleted.
+      if (!(err instanceof ClassificationContentError)) {
         timedOut++;
+        const outage = providerOutageReason(err);
         log.warn("article_transient", {
           articleId: article.id,
           reason: message,
-          errorKind: err.constructor.name,
+          errorKind: err instanceof Error ? err.constructor.name : typeof err,
+          outage,
         });
+        if (outage) {
+          consecutiveApiErrors++;
+        } else {
+          consecutiveApiErrors = 0;
+        }
+        // Circuit breaker. Once we know the provider is refusing every
+        // call there is nothing to gain from walking the rest of the
+        // batch: we'd just burn wall-clock and log noise. Bail out and
+        // let the cron_run land as `failed` so the outage is visible in
+        // /admin instead of hiding behind a quiet `partial`.
+        if (outage && consecutiveApiErrors >= MAX_CONSECUTIVE_API_ERRORS) {
+          providerOutage = outage;
+          log.error("provider_outage", {
+            reason: outage,
+            message,
+            consecutiveApiErrors,
+            remaining: pending.length - index - 1,
+          });
+          break;
+        }
         continue;
       }
+
+      consecutiveApiErrors = 0;
       failed++;
       log.warn("article_failed", { articleId: article.id, reason: message });
       try {
@@ -485,6 +567,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
     classified,
     failed,
     timedOut,
+    providerOutage,
     dedupedHidden,
     dedupedReplaced,
     hiddenNonAi,

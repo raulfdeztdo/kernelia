@@ -1,6 +1,7 @@
 import {
   APIConnectionError,
   APIConnectionTimeoutError,
+  APIError,
   InternalServerError,
   RateLimitError,
 } from "openai";
@@ -39,6 +40,14 @@ const validPayload = {
   summary_en: "OpenAI ships a model that can chain browser and file tools natively.",
   relevance_score: 0.95,
 };
+
+/** One well-formed completion, for batches that mix success and errors. */
+function okCompletion() {
+  return {
+    choices: [{ message: { content: JSON.stringify(validPayload) } }],
+    usage: { prompt_tokens: 100, completion_tokens: 40, total_tokens: 140 },
+  };
+}
 
 const sampleArticle = {
   title: "OpenAI releases GPT-5 with agentic tool use",
@@ -384,6 +393,185 @@ describe("runClassify", () => {
       expect(onClassified).not.toHaveBeenCalled();
     },
   );
+
+  it("treats a 402 quota wall as transient and trips the circuit breaker", async () => {
+    // Regression for the 2026-08 incident. Cerebras started answering
+    // 402 "Payment required to access this resource" to every call.
+    // The old code had an allow-list of transient errors (timeout /
+    // 429 / 5xx / connection) and treated EVERYTHING else as terminal,
+    // so a 402 marked each article `failed` — and the cleanup cron
+    // hard-deleted them 7 days later (243 articles lost).
+    //
+    // Now: any non-content error keeps the row `pending`, and three
+    // consecutive provider errors abort the batch instead of burning
+    // through the remaining articles.
+    const pending = Array.from({ length: 8 }, (_, i) => ({
+      id: `a${i}`,
+      title: `Article ${i}`,
+      url: `https://example.com/${i}`,
+      rawExcerpt: null,
+      imageUrl: null,
+      language: "en" as const,
+      sourceName: "Example",
+      sourceLanguage: "en" as const,
+    }));
+
+    const create = vi.fn(async () => {
+      throw new APIError(
+        402,
+        { message: "Payment required to access this resource.", code: "payment_required" },
+        "Payment required to access this resource.",
+        {},
+      );
+    });
+    const client = { chat: { completions: { create } } } as never;
+
+    const onClassified = vi.fn(async () => {});
+    const onFailed = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified,
+      onFailed,
+      resolveCategoryId: async () => "cat-id",
+      dedupeEnabled: false,
+    });
+
+    expect(summary.failed).toBe(0);
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(summary.providerOutage).toBe("provider_http_402");
+    // Breaker cuts the batch at 3 attempts, not all 8.
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(summary.timedOut).toBe(3);
+  });
+
+  it.each([401, 403, 404])(
+    "treats a %i provider error as an outage, never as a per-article failure",
+    async (status) => {
+      // 401 revoked key, 403 no model access, 404 model retired (which is
+      // exactly what happened when Cerebras dropped llama3.1-8b). None of
+      // these say anything about the article.
+      const pending = Array.from({ length: 5 }, (_, i) => ({
+        id: `a${i}`,
+        title: `Article ${i}`,
+        url: `https://example.com/${i}`,
+        rawExcerpt: null,
+        imageUrl: null,
+        language: "en" as const,
+        sourceName: "Example",
+        sourceLanguage: "en" as const,
+      }));
+      const client = {
+        chat: {
+          completions: {
+            create: vi.fn(async () => {
+              throw new APIError(status, { message: "nope" }, "nope", {});
+            }),
+          },
+        },
+      } as never;
+      const onFailed = vi.fn(async () => {});
+
+      const summary = await runClassify({
+        client,
+        fetchPending: async () => pending,
+        onFailed,
+        resolveCategoryId: async () => "cat-id",
+        dedupeEnabled: false,
+      });
+
+      expect(summary.failed).toBe(0);
+      expect(onFailed).not.toHaveBeenCalled();
+      expect(summary.providerOutage).toBe(`provider_http_${status}`);
+    },
+  );
+
+  it("does not trip the breaker when a provider error is isolated", async () => {
+    // One 429 in the middle of an otherwise healthy batch must not stop
+    // the tick — the streak counter resets on the next successful call.
+    const pending = Array.from({ length: 4 }, (_, i) => ({
+      id: `a${i}`,
+      title: `Article ${i}`,
+      url: `https://example.com/${i}`,
+      rawExcerpt: null,
+      imageUrl: null,
+      language: "en" as const,
+      sourceName: "Example",
+      sourceLanguage: "en" as const,
+    }));
+
+    let call = 0;
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => {
+            call++;
+            if (call === 2) {
+              throw new RateLimitError(429, { error: { message: "slow down" } }, "slow down", {});
+            }
+            return okCompletion();
+          }),
+        },
+      },
+    } as never;
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified: async () => {},
+      onFailed: async () => {},
+      resolveCategoryId: async () => "cat-id",
+      dedupeEnabled: false,
+    });
+
+    expect(summary.providerOutage).toBeNull();
+    expect(summary.classified).toBe(3);
+    expect(summary.timedOut).toBe(1);
+    expect(summary.failed).toBe(0);
+  });
+
+  it("still marks the article failed when the LLM output itself is broken", async () => {
+    // The inverted polarity must not swallow genuine content defects:
+    // non-JSON / schema-invalid output is this article's fault and stays
+    // terminal, so /admin/articles can surface it.
+    const pending = [
+      {
+        id: "a1",
+        title: "Garbage in",
+        url: "https://example.com/1",
+        rawExcerpt: null,
+        imageUrl: null,
+        language: "en" as const,
+        sourceName: "Example",
+        sourceLanguage: "en" as const,
+      },
+    ];
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () => ({
+            choices: [{ message: { content: "not json at all" } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          })),
+        },
+      },
+    } as never;
+    const onFailed = vi.fn(async () => {});
+
+    const summary = await runClassify({
+      client,
+      fetchPending: async () => pending,
+      onClassified: async () => {},
+      onFailed,
+      resolveCategoryId: async () => "cat-id",
+      dedupeEnabled: false,
+    });
+
+    expect(summary.failed).toBe(1);
+    expect(summary.providerOutage).toBeNull();
+    expect(onFailed).toHaveBeenCalledTimes(1);
+  });
 
   it("stops cleanly when the wall-clock budget is exhausted", async () => {
     // Six pending items, but every classification call sleeps 80ms.

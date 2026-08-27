@@ -122,7 +122,15 @@ export function classifyStatus(summary: {
   failed: number;
   budgetExhausted: boolean;
   processed: number;
+  /**
+   * Optional for backward-compat with older callers/tests. When set,
+   * the LLM provider was refusing every call (402 quota, 401 key, 404
+   * model, sustained 429/5xx) and the tick aborted early — that is a
+   * full outage, not a partial success, so it must be loud in /admin.
+   */
+  providerOutage?: string | null;
 }): CronRunStatus {
+  if (summary.providerOutage) return "failed";
   if (summary.failed > 0 || summary.budgetExhausted) return "partial";
   return "ok";
 }

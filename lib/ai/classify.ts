@@ -1,11 +1,29 @@
 import type OpenAI from "openai";
-import { getCerebrasClient, getCerebrasModel } from "./client";
+import { getLlmClient, getLlmModel } from "./client";
 import {
   buildClassifyUserPrompt,
   CLASSIFY_SYSTEM_PROMPT,
   type ClassifyInput,
 } from "./prompts/classify-article";
 import { classificationSchema, type Classification } from "./schemas";
+
+/**
+ * Error whose cause is *this article's* LLM output: empty content,
+ * non-JSON, or a payload that fails schema validation. These are
+ * terminal — retrying the same article against a healthy provider
+ * would just reproduce them — so `runClassify` marks the row `failed`.
+ *
+ * Everything the LLM call can throw that is NOT this class (any
+ * `APIError`, network error, timeout, 402 quota wall, 404 model
+ * removed…) is a provider-side condition that says nothing about the
+ * article, and must leave the row `pending` for a later tick.
+ */
+export class ClassificationContentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ClassificationContentError";
+  }
+}
 
 export interface ClassifyResult {
   classification: Classification;
@@ -30,8 +48,8 @@ export async function classifyArticle(
   input: ClassifyInput,
   options: ClassifyOptions = {},
 ): Promise<ClassifyResult> {
-  const client = options.client ?? getCerebrasClient();
-  const model = options.model ?? getCerebrasModel();
+  const client = options.client ?? getLlmClient();
+  const model = options.model ?? getLlmModel();
   const temperature = options.temperature ?? 0.2;
 
   const startedAt = Date.now();
@@ -49,19 +67,19 @@ export async function classifyArticle(
   const choice = completion.choices[0];
   const content = choice?.message?.content;
   if (!content) {
-    throw new Error("LLM returned empty content");
+    throw new ClassificationContentError("LLM returned empty content");
   }
 
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(content);
   } catch {
-    throw new Error(`LLM returned non-JSON content: ${content.slice(0, 200)}`);
+    throw new ClassificationContentError(`LLM returned non-JSON content: ${content.slice(0, 200)}`);
   }
 
   const parsed = classificationSchema.safeParse(parsedJson);
   if (!parsed.success) {
-    throw new Error(`Schema validation failed: ${parsed.error.message}`);
+    throw new ClassificationContentError(`Schema validation failed: ${parsed.error.message}`);
   }
 
   const usage = completion.usage;
