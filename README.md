@@ -61,7 +61,7 @@ Cada día salen decenas de novedades sobre Inteligencia Artificial repartidas po
 ### ¿Por qué este proyecto?
 
 - **Sin ruido** — Las noticias se clasifican en 10 categorías concretas y se resumen, para escanear el feed en segundos.
-- **Auto-mantenido** — Un cron ingesta nuevas publicaciones cada 3h, el agente IA las clasifica cada 30min y el broadcaster las distribuye a redes sociales sin intervención humana.
+- **Auto-mantenido** — Un cron ingesta nuevas publicaciones cada 3h, el agente IA las clasifica en tandas continuas y el broadcaster las distribuye a redes sociales —1 artículo por plataforma y hora, en horario español— sin intervención humana.
 - **Bilingüe** — Interfaz nativa en español e inglés. Títulos y resúmenes generados en ambos idiomas por el agente.
 - **Newsletter semanal** — Digest opcional cada domingo con los artículos más relevantes de la semana.
 - **Coste cero** — Stack íntegramente en planes gratuitos (Vercel + Supabase + Groq + Resend).
