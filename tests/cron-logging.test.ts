@@ -72,6 +72,55 @@ describe("broadcastStatus", () => {
     ).toBe("ok");
   });
 
+  it("returns 'ok' on an empty tick that PROVED it was quiet (staleBacklog 0)", () => {
+    expect(
+      broadcastStatus({
+        failed: { mastodon: 0, bluesky: 0, telegram: 0 },
+        skipped: 0,
+        staleBacklog: 0,
+      }),
+    ).toBe("ok");
+  });
+
+  it("returns 'partial' when the tick posted nothing but a backlog sat outside the lookback", () => {
+    // The Sep-2026 stall: for two weeks this exact shape was logged 'ok'
+    // and the channels were dead. An empty tick is only healthy when it
+    // can show there was nothing to post.
+    expect(
+      broadcastStatus({
+        failed: { mastodon: 0, bluesky: 0, telegram: 0 },
+        skipped: 0,
+        staleBacklog: 122,
+      }),
+    ).toBe("partial");
+  });
+
+  it("stays 'ok' when staleBacklog is absent (older callers) or null (probe skipped/failed)", () => {
+    expect(
+      broadcastStatus({ failed: { mastodon: 0, bluesky: 0, telegram: 0 }, skipped: 0 }),
+    ).toBe("ok");
+    expect(
+      broadcastStatus({
+        failed: { mastodon: 0, bluesky: 0, telegram: 0 },
+        skipped: 0,
+        staleBacklog: null,
+      }),
+    ).toBe("ok");
+  });
+
+  it("does not flag an out-of-window tick even if a backlog exists", () => {
+    // Out-of-window ticks never probe, but be explicit: 03:00 local is a
+    // no-op by design and must stay green.
+    expect(
+      broadcastStatus({
+        failed: { mastodon: 0, bluesky: 0, telegram: 0 },
+        skipped: 0,
+        skippedWindow: true,
+        staleBacklog: 122,
+      }),
+    ).toBe("ok");
+  });
+
   it("returns 'partial' when any single platform failed", () => {
     expect(
       broadcastStatus({ failed: { mastodon: 1, bluesky: 0, telegram: 0 }, skipped: 0 }),

@@ -6,12 +6,41 @@ name: Cron
 #
 # Aviso: en repos publicos, los workflows scheduled se DESACTIVAN tras 60 dias
 # sin actividad. Cualquier push/PR resetea ese contador.
+#
+# LEE ESTO ANTES DE TOCAR LAS CADENCIAS
+# -------------------------------------
+# Los `schedule:` de abajo son una PETICION, no una garantia, y desde el
+# 2026-09-01 GitHub dejo de servirla. Medido sobre la tabla `cron_runs`:
+#
+#             pedidos/dia   servidos hasta 31-ago   servidos desde 01-sep
+#   classify       48                47                    6-7
+#   broadcast      24                24                    5-7
+#   ingest          8                 8                    4-5
+#   cleanup         1                 1                      1
+#
+# Caida en seco, sin cambios en este fichero, en un repo publico (minutos
+# ilimitados, no es cuota) y con los ticks que si llegan retrasados 20-50
+# min sobre su hora. Es el scheduler despriorizando un repo con poca
+# actividad — comportamiento best-effort documentado, no apelable.
+#
+# Consecuencia: classify quedo con ~18 articulos/dia de capacidad frente a
+# ~45/dia entrando, la cola `pending` crecio hasta 362, todo lo clasificado
+# envejecio mas alla del lookback del broadcast y los canales estuvieron
+# 15 dias en silencio (ultimo post: 6-sep) sin que un solo cron fallara.
+#
+# Por eso los jobs YA NO HACEN UNA SOLA LLAMADA. Cada run que GitHub si
+# entrega se queda vivo y llama a su endpoint N veces espaciadas
+# (`.github/scripts/cron-call.sh`). El trabajo por dia deja de depender
+# del numero de ticks servidos, que es justo lo que no controlamos.
+#
+# Si algun dia recuperas cadencia real (scheduler externo o similar),
+# baja ITERATIONS a 1 y esto vuelve a comportarse como antes.
 
 on:
   schedule:
-    # Ingesta cada 3 horas en punto.
+    # Ingesta cada 3 horas en punto. Cada run cubre 2h mas via bucle.
     - cron: "0 */3 * * *"
-    # Clasificacion cada 30 minutos en `:00` y `:30`. `limit=3` es un techo
+    # Classify cada 30 minutos en `:00` y `:30`. `limit=3` es un techo
     # marcado por el TPM del free tier de Groq (8K tokens/min): medido
     # sobre articulos reales, gpt-oss-120b cuesta ~1.6K tokens (noticias
     # en ingles) y hasta ~2.1K (Hipertextual, excerpt largo en español).
@@ -19,15 +48,24 @@ on:
     # Hipertextual son ~8.5K y devuelven 429. El handler ademas arranca
     # con un wall-clock budget (~52s, ver WALL_TIME_BUDGET_MS en
     # app/api/cron/classify/route.ts) y sale limpio devolviendo 200 antes
-    # del cap de 60s de Vercel Hobby. Capacidad: 3 art/tick x 48 ticks =
-    # 144/dia, contra un pico medido de 64 art/dia.
+    # del cap de 60s de Vercel Hobby.
+    #
+    # OJO: subir `limit` NO aumenta el throughput. El techo por tick es
+    # TPM x wall-clock = 8K/min x 52s ~= 4 articulos, pase lo que pase.
+    # La unica palanca real es hacer MAS LLAMADAS espaciadas, que es
+    # exactamente lo que hace ITERATIONS. Techo diario: el TPD de Groq
+    # (200K tokens/dia ~= 108 articulos/dia).
     - cron: "*/30 * * * *"
     # Broadcast cada hora a `:05` UTC. El handler decide en runtime
     # si el reloj local Europe/Madrid esta en una ventana valida
     # (08-13 y 16-23, ver lib/broadcast/window.ts) y publica
-    # exactamente 1 articulo/plataforma/tick. Si no esta en ventana
+    # exactamente 1 articulo/plataforma/llamada. Si no esta en ventana
     # bail-out limpio antes de tocar DB. DST se respeta porque la
     # conversion UTC->local se hace via `Intl.DateTimeFormat`.
+    #
+    # El bucle mantiene la regla de producto intacta: 1 post/hora/
+    # plataforma. Lo que hace es cubrir con un solo run las horas cuyo
+    # tick GitHub se salta.
     #
     # IMPORTANTE — por que `:05` y no `:30`: GitHub Actions deduplica
     # los cron triggers que coinciden en el mismo minuto. Antes este
@@ -37,7 +75,7 @@ on:
     # broadcast a :05 elimina la colision con classify (:00 y :30) y
     # con ingest (:00 cada 3h). Como el `if:` del job filtra por el
     # string exacto del cron, el patron debe quedar igual aqui y en
-    # el job (linea ~129).
+    # el job.
     - cron: "5 * * * *"
     # Newsletter semanal: domingos a las 10:00 UTC. El handler tiene su
     # propio wall-clock budget (~52s) y un sleep de 600ms entre envios
@@ -62,10 +100,25 @@ on:
           - broadcast
           - newsletter
           - cleanup
+      iterations:
+        description: "Llamadas a encadenar (vacio = el valor por defecto del job). Usa esto para drenar backlog."
+        required: false
+        type: string
+      interval_seconds:
+        description: "Segundos entre llamadas (vacio = el valor por defecto del job)."
+        required: false
+        type: string
 
+# Los runs ahora duran horas, asi que dos del mismo job SI pueden
+# solaparse. `cancel-in-progress: true` deja que el run nuevo releve al
+# viejo en vez de encolarlo indefinidamente. Cancelar a media tanda es
+# seguro: cada llamada es independiente e idempotente (el indice unico
+# de `article_broadcasts` y el `notExists` de la query evitan el doble
+# post), y matar el curl del runner no aborta el handler ya en vuelo en
+# Vercel.
 concurrency:
   group: cron-${{ github.event.schedule || inputs.job }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   ingest:
@@ -73,78 +126,41 @@ jobs:
     # Solo en el schedule de cada 3h, o si el dispatch lo pide explicitamente.
     if: github.event.schedule == '0 */3 * * *' || inputs.job == 'ingest'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 3 llamadas x 1h = ~2h de bucle, + margen.
+    timeout-minutes: 140
     # `KERNELIA_PROD_URL` y `CRON_SECRET` viven como secrets del environment
     # "Production" (no como repo secrets). Sin esta linea `${{ secrets.* }}`
     # los sustituye por "" y `curl` se queja con "No host part in the URL".
     environment: Production
     steps:
+      - uses: actions/checkout@v4
       - name: Hit /api/cron/ingest
         env:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          # Fail loud if the secrets are missing. Without this guard GitHub
-          # silently substitutes "" and curl reports the unhelpful
-          # "URL rejected: No host part in the URL" — costing one cron tick
-          # to figure out the real cause.
-          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
-          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
-          # Trim leading/trailing whitespace (incl. the trailing \n that
-          # commonly sneaks in via copy-paste from Vercel) and a trailing
-          # slash. Then sanity-check the result.
-          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
-          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
-          BASE_URL="${BASE_URL%/}"
-          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
-            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL}). Expected something like https://kernelia.dev — no trailing slash, no quotes, no whitespace." >&2
-            exit 1
-          fi
-          response=$(curl --silent --show-error --fail-with-body \
-            --max-time 90 \
-            --retry 2 --retry-delay 10 --retry-connrefused \
-            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/ingest")
-          echo "${response}"
+          ITERATIONS: ${{ inputs.iterations || '3' }}
+          INTERVAL_SECONDS: ${{ inputs.interval_seconds || '3600' }}
+        run: .github/scripts/cron-call.sh /api/cron/ingest
 
   classify:
     name: Classify pending articles
     if: github.event.schedule == '*/30 * * * *' || inputs.job == 'classify'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 17 llamadas x 3min = ~51min de bucle, + margen.
+    timeout-minutes: 70
     environment: Production
     steps:
+      - uses: actions/checkout@v4
       - name: Hit /api/cron/classify?limit=3
         env:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
-          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
-          # Trim leading/trailing whitespace (incl. the trailing \n that
-          # commonly sneaks in via copy-paste from Vercel) and a trailing
-          # slash. Then sanity-check the result.
-          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
-          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
-          BASE_URL="${BASE_URL%/}"
-          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
-            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL}). Expected something like https://kernelia.dev — no trailing slash, no quotes, no whitespace." >&2
-            exit 1
-          fi
-          # No --retry: the handler now enforces its own wall-clock
-          # budget and always returns 200 (with `budgetExhausted:
-          # true` when it bails early). A 5xx here means a real
-          # platform incident — retrying just burns provider tokens
-          # and snowballs the TPM throttle into the next franja.
-          response=$(curl --silent --show-error --fail-with-body \
-            --max-time 90 \
-            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/classify?limit=3")
-          echo "${response}"
+          # 3 articulos cada 180s = ~1.8K tokens/min de media, muy por
+          # debajo del TPM de 8K. Bajar el intervalo sin bajar el limit
+          # es lo que provoca los 429.
+          ITERATIONS: ${{ inputs.iterations || '17' }}
+          INTERVAL_SECONDS: ${{ inputs.interval_seconds || '180' }}
+        run: .github/scripts/cron-call.sh /api/cron/classify '?limit=3'
 
   broadcast:
     name: Broadcast classified articles
@@ -152,107 +168,59 @@ jobs:
     # schedule block above for why this is `:05` and not `:30`.
     if: github.event.schedule == '5 * * * *' || inputs.job == 'broadcast'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 5 llamadas x 1h = ~4h de bucle, + margen. Tope duro de GitHub: 6h.
+    timeout-minutes: 260
     environment: Production
     steps:
+      - uses: actions/checkout@v4
       - name: Hit /api/cron/broadcast
         env:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # 1 llamada/hora = 1 post/hora/plataforma, la regla de
+          # producto. Las llamadas que caen fuera de la ventana
+          # Europe/Madrid son un no-op barato (bail antes de tocar DB).
+          ITERATIONS: ${{ inputs.iterations || '5' }}
+          INTERVAL_SECONDS: ${{ inputs.interval_seconds || '3600' }}
+        # Los dispatch manuales añaden `?force=1` para saltarse la
+        # ventana horaria y publicar al momento — se asume que el
+        # operador sabe lo que hace. Los ticks programados omiten el
+        # flag y respetan la ventana (ver lib/broadcast/window.ts).
         run: |
-          set -euo pipefail
-          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
-          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
-          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
-          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
-          BASE_URL="${BASE_URL%/}"
-          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
-            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL})." >&2
-            exit 1
-          fi
-          # Same reasoning as classify: the handler has its own
-          # wall-clock budget and never returns 5xx for "I ran out of
-          # time". A 5xx from here is a real incident, not something
-          # to paper over with --retry.
-          #
-          # Manual `workflow_dispatch` runs add `?force=1` so the
-          # handler skips the Europe/Madrid window check and publishes
-          # immediately — the operator is expected to know what they
-          # are doing. Scheduled ticks omit the flag and honour the
-          # window (see lib/broadcast/window.ts).
-          QUERY=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            QUERY="?force=1"
+            .github/scripts/cron-call.sh /api/cron/broadcast '?force=1'
+          else
+            .github/scripts/cron-call.sh /api/cron/broadcast
           fi
-          response=$(curl --silent --show-error --fail-with-body \
-            --max-time 90 \
-            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/broadcast${QUERY}")
-          echo "${response}"
 
   newsletter:
     name: Send weekly newsletter digest
-    # Domingos a las 10:00 UTC, o dispatch manual.
+    # Domingos a las 10:00 UTC, o dispatch manual. Sin bucle: es
+    # semanal y un envio duplicado seria visible para el suscriptor.
     if: github.event.schedule == '0 10 * * 0' || inputs.job == 'newsletter'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: Production
     steps:
+      - uses: actions/checkout@v4
       - name: Hit /api/cron/newsletter
         env:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
-          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
-          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
-          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
-          BASE_URL="${BASE_URL%/}"
-          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
-            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL})." >&2
-            exit 1
-          fi
-          # Same reasoning as classify/broadcast: the handler has its own
-          # wall-clock budget and reports `budgetExhausted` in the
-          # summary instead of timing out. A 5xx is a real incident.
-          response=$(curl --silent --show-error --fail-with-body \
-            --max-time 90 \
-            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/newsletter")
-          echo "${response}"
+        run: .github/scripts/cron-call.sh /api/cron/newsletter
 
   cleanup:
     name: Cleanup old failed/hidden articles
-    # Diario a las 04:00 UTC, o dispatch manual.
+    # Diario a las 04:00 UTC, o dispatch manual. Sin bucle: es un unico
+    # DELETE idempotente y el tick de mañana recupera cualquier fallo.
     if: github.event.schedule == '0 4 * * *' || inputs.job == 'cleanup'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: Production
     steps:
+      - uses: actions/checkout@v4
       - name: Hit /api/cron/cleanup
         env:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -euo pipefail
-          : "${BASE_URL:?KERNELIA_PROD_URL secret is empty/unset in repo settings}"
-          : "${CRON_SECRET:?CRON_SECRET secret is empty/unset in repo settings}"
-          BASE_URL="${BASE_URL#"${BASE_URL%%[![:space:]]*}"}"
-          BASE_URL="${BASE_URL%"${BASE_URL##*[![:space:]]}"}"
-          BASE_URL="${BASE_URL%/}"
-          if [[ ! "$BASE_URL" =~ ^https?://[^/]+$ ]]; then
-            echo "::error::KERNELIA_PROD_URL is malformed (length=${#BASE_URL})." >&2
-            exit 1
-          fi
-          # Cleanup es un unico DELETE — sin LLM, sin Resend, sin wall-
-          # clock budget. Si falla es un problema real (DB hiccup), no
-          # algo a re-intentar; el siguiente tick mañana lo recupera.
-          response=$(curl --silent --show-error --fail-with-body \
-            --max-time 90 \
-            --write-out "\nHTTP %{http_code} in %{time_total}s\n" \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE_URL}/api/cron/cleanup")
-          echo "${response}"
+        run: .github/scripts/cron-call.sh /api/cron/cleanup

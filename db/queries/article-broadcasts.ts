@@ -110,6 +110,44 @@ export async function listPendingForBroadcast(
   }));
 }
 
+/**
+ * Counts articles that satisfy every eligibility rule in
+ * `listPendingForBroadcast` EXCEPT the lookback window, for any
+ * platform. Powers the stall detector in `lib/broadcast/run.ts`.
+ *
+ * Why "any platform" and not per-platform: the question this answers is
+ * "is there material the lookback is hiding from us?", and an article
+ * still missing from even one channel is enough to make that a yes.
+ *
+ * Only called on ticks that posted nothing, so the extra scan costs
+ * nothing on a healthy run.
+ */
+export async function countEligibleIgnoringLookback(
+  params: { minScore?: number } = {},
+): Promise<number> {
+  const minScore = params.minScore ?? 0;
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(articles)
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(
+      and(
+        eq(articles.status, "classified"),
+        ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+        isNotNull(articles.titleEs),
+        isNotNull(articles.relevanceScore),
+        gte(articles.relevanceScore, minScore),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(articleBroadcasts)
+            .where(eq(articleBroadcasts.articleId, articles.id)),
+        ),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
 export interface RecordBroadcastParams {
   articleId: string;
   platform: BroadcastPlatform;

@@ -1,4 +1,5 @@
 import {
+  countEligibleIgnoringLookback,
   listPendingForBroadcast,
   recordBroadcast,
   type PendingBroadcastArticle,
@@ -21,13 +22,33 @@ export const BROADCAST_PLATFORMS: readonly BroadcastPlatform[] = [
 
 export const DEFAULT_MIN_RELEVANCE_SCORE = 0.75;
 /**
- * How far back the cron looks for unbroadcast articles. Keeps a freshly
- * deployed broadcaster from flooding the channels with weeks of backlog
- * the first time it runs in production. The window is intentionally
- * generous (3 days) so a multi-day outage of one platform can still be
- * caught up automatically.
+ * How far back the cron looks for unbroadcast articles, keyed on
+ * `ingested_at`. Keeps a freshly deployed broadcaster from flooding the
+ * channels with weeks of backlog the first time it runs in production.
+ *
+ * Raised 3d → 5d after the Sep-2026 stall. The lookback is the LAST
+ * line of defence against a backlog flood, not the first: the real
+ * guard is `DEFAULT_LIMIT_PER_PLATFORM = 1`, which caps a tick at one
+ * post per platform no matter how deep the queue is. At 3 days the
+ * window was tight enough that a classify backlog could outrun it —
+ * once every classified article was older than the cutoff the query
+ * returned 0 rows forever, and the cron reported a clean `posted: 0`
+ * while the channels sat silent for two weeks. 5 days absorbs a
+ * long-weekend outage without the deadlock.
+ *
+ * Override per-environment with `BROADCAST_LOOKBACK_DAYS`.
  */
-export const DEFAULT_LOOKBACK_MS = 3 * 24 * 60 * 60 * 1000;
+export const DEFAULT_LOOKBACK_DAYS = 5;
+export const DEFAULT_LOOKBACK_MS = DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+/**
+ * A tick that posts nothing is normally fine (nothing new cleared the
+ * relevance bar). It is NOT fine when articles are queued up just
+ * outside the lookback — that is the stall signature above. When an
+ * in-window tick finds no candidates but eligible-ignoring-the-lookback
+ * rows do exist, the summary carries `staleBacklog` and the run is
+ * logged `partial` so /admin shows it instead of a silent green row.
+ */
+export const STALE_BACKLOG_ALERT_THRESHOLD = 1;
 /** Articles per platform per tick.
  *
  *  Product rule: ONE article per hour per platform during waking hours
@@ -67,6 +88,16 @@ export interface BroadcastSummary {
   failed: Record<BroadcastPlatform, number>;
   /** Sum across platforms of articles that couldn't be formatted. */
   skipped: number;
+  /**
+   * Stall detector. Non-null only on an in-window tick that posted
+   * nothing: the count of articles that clear every eligibility rule
+   * EXCEPT the lookback. `0` means "genuinely nothing to say" (the
+   * healthy quiet tick); anything higher means the classify backlog has
+   * aged past the window and posts are being silently dropped — the
+   * Sep-2026 failure mode. `null` on ticks that did post, are disabled,
+   * or bailed out of window.
+   */
+  staleBacklog: number | null;
 }
 
 export type PlatformPostFn = (article: PendingBroadcastArticle) => Promise<{ externalId: string }>;
@@ -114,6 +145,8 @@ export interface RunBroadcastOptions {
   /** Bypass the inter-post sleep; tests pass `() => Promise.resolve()`. */
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  /** Injectable stall probe; defaults to the real DB count. */
+  countEligible?: (params: { minScore: number }) => Promise<number>;
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -145,6 +178,20 @@ function isEnvTruthy(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
+/**
+ * `BROADCAST_LOOKBACK_DAYS` override. Anything unparseable, non-positive
+ * or absurdly large falls back to the default rather than silently
+ * widening the window to "forever" on a typo.
+ */
+function readLookbackMs(override: number | undefined): number {
+  if (typeof override === "number") return override;
+  const raw = process.env.BROADCAST_LOOKBACK_DAYS;
+  if (!raw) return DEFAULT_LOOKBACK_MS;
+  const n = Number.parseFloat(raw);
+  if (Number.isNaN(n) || n <= 0 || n > 365) return DEFAULT_LOOKBACK_MS;
+  return n * 24 * 60 * 60 * 1000;
+}
+
 function readMinScore(override: number | undefined): number {
   if (typeof override === "number") return override;
   const raw = process.env.BROADCAST_MIN_RELEVANCE_SCORE;
@@ -174,13 +221,14 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   const enabled = options.enabled ?? isEnvTruthy(process.env.BROADCAST_ENABLED);
   const minScore = readMinScore(options.minRelevanceScore);
   const limitPerPlatform = options.limitPerPlatform ?? DEFAULT_LIMIT_PER_PLATFORM;
-  const lookbackMs = options.lookbackMs ?? DEFAULT_LOOKBACK_MS;
+  const lookbackMs = readLookbackMs(options.lookbackMs);
   const maxWallTimeMs = options.maxWallTimeMs ?? Infinity;
   const respectWindow = options.respectWindow ?? true;
   const cronRunId = options.cronRunId ?? null;
   const sleep = options.sleep ?? defaultSleep;
   const listPending = options.listPending ?? listPendingForBroadcast;
   const record = options.record ?? recordBroadcast;
+  const countEligible = options.countEligible ?? countEligibleIgnoringLookback;
   const realPosters = defaultPosters();
   const posters: Record<BroadcastPlatform, PlatformPostFn> = {
     mastodon: options.platformPosters?.mastodon ?? realPosters.mastodon,
@@ -207,6 +255,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
       posted,
       failed,
       skipped,
+      staleBacklog: null,
     };
   }
 
@@ -227,6 +276,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
       posted,
       failed,
       skipped,
+      staleBacklog: null,
     };
   }
 
@@ -298,6 +348,29 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
     }),
   );
 
+  // Stall probe. Only runs on a tick that published nothing anywhere —
+  // on a normal tick it would be a pointless extra round-trip. It
+  // answers the one question the old summary could not: "was this a
+  // quiet hour, or is the lookback silently swallowing a backlog?"
+  const totalPosted = posted.mastodon + posted.bluesky + posted.telegram;
+  const totalFailed = failed.mastodon + failed.bluesky + failed.telegram;
+  let staleBacklog: number | null = null;
+  if (totalPosted === 0 && totalFailed === 0) {
+    try {
+      staleBacklog = await countEligible({ minScore });
+    } catch (err) {
+      // Never let the diagnostic take down the tick it is diagnosing.
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn("stale_probe_failed", { reason: message });
+    }
+    if (staleBacklog !== null && staleBacklog >= STALE_BACKLOG_ALERT_THRESHOLD) {
+      log.warn("stale_backlog_detected", {
+        staleBacklog,
+        lookbackDays: lookbackMs / (24 * 60 * 60 * 1000),
+      });
+    }
+  }
+
   const finishedAt = new Date();
   const summary: BroadcastSummary = {
     startedAt: startedAt.toISOString(),
@@ -309,6 +382,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
     posted,
     failed,
     skipped,
+    staleBacklog,
   };
   log.info("tick_done", { ...summary });
   return summary;
