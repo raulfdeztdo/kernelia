@@ -142,16 +142,25 @@ export function ingestStatus(totals: { failedSources: number; inserted: number }
 
 /**
  * Maps a broadcast-cron summary into a `cron_run_status`. Partial = at
- * least one platform had a failed post or formatting skip; ok =
- * everything that was eligible posted cleanly (or there was nothing to
- * post, which is also fine — including out-of-window ticks that bail
- * before doing any work).
+ * least one platform had a failed post or formatting skip, or the tick
+ * published nothing while eligible articles sat just outside the
+ * lookback; ok = everything that was eligible posted cleanly (or there
+ * was genuinely nothing to post, including out-of-window ticks that
+ * bail before doing any work).
+ *
+ * The `staleBacklog` arm exists because of the Sep-2026 stall: for two
+ * weeks every tick returned `posted: 0, failed: 0` and was logged `ok`,
+ * so nothing in /admin distinguished "quiet news day" from "the channel
+ * has been dead a fortnight". A silent success is the one outcome a
+ * monitor must never produce.
  */
 export function broadcastStatus(summary: {
   failed: { mastodon: number; bluesky: number; telegram: number };
   skipped: number;
   /** Optional for backward-compat with older callers/tests. */
   skippedWindow?: boolean;
+  /** Optional for backward-compat; see `BroadcastSummary.staleBacklog`. */
+  staleBacklog?: number | null;
 }): CronRunStatus {
   // An out-of-window tick is a clean no-op by design (see
   // lib/broadcast/window.ts), never partial.
@@ -159,5 +168,6 @@ export function broadcastStatus(summary: {
   const totalFailed =
     summary.failed.mastodon + summary.failed.bluesky + summary.failed.telegram;
   if (totalFailed > 0 || summary.skipped > 0) return "partial";
+  if ((summary.staleBacklog ?? 0) > 0) return "partial";
   return "ok";
 }

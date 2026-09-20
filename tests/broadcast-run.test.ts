@@ -279,3 +279,194 @@ describe("runBroadcast", () => {
     }
   });
 });
+
+/**
+ * Regression cover for the Sep-2026 stall: the broadcast cron ran clean
+ * for two weeks, returned `posted: 0, failed: 0` every hour, logged
+ * `ok` every time, and published nothing — because the classify backlog
+ * had aged every candidate past the 3-day lookback. Nothing in the
+ * summary could tell that apart from a quiet news day.
+ *
+ * `staleBacklog` is the discriminator, so these specs pin its three
+ * states. See `STALE_BACKLOG_ALERT_THRESHOLD` in lib/broadcast/run.ts.
+ */
+describe("runBroadcast — stale backlog detection", () => {
+  const emptyPending = async () => [];
+
+  it("reports the count when a tick posts nothing but eligible articles exist outside the lookback", async () => {
+    let probeCalls = 0;
+    const summary = await runBroadcast({
+      enabled: true,
+      respectWindow: false,
+      sleep: noSleep,
+      listPending: emptyPending,
+      countEligible: async ({ minScore }) => {
+        probeCalls++;
+        expect(minScore).toBe(0.75);
+        return 122;
+      },
+    });
+
+    expect(summary.staleBacklog).toBe(122);
+    // Probed exactly once per tick, not once per platform.
+    expect(probeCalls).toBe(1);
+  });
+
+  it("reports 0 — not null — on a genuinely quiet tick, so 'quiet' is provable", async () => {
+    const summary = await runBroadcast({
+      enabled: true,
+      respectWindow: false,
+      sleep: noSleep,
+      listPending: emptyPending,
+      countEligible: async () => 0,
+    });
+
+    expect(summary.staleBacklog).toBe(0);
+  });
+
+  it("skips the probe entirely when the tick published something", async () => {
+    let probeCalls = 0;
+    const summary = await runBroadcast({
+      enabled: true,
+      respectWindow: false,
+      sleep: noSleep,
+      listPending: async (p) => (p.platform === "telegram" ? [article("a1")] : []),
+      record: async () => true,
+      platformPosters: {
+        telegram: async () => ({ externalId: "t-a1" }),
+      },
+      countEligible: async () => {
+        probeCalls++;
+        return 99;
+      },
+    });
+
+    expect(summary.posted.telegram).toBe(1);
+    expect(summary.staleBacklog).toBeNull();
+    expect(probeCalls).toBe(0);
+  });
+
+  it("skips the probe when a platform failed — that tick is already loud", async () => {
+    let probeCalls = 0;
+    const summary = await runBroadcast({
+      enabled: true,
+      respectWindow: false,
+      sleep: noSleep,
+      listPending: async (p) => (p.platform === "telegram" ? [article("a1")] : []),
+      platformPosters: {
+        telegram: async () => {
+          throw new Error("telegram 502");
+        },
+      },
+      countEligible: async () => {
+        probeCalls++;
+        return 99;
+      },
+    });
+
+    expect(summary.failed.telegram).toBe(1);
+    expect(summary.staleBacklog).toBeNull();
+    expect(probeCalls).toBe(0);
+  });
+
+  it("never lets a failing probe take down the tick it is diagnosing", async () => {
+    const summary = await runBroadcast({
+      enabled: true,
+      respectWindow: false,
+      sleep: noSleep,
+      listPending: emptyPending,
+      countEligible: async () => {
+        throw new Error("supabase timeout");
+      },
+    });
+
+    expect(summary.staleBacklog).toBeNull();
+    expect(summary.posted.telegram).toBe(0);
+  });
+
+  it("leaves staleBacklog null on disabled and out-of-window ticks (no DB touched)", async () => {
+    let probeCalls = 0;
+    const probe = async () => {
+      probeCalls++;
+      return 5;
+    };
+
+    const disabled = await runBroadcast({
+      enabled: false,
+      respectWindow: false,
+      sleep: noSleep,
+      listPending: emptyPending,
+      countEligible: probe,
+    });
+    expect(disabled.staleBacklog).toBeNull();
+
+    const outOfWindow = await runBroadcast({
+      enabled: true,
+      respectWindow: true,
+      // 03:30 Madrid — outside both publishing windows.
+      now: () => new Date("2026-05-19T01:30:00.000Z").getTime(),
+      sleep: noSleep,
+      listPending: emptyPending,
+      countEligible: probe,
+    });
+    expect(outOfWindow.skippedWindow).toBe(true);
+    expect(outOfWindow.staleBacklog).toBeNull();
+
+    expect(probeCalls).toBe(0);
+  });
+});
+
+/**
+ * The lookback is the knob that caused the stall, so its resolution
+ * order (explicit option > env > default) is worth pinning.
+ */
+describe("runBroadcast — lookback window", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const FIXED_NOW = new Date("2026-05-19T08:30:00.000Z").getTime();
+
+  async function capturedSince(options: Parameters<typeof runBroadcast>[0] = {}): Promise<Date> {
+    let since: Date | undefined;
+    await runBroadcast({
+      enabled: true,
+      respectWindow: false,
+      sleep: noSleep,
+      now: () => FIXED_NOW,
+      countEligible: async () => 0,
+      listPending: async (p) => {
+        since = p.since;
+        return [];
+      },
+      ...options,
+    });
+    if (!since) throw new Error("listPending was never called");
+    return since;
+  }
+
+  it("defaults to 5 days", async () => {
+    const since = await capturedSince();
+    expect(FIXED_NOW - since.getTime()).toBe(5 * DAY_MS);
+  });
+
+  it("honours BROADCAST_LOOKBACK_DAYS", async () => {
+    vi.stubEnv("BROADCAST_LOOKBACK_DAYS", "12");
+    const since = await capturedSince();
+    expect(FIXED_NOW - since.getTime()).toBe(12 * DAY_MS);
+    vi.unstubAllEnvs();
+  });
+
+  it("falls back to the default on a garbage or out-of-range env value", async () => {
+    for (const bad of ["abc", "0", "-3", "9999"]) {
+      vi.stubEnv("BROADCAST_LOOKBACK_DAYS", bad);
+      const since = await capturedSince();
+      expect(FIXED_NOW - since.getTime()).toBe(5 * DAY_MS);
+    }
+    vi.unstubAllEnvs();
+  });
+
+  it("lets an explicit option win over the env", async () => {
+    vi.stubEnv("BROADCAST_LOOKBACK_DAYS", "12");
+    const since = await capturedSince({ lookbackMs: 2 * DAY_MS });
+    expect(FIXED_NOW - since.getTime()).toBe(2 * DAY_MS);
+    vi.unstubAllEnvs();
+  });
+});

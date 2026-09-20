@@ -32,7 +32,12 @@ Production: <https://kernelia.dev>
 - **LLM:** Groq `openai/gpt-oss-120b` via the OpenAI-compatible SDK. Provider is env-driven
   (`LLM_BASE_URL` / `LLM_MODEL`); swapping vendors needs no code change.
 - **UI:** Tailwind v4 + shadcn/ui + Lucide icons.
-- **Cron:** GitHub Actions hits `/api/cron/{ingest,classify}` with `CRON_SECRET`.
+- **Cron:** GitHub Actions hits `/api/cron/{ingest,classify,broadcast,newsletter,cleanup}`
+  with `CRON_SECRET`. The `schedule:` entries are a request, not a guarantee — GitHub
+  deprioritises low-activity repos and served only ~13% of the classify ticks through
+  Sep-2026. Each delivered run therefore LOOPS over its endpoint
+  (`.github/scripts/cron-call.sh`) instead of making one call. Don't "simplify" that
+  back to a single curl; read the header of `.github/workflows/cron.yml` first.
 - **Hosting:** Vercel Hobby (60s function cap). Free-tier across the board.
 
 Full stack rationale and folder conventions in `context-docs/coding-principles.md`.
