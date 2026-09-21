@@ -1,4 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * `runBroadcast` reaches for two DB helpers when the caller does not
+ * inject them: the stale-backlog probe and the last-post lookup behind
+ * the cadence throttle. Neither has a `db` to talk to in unit tests, so
+ * stub the module to inert defaults — "nothing queued, never posted" —
+ * and let each spec inject real behaviour where it is the subject.
+ *
+ * Without this, adding a DB-backed guard to the orchestrator silently
+ * breaks every unrelated spec in this file.
+ */
+vi.mock("@/db/queries/article-broadcasts", () => ({
+  countEligibleIgnoringLookback: async () => 0,
+  getLastBroadcastAt: async () => null,
+  listPendingForBroadcast: async () => [],
+  recordBroadcast: async () => true,
+}));
+
 import { runBroadcast } from "@/lib/broadcast/run";
 import type { BroadcastPlatform } from "@/db/schema";
 import type { PendingBroadcastArticle } from "@/db/queries/article-broadcasts";
@@ -468,5 +486,117 @@ describe("runBroadcast — lookback window", () => {
     const since = await capturedSince({ lookbackMs: 2 * DAY_MS });
     expect(FIXED_NOW - since.getTime()).toBe(2 * DAY_MS);
     vi.unstubAllEnvs();
+  });
+});
+
+/**
+ * The "1 article per platform per hour" product rule. It used to be an
+ * emergent property of having exactly one hourly cron; with Hepha as
+ * the primary scheduler and GitHub Actions as a backup, two ticks can
+ * land in the same hour, so the rule is now enforced server-side.
+ *
+ * Real incident these pin down: 2026-09-21, posts at 11:09 and 11:47.
+ */
+describe("runBroadcast — minimum interval between posts", () => {
+  const NOW = new Date("2026-05-19T08:30:00.000Z").getTime();
+  const MIN_35 = 35 * 60 * 1000;
+  const MIN_56 = 56 * 60 * 1000;
+
+  function opts(overrides: Parameters<typeof runBroadcast>[0] = {}) {
+    return {
+      enabled: true,
+      respectWindow: false,
+      sleep: noSleep,
+      now: () => NOW,
+      countEligible: async () => 0,
+      listPending: async () => [article("a1")],
+      record: async () => true,
+      platformPosters: {
+        mastodon: async () => ({ externalId: "m" }),
+        bluesky: async () => ({ externalId: "b" }),
+        telegram: async () => ({ externalId: "t" }),
+      },
+      ...overrides,
+    };
+  }
+
+  it("skips a platform that posted 35 minutes ago", async () => {
+    const summary = await runBroadcast(
+      opts({ lastPostedAt: async () => new Date(NOW - MIN_35) }),
+    );
+
+    expect(summary.throttled.sort()).toEqual(["bluesky", "mastodon", "telegram"]);
+    expect(summary.posted).toEqual({ mastodon: 0, bluesky: 0, telegram: 0 });
+  });
+
+  it("publishes when the last post was 56 minutes ago", async () => {
+    const summary = await runBroadcast(
+      opts({ lastPostedAt: async () => new Date(NOW - MIN_56) }),
+    );
+
+    expect(summary.throttled).toEqual([]);
+    expect(summary.posted).toEqual({ mastodon: 1, bluesky: 1, telegram: 1 });
+  });
+
+  it("publishes on a platform that has never posted", async () => {
+    const summary = await runBroadcast(opts({ lastPostedAt: async () => null }));
+
+    expect(summary.throttled).toEqual([]);
+    expect(summary.posted.telegram).toBe(1);
+  });
+
+  it("throttles each platform independently", async () => {
+    // Telegram failed its last two ticks and is an hour behind; the
+    // other two are fresh. Only Telegram should publish.
+    const summary = await runBroadcast(
+      opts({
+        lastPostedAt: async (p) =>
+          new Date(NOW - (p === "telegram" ? MIN_56 : MIN_35)),
+      }),
+    );
+
+    expect(summary.throttled.sort()).toEqual(["bluesky", "mastodon"]);
+    expect(summary.posted).toEqual({ mastodon: 0, bluesky: 0, telegram: 1 });
+  });
+
+  it("applies to force/manual dispatches too — force skips the window, not the cadence", async () => {
+    // `respectWindow: false` is what `?force=1` sets. It must not become
+    // a licence to double-post ten minutes apart.
+    const summary = await runBroadcast(
+      opts({
+        respectWindow: false,
+        lastPostedAt: async () => new Date(NOW - 10 * 60 * 1000),
+      }),
+    );
+
+    expect(summary.throttled.length).toBe(3);
+    expect(summary.posted.telegram).toBe(0);
+  });
+
+  it("does not raise a stale-backlog alarm when every platform was throttled", async () => {
+    let probeCalls = 0;
+    const summary = await runBroadcast(
+      opts({
+        lastPostedAt: async () => new Date(NOW - MIN_35),
+        countEligible: async () => {
+          probeCalls++;
+          return 99;
+        },
+      }),
+    );
+
+    // Publishing nothing was the correct outcome here, so it must not
+    // look like the Sep-2026 stall.
+    expect(summary.staleBacklog).toBeNull();
+    expect(probeCalls).toBe(0);
+  });
+
+  it("minIntervalMs: 0 disables the throttle entirely", async () => {
+    const summary = await runBroadcast(
+      opts({ minIntervalMs: 0, lastPostedAt: async () => new Date(NOW - 1000) }),
+    );
+
+    expect(summary.throttled).toEqual([]);
+    expect(summary.posted.telegram).toBe(1);
   });
 });

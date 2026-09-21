@@ -1,5 +1,6 @@
 import {
   countEligibleIgnoringLookback,
+  getLastBroadcastAt,
   listPendingForBroadcast,
   recordBroadcast,
   type PendingBroadcastArticle,
@@ -59,6 +60,32 @@ export const STALE_BACKLOG_ALERT_THRESHOLD = 1;
  *  across 14 windows.
  */
 export const DEFAULT_LIMIT_PER_PLATFORM = 1;
+/**
+ * Hard floor between two posts on the SAME platform.
+ *
+ * The "1 article per platform per hour" product rule used to be an
+ * emergent property of the schedule: one hourly cron, `limitPerPlatform: 1`,
+ * done. That stopped being true once Kernelia got a second scheduler —
+ * Hepha's cron drives the cadence and the GitHub workflow stays on as a
+ * backup, so two ticks can land in the same hour and publish twice. A
+ * manual `?force=1` dispatch can do it too (and did, on 2026-09-21:
+ * 11:09 then 11:47).
+ *
+ * A product rule that only holds while the schedule is well-behaved is
+ * not enforced, it is hoped for. This is the enforcement, and it lives
+ * server-side on purpose: it reads `article_broadcasts`, so every
+ * caller — either cron, the admin panel, a manual curl — sees the same
+ * last-post time.
+ *
+ * 55 and not 60 minutes: an hourly tick drifts a few seconds either
+ * way, and a 60-minute floor would reject a legitimate :05 tick that
+ * arrived 59m58s after the previous one, silently costing a full hour.
+ *
+ * `?force=1` does NOT bypass this. Force exists to skip the *window*
+ * (publish outside Spanish waking hours on purpose); nobody has ever
+ * wanted it to mean "spam the channel twice in ten minutes".
+ */
+export const MIN_INTERVAL_BETWEEN_POSTS_MS = 55 * 60 * 1000;
 /** Sleep between consecutive posts on the SAME platform. */
 const POST_DELAY_MS = 2_000;
 
@@ -88,6 +115,13 @@ export interface BroadcastSummary {
   failed: Record<BroadcastPlatform, number>;
   /** Sum across platforms of articles that couldn't be formatted. */
   skipped: number;
+  /**
+   * Platforms skipped this tick because their last post was less than
+   * `MIN_INTERVAL_BETWEEN_POSTS_MS` ago. Expected and healthy when two
+   * schedulers overlap — it is the cadence rule doing its job, not an
+   * error, so it never makes the run `partial`.
+   */
+  throttled: BroadcastPlatform[];
   /**
    * Stall detector. Non-null only on an in-window tick that posted
    * nothing: the count of articles that clear every eligibility rule
@@ -147,6 +181,10 @@ export interface RunBroadcastOptions {
   now?: () => number;
   /** Injectable stall probe; defaults to the real DB count. */
   countEligible?: (params: { minScore: number }) => Promise<number>;
+  /** Override `MIN_INTERVAL_BETWEEN_POSTS_MS`. `0` disables the throttle. */
+  minIntervalMs?: number;
+  /** Injectable last-post lookup; defaults to the real DB query. */
+  lastPostedAt?: (platform: BroadcastPlatform) => Promise<Date | null>;
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -229,6 +267,8 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   const listPending = options.listPending ?? listPendingForBroadcast;
   const record = options.record ?? recordBroadcast;
   const countEligible = options.countEligible ?? countEligibleIgnoringLookback;
+  const minIntervalMs = options.minIntervalMs ?? MIN_INTERVAL_BETWEEN_POSTS_MS;
+  const lastPostedAt = options.lastPostedAt ?? getLastBroadcastAt;
   const realPosters = defaultPosters();
   const posters: Record<BroadcastPlatform, PlatformPostFn> = {
     mastodon: options.platformPosters?.mastodon ?? realPosters.mastodon,
@@ -239,6 +279,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   const posted: Record<BroadcastPlatform, number> = { mastodon: 0, bluesky: 0, telegram: 0 };
   const failed: Record<BroadcastPlatform, number> = { mastodon: 0, bluesky: 0, telegram: 0 };
   let skipped = 0;
+  const throttled: BroadcastPlatform[] = [];
 
   log.info("tick_start", { enabled, minScore, limitPerPlatform });
 
@@ -255,6 +296,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
       posted,
       failed,
       skipped,
+      throttled,
       staleBacklog: null,
     };
   }
@@ -276,6 +318,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
       posted,
       failed,
       skipped,
+      throttled,
       staleBacklog: null,
     };
   }
@@ -288,6 +331,21 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   // each platform self-bails when elapsed approaches `maxWallTimeMs`.
   await Promise.all(
     BROADCAST_PLATFORMS.map(async (platform) => {
+      // Cadence guard, before the candidate query: if this platform
+      // posted less than `minIntervalMs` ago we have nothing to decide,
+      // and skipping here saves the round-trip too.
+      if (minIntervalMs > 0) {
+        const last = await lastPostedAt(platform);
+        if (last && now() - last.getTime() < minIntervalMs) {
+          throttled.push(platform);
+          log.info("platform_throttled", {
+            platform,
+            minutesSinceLastPost: Math.round((now() - last.getTime()) / 60000),
+          });
+          return;
+        }
+      }
+
       const pending = await listPending({ platform, minScore, since, limit: limitPerPlatform });
       log.info("platform_batch", { platform, count: pending.length });
 
@@ -355,7 +413,10 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   const totalPosted = posted.mastodon + posted.bluesky + posted.telegram;
   const totalFailed = failed.mastodon + failed.bluesky + failed.telegram;
   let staleBacklog: number | null = null;
-  if (totalPosted === 0 && totalFailed === 0) {
+  // A tick throttled on every platform published nothing BY DESIGN, so
+  // probing for a stale backlog would raise a false alarm.
+  const throttledEverywhere = throttled.length === BROADCAST_PLATFORMS.length;
+  if (totalPosted === 0 && totalFailed === 0 && !throttledEverywhere) {
     try {
       staleBacklog = await countEligible({ minScore });
     } catch (err) {
@@ -382,6 +443,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
     posted,
     failed,
     skipped,
+    throttled,
     staleBacklog,
   };
   log.info("tick_done", { ...summary });

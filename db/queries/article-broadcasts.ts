@@ -148,6 +148,24 @@ export async function countEligibleIgnoringLookback(
   return row?.count ?? 0;
 }
 
+/**
+ * When this platform last published, or `null` if it never has.
+ * Powers the minimum-interval throttle in `lib/broadcast/run.ts`.
+ *
+ * Reads `article_broadcasts` rather than trusting the caller's clock,
+ * so the cadence rule holds across processes: two schedulers, a manual
+ * dispatch and a cron tick all see the same last-post time.
+ */
+export async function getLastBroadcastAt(platform: BroadcastPlatform): Promise<Date | null> {
+  const [row] = await db
+    .select({ postedAt: articleBroadcasts.postedAt })
+    .from(articleBroadcasts)
+    .where(eq(articleBroadcasts.platform, platform))
+    .orderBy(desc(articleBroadcasts.postedAt))
+    .limit(1);
+  return row?.postedAt ?? null;
+}
+
 export interface RecordBroadcastParams {
   articleId: string;
   platform: BroadcastPlatform;
