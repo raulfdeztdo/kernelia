@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { ArticleList } from "@/components/article-list";
-import type { ArticleCardView } from "@/components/news-card";
 import { CategoryFilter } from "@/components/category-filter";
 import { NewsletterForm } from "@/components/newsletter-form";
 import { TelegramIcon, brandColor } from "@/components/social-icons";
@@ -15,6 +14,7 @@ import {
 } from "@/db/queries/articles";
 import { getTelegramChannel } from "@/lib/broadcast-channels";
 import { CATEGORY_SLUGS, parseCategoryParam } from "@/lib/categories";
+import { toCardView } from "@/lib/article-view";
 import { createLogger } from "@/lib/logger";
 import { isLocale } from "@/i18n/routing";
 import { localeAlternates, localizedUrl } from "@/lib/site";
@@ -69,18 +69,6 @@ function encodeCursor(article: ListedArticle): string {
   return `${article.publishedAt.toISOString()}|${article.id}`;
 }
 
-function toView(a: ListedArticle): ArticleCardView {
-  return {
-    id: a.id,
-    title: a.title,
-    url: a.url,
-    summary: a.summary,
-    imageUrl: a.imageUrl,
-    publishedAt: a.publishedAt.toISOString(),
-    sourceName: a.sourceName,
-    categorySlug: a.categorySlug,
-  };
-}
 
 export default async function HomePage({ params, searchParams }: HomePageProps) {
   const { locale } = await params;
@@ -271,7 +259,7 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
         <Suspense fallback={<div aria-hidden className="h-9" />}>
           <ArticleList
             key={listKey}
-            initialItems={visible.map(toView)}
+            initialItems={visible.map((a) => toCardView(a, locale as "es" | "en"))}
             initialCursor={nextCursor}
             locale={locale as "es" | "en"}
             pageSize={LOAD_MORE_PAGE_SIZE}

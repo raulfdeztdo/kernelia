@@ -28,6 +28,7 @@
     "loadMore": "Cargar más",
     "loadingMore": "Cargando…",
     "loadMoreError": "No pudimos cargar más noticias. Inténtalo de nuevo.",
+    "newArticles": "{count, plural, one {# noticia nueva} other {# noticias nuevas}}",
     "telegramCallout": {
       "cta": "Únete al canal de Telegram",
       "hint": "Gratis · sin registro"
@@ -47,9 +48,22 @@
     }
   },
   "card": {
-    "readOriginal": "Leer en {source}",
     "openInNewTab": "Se abre en una pestaña nueva",
     "noImage": "Sin imagen"
+  },
+  "article": {
+    "back": "Todas las noticias",
+    "readFull": "Leer la noticia completa en {source}",
+    "aiNote": "Resumen elaborado por Kernelia a partir del artículo original de {source}. La noticia y sus derechos pertenecen a su autor.",
+    "share": "Compartir",
+    "related": "Más sobre {category}",
+    "follow": {
+      "title": "No te pierdas lo importante",
+      "body": "Recibe cada día las noticias de IA más relevantes, resumidas en español.",
+      "telegram": "Canal de Telegram",
+      "newsletter": "Newsletter semanal"
+    },
+    "via": "Vía {source}"
   },
   "share": {
     "copy": "Copiar enlace",

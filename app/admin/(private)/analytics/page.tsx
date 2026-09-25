@@ -41,6 +41,8 @@ const CTA_LABEL: Record<string, string> = {
   "header-telegram": "Icono Telegram (cabecera)",
   "header-mastodon": "Icono Mastodon (cabecera)",
   "header-bluesky": "Icono Bluesky (cabecera)",
+  "article-telegram": "Telegram (página de noticia)",
+  "article-newsletter": "Newsletter (página de noticia)",
 };
 
 interface PageProps {

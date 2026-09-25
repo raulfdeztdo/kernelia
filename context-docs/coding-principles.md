@@ -18,6 +18,10 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
 - Convencion de rutas:
   - `app/` — App Router (paginas, layouts, route handlers).
   - `app/[locale]/` — paginas publicas con segmento de locale.
+    Cada noticia publica tiene pagina propia en `app/[locale]/n/[slug]`
+    (Fase 9.B): `<slug>-<shortId>`, con `shortId` = 12 hex del UUID
+    resuelto por rango sobre la PK. Toda URL de noticia se construye con
+    `lib/permalink.ts`; nunca a mano.
   - `app/admin/` — backoffice privado (sin segmento locale, copy en ES).
     `noindex,nofollow` y fuera del sitemap. Toda la rama requiere sesion
     valida; las unicas excepciones son `/admin/login`,
@@ -37,6 +41,8 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
     common (`run.ts`) que llama a `db/queries/article-broadcasts.ts`
     para idempotencia. **Server-only**.
   - `lib/email/` — wrapper minimo sobre Resend (`sendPasswordReset`).
+  - `lib/permalink.ts` — URLs de noticia (path, href con locale, URL
+    absoluta, UTM, imagen social). Unica fuente de verdad del formato.
   - `lib/analytics/` — analitica propia sin cookies (Fase 9.A): parseo
     del payload del beacon, filtro de bots, hash diario de visitante y
     lectura de seguidores por canal. **Server-only**. El unico cliente es

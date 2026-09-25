@@ -5,6 +5,7 @@ import {
   type ListedArticle,
 } from "@/db/queries/articles";
 import { parseCategoryParam } from "@/lib/categories";
+import { toCardView } from "@/lib/article-view";
 import { createLogger } from "@/lib/logger";
 import type { ArticleCardView } from "@/components/news-card";
 
@@ -51,18 +52,6 @@ function encodeCursor(article: ListedArticle): string {
   return `${article.publishedAt.toISOString()}|${article.id}`;
 }
 
-function toView(a: ListedArticle): ArticleCardView {
-  return {
-    id: a.id,
-    title: a.title,
-    url: a.url,
-    summary: a.summary,
-    imageUrl: a.imageUrl,
-    publishedAt: a.publishedAt.toISOString(),
-    sourceName: a.sourceName,
-    categorySlug: a.categorySlug,
-  };
-}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -102,7 +91,7 @@ export async function GET(request: Request) {
     const nextCursor = hasMore && last ? encodeCursor(last) : null;
 
     const body: ApiResponse = {
-      items: visible.map(toView),
+      items: visible.map((a) => toCardView(a, locale)),
       nextCursor,
     };
     return NextResponse.json(body, {

@@ -1,6 +1,8 @@
 "use client";
 
+import type { Route } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { categoryColorVar, isCategorySlug } from "@/lib/categories";
 import { formatRelative } from "@/lib/format";
@@ -15,7 +17,12 @@ import { ShareButtons } from "@/components/share-buttons";
 export interface ArticleCardView {
   id: string;
   title: string;
+  /** Original publisher URL. */
   url: string;
+  /** Kernelia permalink path, locale prefix included (Phase 9.B). */
+  href: string;
+  /** Absolute Kernelia permalink, what the share buttons hand out. */
+  shareUrl: string;
   summary: string | null;
   imageUrl: string | null;
   publishedAt: string;
@@ -26,11 +33,19 @@ export interface ArticleCardView {
 interface NewsCardProps {
   article: ArticleCardView;
   locale: "es" | "en";
+  /**
+   * - `full` (home): image, category, title, summary clamped to three
+   *   lines, source/date and share buttons.
+   * - `compact` ("Más sobre X" on article pages): image and title only —
+   *   the reader is already inside a category, the headline has to earn
+   *   the click on its own.
+   */
+  variant?: "full" | "compact";
 }
 
-export function NewsCard({ article, locale }: NewsCardProps) {
+export function NewsCard({ article, locale, variant = "full" }: NewsCardProps) {
+  const compact = variant === "compact";
   const tCategories = useTranslations("categories");
-  const tCard = useTranslations("card");
 
   const slug = article.categorySlug && isCategorySlug(article.categorySlug)
     ? article.categorySlug
@@ -75,8 +90,8 @@ export function NewsCard({ article, locale }: NewsCardProps) {
         )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-2.5 p-5 pl-6">
-        {categoryLabel && (
+      <div className={`flex flex-1 flex-col gap-2.5 ${compact ? "p-4 pl-5" : "p-5 pl-6"}`}>
+        {categoryLabel && !compact && (
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--color-muted-foreground)]">
             <span
               aria-hidden
@@ -87,11 +102,16 @@ export function NewsCard({ article, locale }: NewsCardProps) {
           </div>
         )}
 
-        <h3 className="text-lg font-semibold leading-snug tracking-tight text-[color:var(--color-foreground)]">
-          <a
-            href={article.url}
-            target="_blank"
-            rel="noopener noreferrer"
+        <h3
+          className={`font-semibold leading-snug tracking-tight text-[color:var(--color-foreground)] ${compact ? "text-base" : "text-lg"}`}
+        >
+          {/*
+           * Phase 9.B: the title opens the article's page on Kernelia
+           * (summary, source CTA, related news) instead of the publisher.
+           * Same tab — it is our own page now.
+           */}
+          <Link
+            href={article.href as Route}
             // Desktop keeps `line-clamp-3` so the grid rows have a
             // predictable maximum height (titles longer than three
             // lines truncate). On mobile the cards are stacked one per
@@ -99,48 +119,47 @@ export function NewsCard({ article, locale }: NewsCardProps) {
             // titles read like clickbait, so the title flows to its
             // full length.
             className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline sm:line-clamp-3"
-            aria-label={tCard("readOriginal", { source: article.sourceName })}
           >
             {article.title}
-          </a>
+          </Link>
         </h3>
 
-        {article.summary && (
-          // The summary is NEVER truncated, at any breakpoint. Cutting
-          // it forces readers to click out of curiosity rather than
-          // informed interest — the click-bait pattern we explicitly
-          // don't want, on mobile or on desktop. The `mt-auto` on the
-          // source/date row below pins the footer so variable-height
-          // summaries don't break the card layout; the grid row just
-          // takes the height of its tallest card, which is fine.
-          <p className="text-sm text-[color:var(--color-muted-foreground)]">
+        {!compact && article.summary && (
+          // Phase 9.B: clamped to three lines. The card is now a teaser
+          // for the article page, which shows the summary in full, so a
+          // cut here no longer hides information behind the publisher's
+          // site — it just keeps the grid scannable. `mt-auto` on the
+          // footer below keeps rows aligned regardless of title length.
+          <p className="line-clamp-3 text-sm text-[color:var(--color-muted-foreground)]">
             {article.summary}
           </p>
         )}
 
-        <div className="mt-auto flex items-end justify-between gap-2 pt-2 text-xs text-[color:var(--color-muted-foreground)]">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate">{article.sourceName}</span>
-            <span aria-hidden>·</span>
+        {!compact && (
+          <div className="mt-auto flex items-end justify-between gap-2 pt-2 text-xs text-[color:var(--color-muted-foreground)]">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{article.sourceName}</span>
+              <span aria-hidden>·</span>
+              {/*
+               * The relative timestamp is computed against `new Date()` on both
+               * server and client. Between SSR and hydration a few seconds can
+               * pass, so the formatted string may drift by one unit. Suppress
+               * the warning rather than locking the SSR value, which would
+               * then look stale forever on long client sessions.
+               */}
+              <time dateTime={article.publishedAt} suppressHydrationWarning>
+                {formatRelative(article.publishedAt, locale)}
+              </time>
+            </div>
             {/*
-             * The relative timestamp is computed against `new Date()` on both
-             * server and client. Between SSR and hydration a few seconds can
-             * pass, so the formatted string may drift by one unit. Suppress
-             * the warning rather than locking the SSR value, which would
-             * then look stale forever on long client sessions.
+             * Share buttons sit on the same baseline as the source/date row
+             * but above the card's stretched-link via `relative z-10` (set
+             * inside the component). Clicks here don't fall through to the
+             * title link's after:absolute overlay.
              */}
-            <time dateTime={article.publishedAt} suppressHydrationWarning>
-              {formatRelative(article.publishedAt, locale)}
-            </time>
+            <ShareButtons url={article.shareUrl} title={article.title} />
           </div>
-          {/*
-           * Share buttons sit on the same baseline as the source/date row
-           * but above the card's stretched-link via `relative z-10` (set
-           * inside the component). Clicks here don't fall through to the
-           * title `<a>`'s after:absolute overlay.
-           */}
-          <ShareButtons url={article.url} title={article.title} />
-        </div>
+        )}
       </div>
     </article>
   );

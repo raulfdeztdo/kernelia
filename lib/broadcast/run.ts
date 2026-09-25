@@ -7,6 +7,7 @@ import {
 } from "@/db/queries/article-broadcasts";
 import type { BroadcastPlatform } from "@/db/schema";
 import { createLogger } from "@/lib/logger";
+import { articleOgImageUrl, articleUrl, withUtm } from "@/lib/permalink";
 import { formatPost } from "./format";
 import { postMastodon } from "./mastodon";
 import { postBluesky } from "./bluesky";
@@ -191,20 +192,46 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Phase 9.B: every post links to the article's page on Kernelia (not to
+ * the publisher), tagged with UTM so `/admin/analytics` can attribute the
+ * visit to the platform that sent it. The page itself credits and links
+ * the original source.
+ */
+export function broadcastLink(article: PendingBroadcastArticle, platform: BroadcastPlatform): string {
+  return withUtm(articleUrl("es", article.id, article.titleEs), {
+    source: platform,
+    medium: "social",
+  });
+}
+
 function defaultPosters(): Record<BroadcastPlatform, PlatformPostFn> {
   return {
     mastodon: async (article) => {
-      const text = formatPost(article, "mastodon");
+      const text = formatPost({ ...article, url: broadcastLink(article, "mastodon") }, "mastodon");
       const res = await postMastodon({ status: text, idempotencyKey: `art-${article.id}` });
       return { externalId: res.id };
     },
     bluesky: async (article) => {
-      const text = formatPost(article, "bluesky");
-      const res = await postBluesky({ text, link: article.url });
+      const link = broadcastLink(article, "bluesky");
+      const text = formatPost({ ...article, url: link }, "bluesky");
+      // Bluesky never builds link cards server-side for API posts: the
+      // client must send the card itself. The thumbnail is our own OG
+      // image, so the post shows the Kernelia-branded card.
+      const res = await postBluesky({
+        text,
+        link,
+        card: {
+          uri: link,
+          title: article.titleEs,
+          description: article.summaryEs ?? "",
+          thumbUrl: articleOgImageUrl("es", article.id),
+        },
+      });
       return { externalId: res.uri };
     },
     telegram: async (article) => {
-      const text = formatPost(article, "telegram");
+      const text = formatPost({ ...article, url: broadcastLink(article, "telegram") }, "telegram");
       const res = await postTelegram({ text });
       return { externalId: res.messageId };
     },

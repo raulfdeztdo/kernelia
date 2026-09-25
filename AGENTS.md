@@ -102,9 +102,9 @@ backend-agent  ⟂  frontend-agent     ← parallel where possible
 
 | Path | What lives there |
 |---|---|
-| `app/[locale]/` | Public pages with locale segment (home, about). Server components by default. |
+| `app/[locale]/` | Public pages with locale segment (home, about, `n/[slug]` article pages). Server components by default. |
 | `app/admin/` | Admin backoffice (Fase 7). No locale segment, ES copy, `noindex,nofollow`. Requires session. |
-| `app/api/` | Route handlers: `cron/{ingest,classify}`, `articles`, `health`, `rss.xml`, `pulse` (analitica propia, Fase 9.A). |
+| `app/api/` | Route handlers: `cron/{ingest,classify}`, `articles`, `health`, `rss.xml`, `pulse` (analitica propia, Fase 9.A), `og/[locale]/[shortId]` (imagen social por noticia, Fase 9.B). |
 | `app/api/admin/` | Admin endpoints: `login`, `logout`, `forgot-password`, `reset-password`, `articles/*`, `users/*`. |
 | `app/api/cron/` | Cron endpoints: `ingest`, `classify`, `broadcast`. Bearer-auth via `CRON_SECRET`. |
 | `components/` | UI; `components/ui/` is shadcn primitives. |
