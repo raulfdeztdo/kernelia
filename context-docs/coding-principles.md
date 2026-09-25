@@ -39,7 +39,10 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
   - `lib/broadcast/` — distribucion automatica a Mastodon + Bluesky +
     Telegram. Per-plataforma: cliente HTTP + format. Orquestador
     common (`run.ts`) que llama a `db/queries/article-broadcasts.ts`
-    para idempotencia. **Server-only**.
+    para idempotencia. **Server-only**. Desde la Fase 9.C `run.ts` publica
+    cada hora solo a Mastodon + Bluesky; Telegram recibe un digest a las
+    08:00 y a las 17:00 (`digest.ts`), con la franja reservada en
+    `channel_digests` (at-most-once aunque varios schedulers coincidan).
   - `lib/email/` — wrapper minimo sobre Resend (`sendPasswordReset`).
   - `lib/permalink.ts` — URLs de noticia (path, href con locale, URL
     absoluta, UTM, imagen social). Unica fuente de verdad del formato.

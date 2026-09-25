@@ -22,6 +22,13 @@ export const BROADCAST_PLATFORMS: readonly BroadcastPlatform[] = [
   "telegram",
 ] as const;
 
+/**
+ * Platforms that get one article per hour. Phase 9.C moved Telegram to a
+ * twice-daily digest (`./digest.ts`): a channel that pings 14 times a day
+ * gets muted, one that sends a morning and an evening summary gets read.
+ */
+export const HOURLY_PLATFORMS: readonly BroadcastPlatform[] = ["mastodon", "bluesky"] as const;
+
 export const DEFAULT_MIN_RELEVANCE_SCORE = 0.75;
 /**
  * How far back the cron looks for unbroadcast articles, keyed on
@@ -140,6 +147,8 @@ export type PlatformPostFn = (article: PendingBroadcastArticle) => Promise<{ ext
 export interface RunBroadcastOptions {
   /** Override the env-derived flag. */
   enabled?: boolean;
+  /** Platforms to post to this tick. Defaults to `HOURLY_PLATFORMS`. */
+  platforms?: readonly BroadcastPlatform[];
   /** Override `BROADCAST_MIN_RELEVANCE_SCORE`. */
   minRelevanceScore?: number;
   /** Override `DEFAULT_LIMIT_PER_PLATFORM`. */
@@ -293,7 +302,9 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   const sleep = options.sleep ?? defaultSleep;
   const listPending = options.listPending ?? listPendingForBroadcast;
   const record = options.record ?? recordBroadcast;
-  const countEligible = options.countEligible ?? countEligibleIgnoringLookback;
+  const platforms = options.platforms ?? HOURLY_PLATFORMS;
+  const countEligible =
+    options.countEligible ?? ((p: { minScore: number }) => countEligibleIgnoringLookback({ ...p, platforms }));
   const minIntervalMs = options.minIntervalMs ?? MIN_INTERVAL_BETWEEN_POSTS_MS;
   const lastPostedAt = options.lastPostedAt ?? getLastBroadcastAt;
   const realPosters = defaultPosters();
@@ -357,7 +368,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   // own auth, own failure mode). The wall-clock budget is shared though;
   // each platform self-bails when elapsed approaches `maxWallTimeMs`.
   await Promise.all(
-    BROADCAST_PLATFORMS.map(async (platform) => {
+    platforms.map(async (platform) => {
       // Cadence guard, before the candidate query: if this platform
       // posted less than `minIntervalMs` ago we have nothing to decide,
       // and skipping here saves the round-trip too.
@@ -442,7 +453,7 @@ export async function runBroadcast(options: RunBroadcastOptions = {}): Promise<B
   let staleBacklog: number | null = null;
   // A tick throttled on every platform published nothing BY DESIGN, so
   // probing for a stale backlog would raise a false alarm.
-  const throttledEverywhere = throttled.length === BROADCAST_PLATFORMS.length;
+  const throttledEverywhere = throttled.length === platforms.length;
   if (totalPosted === 0 && totalFailed === 0 && !throttledEverywhere) {
     try {
       staleBacklog = await countEligible({ minScore });

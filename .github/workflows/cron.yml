@@ -104,6 +104,13 @@ on:
     # writers. Hard-delete de articulos failed/hidden mas viejos de
     # 7 dias — ver lib/cleanup/run.ts.
     - cron: "0 4 * * *"
+    # Digest de Telegram (Fase 9.C) — RESPALDO. El reloj real es Hepha
+    # (`10 * * * *`). Aqui solo las horas UTC que cubren las 08:00 y las
+    # 17:00 de Madrid en verano (06, 15) y en invierno (07, 16). El handler
+    # decide que franja toca y la reserva en `channel_digests`, asi que si
+    # Hepha ya la envio este tick es un no-op. `:20` evita colisionar con
+    # classify (:00/:30), broadcast (:05) e ingest (:00).
+    - cron: "20 6,7,15,16 * * *"
   workflow_dispatch:
     inputs:
       job:
@@ -117,6 +124,7 @@ on:
           - broadcast
           - newsletter
           - cleanup
+          - digest
       iterations:
         description: "Llamadas a encadenar (vacio = el valor por defecto del job). Usa esto para drenar backlog."
         required: false
@@ -244,3 +252,26 @@ jobs:
           BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: .github/scripts/cron-call.sh /api/cron/cleanup
+
+  digest:
+    name: Telegram digest (backup)
+    # Respaldo de Hepha. Sin bucle: una sola llamada; el handler es
+    # idempotente por franja. El dispatch manual añade `?force=1` para
+    # enviar la franja actual aunque sea antes de las 08:00 (nunca
+    # reenvia una franja ya enviada).
+    if: github.event.schedule == '20 6,7,15,16 * * *' || inputs.job == 'digest'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: Production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hit /api/cron/digest
+        env:
+          BASE_URL: ${{ secrets.KERNELIA_PROD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            .github/scripts/cron-call.sh /api/cron/digest '?force=1'
+          else
+            .github/scripts/cron-call.sh /api/cron/digest
+          fi

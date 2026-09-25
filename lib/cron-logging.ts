@@ -171,3 +171,15 @@ export function broadcastStatus(summary: {
   if ((summary.staleBacklog ?? 0) > 0) return "partial";
   return "ok";
 }
+
+/**
+ * Phase 9.C digest tick. Only a send that failed is worth flagging; every
+ * other outcome (not due yet, already sent by another scheduler, nothing
+ * new to say) is the normal steady state of an hourly caller.
+ */
+export function digestStatus(summary: { outcome: string; error: string | null }): CronRunStatus {
+  if (summary.outcome === "failed") return "failed";
+  // Sent, but the bookkeeping write failed (see lib/broadcast/digest.ts).
+  if (summary.outcome === "sent" && summary.error) return "partial";
+  return "ok";
+}

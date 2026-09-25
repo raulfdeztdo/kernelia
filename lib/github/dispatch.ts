@@ -24,7 +24,8 @@ export type CronDispatchJob =
   | "classify"
   | "broadcast"
   | "newsletter"
-  | "cleanup";
+  | "cleanup"
+  | "digest";
 
 export const CRON_DISPATCH_JOBS = [
   "ingest",
@@ -32,6 +33,7 @@ export const CRON_DISPATCH_JOBS = [
   "broadcast",
   "newsletter",
   "cleanup",
+  "digest",
 ] as const satisfies readonly CronDispatchJob[];
 
 const WORKFLOW_FILE = "cron.yml";

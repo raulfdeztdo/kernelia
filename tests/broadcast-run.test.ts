@@ -17,7 +17,7 @@ vi.mock("@/db/queries/article-broadcasts", () => ({
   recordBroadcast: async () => true,
 }));
 
-import { runBroadcast } from "@/lib/broadcast/run";
+import { BROADCAST_PLATFORMS, runBroadcast } from "@/lib/broadcast/run";
 import type { BroadcastPlatform } from "@/db/schema";
 import type { PendingBroadcastArticle } from "@/db/queries/article-broadcasts";
 
@@ -67,6 +67,8 @@ describe("runBroadcast", () => {
   it("short-circuits when disabled with zeros in every bucket", async () => {
     const capture = makeCapture();
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: false,
       respectWindow: false,
       sleep: noSleep,
@@ -97,6 +99,8 @@ describe("runBroadcast", () => {
     const articles = [article("a1"), article("a2")];
 
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -123,6 +127,8 @@ describe("runBroadcast", () => {
   it("isolates a platform failure — others still succeed", async () => {
     // Mastodon throws on every post; Bluesky + Telegram complete cleanly.
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -149,6 +155,8 @@ describe("runBroadcast", () => {
     // Simulates: a parallel tick inserted the row first. `record` returns
     // false → we don't increment `posted` (it's not "our" post).
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -168,6 +176,8 @@ describe("runBroadcast", () => {
   it("wires the configured minScore through to the listPending call", async () => {
     const capture = makeCapture();
     await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       minRelevanceScore: 0.85,
@@ -196,6 +206,8 @@ describe("runBroadcast", () => {
     // Defensive: the DB query filters NULL titleEs, but if a future bug
     // lets one through we want it counted in `skipped` not as a crash.
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -223,6 +235,8 @@ describe("runBroadcast", () => {
     try {
       const capture = makeCapture();
       const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
         enabled: true,
         respectWindow: true,
         sleep: noSleep,
@@ -254,6 +268,8 @@ describe("runBroadcast", () => {
     vi.setSystemTime(new Date("2026-05-19T08:30:00Z"));
     try {
       const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
         enabled: true,
         respectWindow: true,
         sleep: noSleep,
@@ -279,6 +295,8 @@ describe("runBroadcast", () => {
     vi.setSystemTime(new Date("2026-05-19T01:30:00Z"));
     try {
       const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
         enabled: true,
         respectWindow: false,
         sleep: noSleep,
@@ -314,6 +332,8 @@ describe("runBroadcast — stale backlog detection", () => {
   it("reports the count when a tick posts nothing but eligible articles exist outside the lookback", async () => {
     let probeCalls = 0;
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -332,6 +352,8 @@ describe("runBroadcast — stale backlog detection", () => {
 
   it("reports 0 — not null — on a genuinely quiet tick, so 'quiet' is provable", async () => {
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -345,6 +367,8 @@ describe("runBroadcast — stale backlog detection", () => {
   it("skips the probe entirely when the tick published something", async () => {
     let probeCalls = 0;
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -367,6 +391,8 @@ describe("runBroadcast — stale backlog detection", () => {
   it("skips the probe when a platform failed — that tick is already loud", async () => {
     let probeCalls = 0;
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -389,6 +415,8 @@ describe("runBroadcast — stale backlog detection", () => {
 
   it("never lets a failing probe take down the tick it is diagnosing", async () => {
     const summary = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -410,6 +438,8 @@ describe("runBroadcast — stale backlog detection", () => {
     };
 
     const disabled = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: false,
       respectWindow: false,
       sleep: noSleep,
@@ -419,6 +449,8 @@ describe("runBroadcast — stale backlog detection", () => {
     expect(disabled.staleBacklog).toBeNull();
 
     const outOfWindow = await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: true,
       // 03:30 Madrid — outside both publishing windows.
@@ -445,6 +477,8 @@ describe("runBroadcast — lookback window", () => {
   async function capturedSince(options: Parameters<typeof runBroadcast>[0] = {}): Promise<Date> {
     let since: Date | undefined;
     await runBroadcast({
+      // Generic orchestrator specs exercise all three posters.
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -504,6 +538,7 @@ describe("runBroadcast — minimum interval between posts", () => {
 
   function opts(overrides: Parameters<typeof runBroadcast>[0] = {}) {
     return {
+      platforms: BROADCAST_PLATFORMS,
       enabled: true,
       respectWindow: false,
       sleep: noSleep,
@@ -598,5 +633,28 @@ describe("runBroadcast — minimum interval between posts", () => {
 
     expect(summary.throttled).toEqual([]);
     expect(summary.posted.telegram).toBe(1);
+  });
+});
+
+describe("runBroadcast — Phase 9.C platform split", () => {
+  it("posts hourly to Mastodon and Bluesky only; Telegram gets the digest", async () => {
+    const seen: BroadcastPlatform[] = [];
+    const summary = await runBroadcast({
+      enabled: true,
+      respectWindow: false,
+      sleep: noSleep,
+      listPending: async (p) => {
+        seen.push(p.platform);
+        return [article("a1")];
+      },
+      record: async () => true,
+      platformPosters: {
+        mastodon: async () => ({ externalId: "m" }),
+        bluesky: async () => ({ externalId: "b" }),
+        telegram: async () => ({ externalId: "t" }),
+      },
+    });
+    expect(seen.sort()).toEqual(["bluesky", "mastodon"]);
+    expect(summary.posted).toEqual({ mastodon: 1, bluesky: 1, telegram: 0 });
   });
 });

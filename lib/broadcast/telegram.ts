@@ -29,6 +29,12 @@ export interface TelegramPostResult {
 export interface TelegramPostParams {
   /** MarkdownV2-escaped text (see lib/broadcast/format.ts → formatTelegram). */
   text: string;
+  /**
+   * URL whose card Telegram should show under the message. Without it
+   * Telegram previews the first link it finds, which is fine for a single
+   * article but arbitrary for a digest with several (Phase 9.C).
+   */
+  linkPreviewUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -50,6 +56,9 @@ export async function postTelegram(params: TelegramPostParams): Promise<Telegram
       chat_id: chatId,
       text: params.text,
       parse_mode: "MarkdownV2",
+      ...(params.linkPreviewUrl
+        ? { link_preview_options: { url: params.linkPreviewUrl, prefer_large_media: true } }
+        : {}),
       // Default: preview enabled. Telegram fetches the OG metadata of
       // the URL inside the message and renders a card — saves us from
       // attaching images explicitly.

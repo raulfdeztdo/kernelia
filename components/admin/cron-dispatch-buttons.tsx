@@ -9,6 +9,7 @@ const JOB_LABEL: Record<CronDispatchJob, string> = {
   broadcast: "Broadcast",
   newsletter: "Newsletter",
   cleanup: "Cleanup",
+  digest: "Digest Telegram",
 };
 
 type Status =

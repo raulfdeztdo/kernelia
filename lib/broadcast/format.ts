@@ -124,7 +124,7 @@ function hashtagFor(slug: string | null): string {
  * Escape Telegram MarkdownV2 reserved characters.
  * Reference: https://core.telegram.org/bots/api#markdownv2-style
  */
-function escapeMarkdownV2(text: string): string {
+export function escapeMarkdownV2(text: string): string {
   return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
 }
 
@@ -133,6 +133,6 @@ function escapeMarkdownV2(text: string): string {
  * part. Everything else can stay verbatim — escaping a `.` would break
  * the host.
  */
-function escapeMarkdownV2Url(url: string): string {
+export function escapeMarkdownV2Url(url: string): string {
   return url.replace(/([)\\])/g, "\\$1");
 }

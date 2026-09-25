@@ -29,6 +29,11 @@ export const CRON_SCHEDULE = {
     cron: "0 10 * * 0",
     description: "Domingos a las 10:00 UTC (digest semanal de la newsletter).",
   },
+  digest: {
+    cron: "10 * * * *",
+    description:
+      "Cada hora en :10 desde Hepha (GitHub de respaldo a las 06:20, 07:20, 15:20 y 16:20 UTC). El handler envia el digest de Telegram de las 08:00 o las 17:00 Europe/Madrid cuando toca; cada franja se reserva en channel_digests, asi que dos schedulers nunca duplican el mensaje.",
+  },
   cleanup: {
     cron: "0 4 * * *",
     description:

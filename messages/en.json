@@ -31,7 +31,7 @@
     "newArticles": "{count, plural, one {# new article} other {# new articles}}",
     "telegramCallout": {
       "cta": "Join the Telegram channel",
-      "hint": "Posts in Spanish"
+      "hint": "Digest at 08:00 and 17:00 CET · in Spanish"
     },
     "newsletterCallout": {
       "title": "Get your weekly newsletter!",
