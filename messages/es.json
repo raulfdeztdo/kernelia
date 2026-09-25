@@ -31,7 +31,7 @@
     "newArticles": "{count, plural, one {# noticia nueva} other {# noticias nuevas}}",
     "telegramCallout": {
       "cta": "Únete al canal de Telegram",
-      "hint": "Gratis · sin registro"
+      "hint": "Resumen a las 08:00 y a las 17:00 · gratis"
     },
     "newsletterCallout": {
       "title": "¡Recibe tu newsletter semanal!",

@@ -16,7 +16,8 @@ const isJob = (v: unknown): v is CronJob =>
   v === "classify" ||
   v === "broadcast" ||
   v === "newsletter" ||
-  v === "cleanup";
+  v === "cleanup" ||
+  v === "digest";
 const isStatus = (v: unknown): v is CronRunStatus =>
   v === "running" || v === "ok" || v === "partial" || v === "failed";
 
@@ -105,6 +106,7 @@ function FilterBar({ job, status }: { job?: CronJob; status?: CronRunStatus }) {
           <option value="broadcast">Broadcast</option>
           <option value="newsletter">Newsletter</option>
           <option value="cleanup">Cleanup</option>
+          <option value="digest">Digest Telegram</option>
         </select>
       </label>
       <label className="space-y-1 text-xs">

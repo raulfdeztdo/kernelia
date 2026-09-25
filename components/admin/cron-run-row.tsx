@@ -27,6 +27,7 @@ const JOB_LABEL: Record<CronJob, string> = {
   broadcast: "Broadcast",
   newsletter: "Newsletter",
   cleanup: "Cleanup",
+  digest: "Digest Telegram",
 };
 const STATUS_LABEL: Record<CronRunStatus, string> = {
   running: "Ejecutando…",

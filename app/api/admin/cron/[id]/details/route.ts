@@ -45,7 +45,9 @@ export async function GET(
     const articles = await listArticlesByCronRun(run.id, stage);
     return NextResponse.json({ kind: "articles", articles });
   }
-  if (run.job === "broadcast") {
+  // Phase 9.C: digest articles are recorded in `article_broadcasts` with
+  // the tick's cron-run id, so the broadcast listing covers them too.
+  if (run.job === "broadcast" || run.job === "digest") {
     const broadcasts = await listBroadcastsByCronRun(run.id);
     return NextResponse.json({ kind: "broadcasts", broadcasts });
   }

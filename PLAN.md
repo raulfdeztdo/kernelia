@@ -1187,20 +1187,29 @@ se renderizan bajo demanda (medido en `next start`; en EN si cachea). Por eso
 noticia, 1h las relacionadas): 1a visita ~640ms, siguientes ~20ms, y los
 rastreadores no multiplican consultas a Supabase.
 
-### Sub-fase 9.C · Digest de Telegram (08:00 y 17:00)
+### Sub-fase 9.C · Digest de Telegram (08:00 y 17:00) · `done` (2026-09-25)
 
-- [ ] Migracion: `channel_digests` (platform, digest_date, slot
-  `morning|afternoon`, external_id, article_ids, cron_run_id; unique
-  platform+fecha+slot) y `ALTER TYPE cron_job ADD VALUE 'digest'`.
-- [ ] `lib/broadcast/digest.ts`: slot vigente por hora de Madrid, claim
-  del slot insertando la fila antes de enviar (se borra si el envio
-  falla), top 5 por relevancia con tope 2 por fuente, registro en
-  `article_broadcasts` para no repetir noticias.
-- [ ] Broadcast horario solo a Mastodon + Bluesky; el detector de
-  backlog ignora Telegram.
-- [ ] `/api/cron/digest` + boton en `/admin/cron` + `CRON_SCHEDULE`.
-- [ ] Scheduler: Hepha cada hora a `:10` (el handler decide);
-  GitHub como red de seguridad. Idempotente por el unique del slot.
+- [x] Migracion `0015`: `channel_digests` (platform, digest_date, slot
+  `morning|afternoon`, article_ids, external_id, sent_at, cron_run_id;
+  unique platform+fecha+slot, RLS) y `ALTER TYPE cron_job ADD VALUE
+  'digest'`. Aplicada en Supabase el 2026-09-25.
+- [x] `lib/broadcast/digest.ts`: franja vigente por hora de Madrid con
+  ventana de envio (manana 08-13, tarde 17-22; fuera de ella se salta),
+  claim del slot antes de enviar (se libera si no hay noticias o Telegram
+  falla; nunca despues de un envio correcto), top 5 por relevancia con
+  tope 2 por fuente, registro en `article_broadcasts` para no repetir.
+  Enlaces al permalink con `utm_campaign=digest_<slot>` y tarjeta de la
+  noticia principal via `link_preview_options`.
+- [x] Broadcast horario solo a Mastodon + Bluesky (`HOURLY_PLATFORMS`); el
+  detector de backlog ignora Telegram.
+- [x] `/api/cron/digest` + boton en `/admin/cron` + `CRON_SCHEDULE` + job de
+  respaldo en `cron.yml` (`20 6,7,15,16 * * *` UTC).
+- [ ] Scheduler en Hepha: `10 * * * * kernelia-cron.sh digest` (tras el
+  merge, cuando el endpoint exista en produccion).
+- [x] CTA de Telegram en la home anuncia el horario del digest.
+
+Primer digest real: tarde del 2026-09-25 (mensaje 1202 en @kernelia_news),
+enviado a mano desde local a peticion del operador para revisarlo en movil.
 
 ### Criterio de cierre Fase 9
 

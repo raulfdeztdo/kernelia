@@ -1,9 +1,10 @@
-import { and, desc, eq, gte, isNotNull, ne, notExists, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, ne, notExists, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   articleBroadcasts,
   articles,
   categories,
+  sources,
   type BroadcastPlatform,
   type NewArticleBroadcast,
 } from "@/db/schema";
@@ -110,6 +111,70 @@ export async function listPendingForBroadcast(
   }));
 }
 
+export interface DigestCandidate extends PendingBroadcastArticle {
+  sourceName: string;
+}
+
+/**
+ * Phase 9.C: pool of articles a digest can pick from — same eligibility
+ * as `listPendingForBroadcast` (classified, not `other`, ES title, score
+ * over the bar, not yet sent to this platform), ranked by relevance
+ * instead of arrival. The caller applies the per-source cap and the final
+ * top-N, so `limit` here is a generous pool size, not the digest size.
+ */
+export async function listDigestCandidates(params: {
+  platform: BroadcastPlatform;
+  minScore: number;
+  since: Date;
+  limit: number;
+}): Promise<DigestCandidate[]> {
+  const rows = await db
+    .select({
+      id: articles.id,
+      titleEs: articles.titleEs,
+      summaryEs: articles.summaryEs,
+      url: articles.url,
+      categorySlug: categories.slug,
+      relevanceScore: articles.relevanceScore,
+      sourceName: sources.name,
+    })
+    .from(articles)
+    .innerJoin(sources, eq(sources.id, articles.sourceId))
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(
+      and(
+        eq(articles.status, "classified"),
+        ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+        isNotNull(articles.titleEs),
+        isNotNull(articles.relevanceScore),
+        gte(articles.relevanceScore, params.minScore),
+        gte(articles.ingestedAt, params.since),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(articleBroadcasts)
+            .where(
+              and(
+                eq(articleBroadcasts.articleId, articles.id),
+                eq(articleBroadcasts.platform, params.platform),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(desc(articles.relevanceScore), desc(articles.ingestedAt))
+    .limit(Math.min(Math.max(params.limit, 1), 200));
+  return rows.map((r) => ({
+    id: r.id,
+    titleEs: r.titleEs ?? "",
+    summaryEs: r.summaryEs,
+    url: r.url,
+    categorySlug: r.categorySlug,
+    relevanceScore: r.relevanceScore ?? 0,
+    sourceName: r.sourceName,
+  }));
+}
+
 /**
  * Counts articles that satisfy every eligibility rule in
  * `listPendingForBroadcast` EXCEPT the lookback window, for any
@@ -123,9 +188,14 @@ export async function listPendingForBroadcast(
  * nothing on a healthy run.
  */
 export async function countEligibleIgnoringLookback(
-  params: { minScore?: number } = {},
+  params: { minScore?: number; platforms?: readonly BroadcastPlatform[] } = {},
 ): Promise<number> {
   const minScore = params.minScore ?? 0;
+  // Phase 9.C: Telegram only receives a handful of articles per digest,
+  // so most eligible articles are never sent there BY DESIGN. Callers pass
+  // the platforms that should eventually carry every article (the hourly
+  // ones) so the stall probe doesn't count digest leftovers as a backlog.
+  const platforms = params.platforms ?? ["mastodon", "bluesky", "telegram"];
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(articles)
@@ -141,7 +211,12 @@ export async function countEligibleIgnoringLookback(
           db
             .select({ one: sql`1` })
             .from(articleBroadcasts)
-            .where(eq(articleBroadcasts.articleId, articles.id)),
+            .where(
+              and(
+                eq(articleBroadcasts.articleId, articles.id),
+                inArray(articleBroadcasts.platform, [...platforms]),
+              ),
+            ),
         ),
       ),
     );

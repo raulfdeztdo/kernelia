@@ -48,6 +48,10 @@ export function summariseRun(run: CronRun): string {
     const dc = (s["digestCounts"] as { es?: number; en?: number } | undefined) ?? {};
     return `attempted=${s["attempted"] ?? 0}  sent=${s["sent"] ?? 0}  failed=${s["failed"] ?? 0}  skippedNoArticles=${s["skippedNoArticles"] ?? 0}  budgetExhausted=${s["budgetExhausted"] ?? 0}  articles[es=${dc.es ?? 0},en=${dc.en ?? 0}]`;
   }
+  if (run.job === "digest") {
+    const ids = (s["articleIds"] as unknown[] | undefined) ?? [];
+    return `outcome=${s["outcome"] ?? "?"}  slot=${s["slot"] ?? "—"}  date=${s["digestDate"] ?? "—"}  articles=${ids.length}${s["error"] ? `  error=${String(s["error"]).slice(0, 80)}` : ""}`;
+  }
   if (run.job === "cleanup") {
     return `deleted=${s["deleted"] ?? 0}  retentionDays=${s["retentionDays"] ?? 7}  cutoff=${(s["cutoff"] as string | undefined)?.slice(0, 19) ?? "—"}`;
   }

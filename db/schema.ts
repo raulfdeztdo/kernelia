@@ -246,6 +246,9 @@ export const cronJobEnum = pgEnum("cron_job", [
   // with classifier mis-fires (non_ai), duplicates and LLM errors.
   // See `lib/cleanup/run.ts`.
   "cleanup",
+  // Phase 9.C: twice-daily Telegram digest (08:00 and 17:00 Madrid).
+  // See `lib/broadcast/digest.ts`.
+  "digest",
 ]);
 // `running` is the in-progress placeholder: row is inserted at the top
 // of every cron handler so child writes (article inserts/updates,
@@ -337,6 +340,54 @@ export const articleBroadcasts = pgTable(
     index("article_broadcasts_cron_run_id_idx").on(t.cronRunId),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Channel digests (Phase 9.C)
+// ---------------------------------------------------------------------------
+
+/** Europe/Madrid publishing slots: 08:00 ("morning") and 17:00 ("afternoon"). */
+export const digestSlotEnum = pgEnum("digest_slot", ["morning", "afternoon"]);
+
+/**
+ * One row per digest message (platform × Madrid day × slot). The unique
+ * index is the at-most-once contract: a tick CLAIMS the slot by inserting
+ * the row before sending, so Hepha's cron, the GitHub backup and a manual
+ * dispatch can all fire in the same hour and only one message goes out.
+ *
+ * `sent_at` NULL means "claimed, not (yet) sent". The sender deletes its
+ * own claim when the send fails or there is nothing to send, and a claim
+ * left behind by a crashed tick is considered stale after a few minutes
+ * (see `db/queries/channel-digests.ts`), so a slot is never lost for good.
+ *
+ * The articles in a digest are ALSO recorded in `article_broadcasts`
+ * (platform = telegram), which is what keeps the next digest from
+ * repeating them and keeps the admin broadcast stats meaningful.
+ */
+export const channelDigests = pgTable(
+  "channel_digests",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    platform: broadcastPlatformEnum("platform").notNull(),
+    /** Calendar day in Europe/Madrid, `YYYY-MM-DD`. */
+    digestDate: date("digest_date", { mode: "string" }).notNull(),
+    slot: digestSlotEnum("slot").notNull(),
+    articleIds: uuid("article_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    /** Provider message id once sent (Telegram `message_id`). */
+    externalId: text("external_id"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    cronRunId: uuid("cron_run_id").references(() => cronRuns.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("channel_digests_platform_date_slot_unique").on(t.platform, t.digestDate, t.slot),
+  ],
+);
+
+export type ChannelDigest = typeof channelDigests.$inferSelect;
+export type DigestSlot = (typeof digestSlotEnum.enumValues)[number];
 
 export type ArticleBroadcast = typeof articleBroadcasts.$inferSelect;
 export type NewArticleBroadcast = typeof articleBroadcasts.$inferInsert;

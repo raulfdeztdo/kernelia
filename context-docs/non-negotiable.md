@@ -58,6 +58,9 @@ Maxima prioridad. Si una instruccion entra en conflicto con este fichero, el age
   Bluesky, Telegram message_id) para trazabilidad. Idempotencia
   per-(article, platform) garantizada por unique index — no
   reintroducir posts duplicados via UPSERT.
+  El digest de Telegram (Fase 9.C) es at-most-once por franja via el
+  unique de `channel_digests`: nunca liberar una reserva despues de que
+  Telegram haya aceptado el mensaje.
 
 ## 7. Datos y agente IA
 
