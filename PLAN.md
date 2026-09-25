@@ -23,6 +23,7 @@ Kernelia es un agregador de noticias sobre IA con clasificacion automatica via L
 | 6 | Release v0.1.0 a produccion | **done** | 2026-05-14 | Dominio kernelia.dev con SSL, brand logo, paginacion append-style, cap por fuente=10, cola de clasificacion round-robin, cron en GHA verde, SEO consistente en produccion (canonical/og/robots/sitemap/RSS apuntan a kernelia.dev). `v0.1.0` taggeado y publicado. |
 | 7 | Backoffice admin (auth + panel) | **done** | 2026-05-15 | Cinco sub-fases (7.A→7.E) entregadas en PRs separados (#19 schema+auth backend, #20 login UI, #21 dashboard+cron monitor, #22 gestion de articulos, #23 gestion de usuarios). Login `/admin` por magic-link (Resend, dominio kernelia.dev verificado, rate-limit 5/10min IP+email), cookie `__Host-` HMAC, session TTL 7d. Panel con metricas de articulos/categorias/fuentes/tokens, monitor `/admin/cron` ultimas 50 ejecuciones, gestion de articulos con guard de 5-columnas para `→ classified`, `hidden` distinto de `failed`, re-clasificar one-click, gestion de usuarios con guardrails (no self-target, never zero active admins). Audit via `console.log` estructurado. `/admin/*` excluido de sitemap/robots/middleware i18n. Posteriormente extendido en 7.F-H (PRs #24-26) con login por contrasenya+bcrypt, sidebar+health card, y 4 graficas Recharts en el dashboard. |
 | 8 | Distribucion y propagacion del portal | **pending** | — | Suite completa de distribucion sin exigir presencia personal en redes. Tres sub-fases: 8.A broadcaster bot multiplataforma (Mastodon + Bluesky + Telegram, espanol, filtro `relevance_score >= 0.75`); 8.B share-buttons en cards publicas + `/about` ampliada con badges de RSS; 8.C newsletter opt-in semanal via Resend + endpoint `/api/stats` publico para transparencia. La marca habla, el operador no. |
+| 9 | Visibilidad: posicionamiento, paginas propias, digest y analitica | **in-progress** | — | Tras 4 meses con 2 suscriptores en Telegram. 9.A copy + CTAs + analitica propia en `/admin/analytics`; 9.B pagina por noticia indexable y broadcasts que enlazan a Kernelia; 9.C digest de Telegram 08:00 y 17:00. |
 
 ---
 
@@ -1064,6 +1065,130 @@ Dividida en dos PRs:
 7. PLAN.md actualizado, fila #8 marcada `done`, env vars
    documentadas en `.env.example` y configuradas en Vercel
    Production.
+
+---
+
+## Fase 9 — Visibilidad: posicionamiento, paginas propias, digest y analitica · `in-progress`
+
+**Objetivo:** que Kernelia deje de ser un repetidor invisible. Diagnostico
+(2026-09-25) tras 4 meses en produccion:
+
+- ~1.190 posts por plataforma desde el 18-may y **2 suscriptores en
+  Telegram** (el bot y el operador), 2 altas confirmadas en la newsletter.
+- Los posts enlazan a la fuente original (`article.url`): el trafico se
+  va a TechCrunch/The Verge y la marca no aporta nada visible.
+- El sitemap tiene 4 URLs. Las ~3.400 noticias publicas con resumen ES/EN
+  no tienen URL propia → Google no puede indexar nada de ese contenido.
+- Telegram publica 14 veces al dia: goteo, no canal. La home no invita a
+  unirse (Telegram solo aparece en `/about` y como icono en el header).
+- Cero analitica: no sabemos si alguien visita la web ni desde donde.
+
+### Decisiones cerradas (2026-09-25)
+
+- **Posicionamiento:** "noticias de IA en espanol, filtradas y resumidas
+  cada dia". Es lo unico que Kernelia tiene y la competencia (EN) no.
+  Copy de ES lo refleja; EN mantiene un mensaje generico coherente.
+- **Paginas por noticia** en `/n/<slug>-<shortId>` (ES) y
+  `/en/n/<slug>-<shortId>` (EN). `shortId` = 12 hex iniciales del UUID;
+  se resuelve con un *range scan* sobre la PK (`id BETWEEN
+  'xxxxxxxx-xxxx-0000-…' AND 'xxxxxxxx-xxxx-ffff-…'`), sin migracion ni
+  columna `slug`. 48 bits → colision despreciable a nuestra escala. El
+  slug es cosmetico y por idioma; si no coincide con el canonico → 308.
+- **Tarjetas de la home:** el titulo lleva a la pagina de Kernelia (no a
+  la fuente). La pagina lleva el CTA "Leer en <fuente>". Compartir usa el
+  permalink de Kernelia.
+- **Broadcasts y newsletter** enlazan al permalink con UTM
+  (`utm_source=<plataforma>&utm_medium=social|email`).
+- **Telegram pasa a digest 2x/dia** (08:00 y 17:00 Europe/Madrid, ~5
+  noticias cada uno). Deja de recibir posts horarios. Mastodon y Bluesky
+  siguen con 1 post/hora.
+- **Analitica propia en Supabase** (no Vercel Web Analytics: en Hobby no
+  se puede consultar desde nuestro `/admin`, tiene 1 mes de historico y
+  sin UTM ni eventos). Sin cookies, sin guardar IP ni UA: visitante =
+  hash diario `sha256(salt_dia ‖ ip ‖ ua)` al estilo Plausible, con la sal
+  derivada por HMAC de `SESSION_SECRET` y la fecha (rota cada dia, nunca
+  se persiste). Panel en `/admin/analytics` + snapshots diarios de
+  audiencia por canal (seguidores Telegram/Mastodon/Bluesky + newsletter).
+- **Reparto en 3 PRs** en este orden: 9.A → 9.B → 9.C (el digest enlaza a
+  las paginas de 9.B).
+
+### Sub-fase 9.A · Posicionamiento + CTAs + analitica propia · `done` (2026-09-25)
+
+- [x] Copy: `metadata.{title,description}`, `home.{heading,subheading}`
+  en ES/EN con el posicionamiento nuevo.
+- [x] CTA de Telegram en la home (desktop junto al callout de newsletter,
+  movil como pill). URL resuelta con `getTelegramChannel()`.
+- [x] Migracion `0014`: tabla `analytics_events` (evento `pageview |
+  outbound | cta`, path, locale, article_id FK SET NULL, target,
+  referrer_host, utm_*, country, device, visitor_hash) y tabla
+  `audience_snapshots` (fecha, canal, seguidores; unique fecha+canal).
+  RLS activado sin policies (mismo criterio que `0013`).
+- [x] `lib/analytics/`: parseo de payload (Zod), filtro de bots por UA,
+  hash de visitante, deteccion de dispositivo, referrer host.
+- [x] `POST /api/track`: acepta `sendBeacon`, valida, rate-limit en
+  memoria por IP, responde siempre 204 (sin oraculo).
+- [x] `<AnalyticsBeacon />` en el layout publico: pageview por cambio de
+  ruta + delegacion de clicks (`data-track="cta:*"` y enlaces externos).
+- [x] `lib/analytics/audience.ts`: seguidores via APIs publicas
+  (Telegram `getChatMemberCount`, Mastodon `accounts/lookup`, Bluesky
+  `getProfile`) + suscriptores activos. Snapshot diario desde el cron
+  `cleanup` y al abrir el panel si falta el de hoy.
+- [x] Retencion: `cleanup` borra eventos con mas de 400 dias.
+- [x] `/admin/analytics`: KPIs, grafica diaria, top paginas, top
+  noticias, origenes, paises, dispositivos, CTAs y audiencia por canal.
+- [x] `/privacy` explica la analitica (ES/EN).
+
+Notas de cierre 9.A:
+- Endpoint en `/api/pulse` (no `/api/track`): los bloqueadores genericos
+  filtran rutas con "track"/"analytics"/"collect".
+- La analitica solo se envia desde el build de produccion y
+  `/api/pulse` descarta los previews de Vercel (`VERCEL_ENV`), porque
+  dev y previews comparten la base de datos de produccion.
+- Migracion `0014` aplicada en Supabase el 2026-09-25. Primer snapshot de
+  audiencia ese dia: Telegram 2, Bluesky 72, newsletter 2 (Mastodon, 6
+  seguidores en `mastodon.social/@kernelia`, se registra desde prod).
+- Sin env vars nuevas: la sal del hash de visitante se deriva de
+  `SESSION_SECRET`.
+
+### Sub-fase 9.B · Pagina propia por noticia
+
+- [ ] `lib/permalink.ts`: `slugify`, `articlePath`, `parseArticleSlug`.
+- [ ] `db/queries/articles.ts`: `getPublicArticleByShortId`,
+  `listRelatedArticles`, `listArticlesForSitemap` (mismos filtros que la
+  home: classified, score >= 0.5, sin `other`).
+- [ ] `app/[locale]/n/[slug]/page.tsx` (ISR 24h): titulo, resumen,
+  fuente, fecha, imagen, CTA a la fuente, compartir, CTA Telegram +
+  newsletter, relacionadas. JSON-LD `NewsArticle` con `isBasedOn`.
+- [ ] `opengraph-image.tsx` por noticia (titulo + categoria + marca).
+- [ ] Sitemap con todas las noticias publicas y alternates ES/EN.
+- [ ] Tarjetas + `/api/articles` exponen `href`; titulo → permalink.
+- [ ] Mastodon/Bluesky y newsletter enlazan al permalink con UTM.
+
+### Sub-fase 9.C · Digest de Telegram (08:00 y 17:00)
+
+- [ ] Migracion: `channel_digests` (platform, digest_date, slot
+  `morning|afternoon`, external_id, article_ids, cron_run_id; unique
+  platform+fecha+slot) y `ALTER TYPE cron_job ADD VALUE 'digest'`.
+- [ ] `lib/broadcast/digest.ts`: slot vigente por hora de Madrid, claim
+  del slot insertando la fila antes de enviar (se borra si el envio
+  falla), top 5 por relevancia con tope 2 por fuente, registro en
+  `article_broadcasts` para no repetir noticias.
+- [ ] Broadcast horario solo a Mastodon + Bluesky; el detector de
+  backlog ignora Telegram.
+- [ ] `/api/cron/digest` + boton en `/admin/cron` + `CRON_SCHEDULE`.
+- [ ] Scheduler: Hepha cada hora a `:10` (el handler decide);
+  GitHub como red de seguridad. Idempotente por el unique del slot.
+
+### Criterio de cierre Fase 9
+
+1. La home comunica el posicionamiento y ofrece Telegram y newsletter
+   sin salir de ella.
+2. `/admin/analytics` muestra visitas reales, origen (incluidos UTM de
+   los broadcasts) y evolucion de seguidores por canal.
+3. Cada noticia publica tiene URL propia indexable, en el sitemap, con
+   OG image propia, y los broadcasts enlazan a ella.
+4. Telegram recibe exactamente 2 digests al dia y ningun post horario.
+5. `coding-principles.md` y este plan reflejan la estructura nueva.
 
 ---
 

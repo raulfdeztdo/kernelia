@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/auth/cron";
+import { runAnalyticsMaintenance } from "@/lib/analytics/maintenance";
 import { runCleanup } from "@/lib/cleanup/run";
 import { beginCronRun, endCronRun } from "@/lib/cron-logging";
 
@@ -26,7 +27,11 @@ export async function GET(request: Request): Promise<Response> {
   const startedAt = new Date();
   const cronRunId = await beginCronRun({ job: "cleanup", startedAt });
   try {
-    const summary = await runCleanup();
+    const cleanup = await runCleanup();
+    // Phase 9.A: analytics retention + daily audience snapshot. Never
+    // throws — its own failures travel inside `summary.analytics`.
+    const analytics = await runAnalyticsMaintenance();
+    const summary = { ...cleanup, analytics };
     await endCronRun(
       {
         id: cronRunId,

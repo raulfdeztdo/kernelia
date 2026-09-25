@@ -44,6 +44,7 @@ export async function Header() {
                 rel="noreferrer"
                 aria-label={c.platform}
                 title={c.handle}
+                data-track={`cta:header-${c.platform}`}
                 style={{ "--brand": brandColor(c.platform) } as React.CSSProperties}
                 className="inline-flex size-8 items-center justify-center rounded-md text-[color:var(--color-muted-foreground)] transition-colors hover:bg-[color:var(--color-surface-2)] hover:text-[var(--brand)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
               >

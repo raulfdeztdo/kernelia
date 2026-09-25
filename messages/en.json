@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "title": "Kernelia — AI news, filtered for you",
-    "description": "Aggregator of AI news, classified and summarized automatically. Filter by category or search by keyword."
+    "title": "Kernelia — The AI news that matters, summarised daily",
+    "description": "The artificial intelligence news that matters: picked from leading outlets, classified and summarised in two lines. Free, no sign-up, on the web, on Telegram and by email."
   },
   "a11y": {
     "skipToContent": "Skip to content"
@@ -18,8 +18,8 @@
     }
   },
   "home": {
-    "heading": "Latest news",
-    "subheading": "The freshest AI publications, classified and summarized by our agent.",
+    "heading": "The AI news that matters",
+    "subheading": "Every day we read the leading AI outlets, drop the noise and summarise what's left in two lines. Read it here, on Telegram or in your inbox.",
     "allCategories": "All",
     "filteringBy": "Filtering by",
     "clearFilters": "Clear filters",
@@ -28,6 +28,10 @@
     "loadMore": "Load more",
     "loadingMore": "Loading…",
     "loadMoreError": "We couldn't load more articles. Try again.",
+    "telegramCallout": {
+      "cta": "Join the Telegram channel",
+      "hint": "Posts in Spanish"
+    },
     "newsletterCallout": {
       "title": "Get your weekly newsletter!",
       "body": "Every Sunday, the 10 most relevant articles of the week in your inbox. Email confirmation and one-click unsubscribe.",
@@ -184,12 +188,16 @@
   },
   "privacy": {
     "title": "Privacy notice",
-    "intro": "Kernelia collects the minimum amount of data possible. We don't use third-party analytics, we don't share data with advertisers, and we only store what's strictly needed for the newsletter to work.",
+    "intro": "Kernelia collects as little data as possible. We use no third-party analytics and no tracking cookies, we share nothing with advertisers, and we only keep what the site and the newsletter need to work.",
     "lastUpdated": "Last updated: {date}",
     "sections": {
       "newsletter": {
         "title": "Weekly newsletter",
         "body": "When you subscribe we store your email, the language you picked and the list of categories you'd like to receive. Plus a random token so you can unsubscribe or change preferences in one click, no password. That's it."
+      },
+      "analytics": {
+        "title": "Visit statistics",
+        "body": "We count visits with our own cookieless system, without third-party services. For each page view we store the path (without search parameters), the language, the approximate country, the device type, the site you came from and, if the link carried them, its utm parameters. We also record clicks to the original source and to our channels. We never store your IP or your browser: we use them to compute an anonymous identifier that changes every day, so we cannot tell whether you are the same person as yesterday. This data is deleted after 400 days."
       },
       "tracking": {
         "title": "Tracking pixel",

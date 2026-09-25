@@ -99,6 +99,13 @@
       "when": 1779270000000,
       "tag": "0013_enable_rls_public_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790336353908,
+      "tag": "0014_analytics_events",
+      "breakpoints": true
     }
   ]
 }

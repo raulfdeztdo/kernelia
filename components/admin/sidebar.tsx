@@ -22,6 +22,7 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin", label: "Panel", glyph: "▤", exact: true },
   { href: "/admin/articles", label: "Artículos", glyph: "◫" },
   { href: "/admin/broadcasts", label: "Broadcasts", glyph: "◈" },
+  { href: "/admin/analytics", label: "Analítica", glyph: "◭" },
   { href: "/admin/users", label: "Usuarios", glyph: "◉" },
   { href: "/admin/cron", label: "Cron", glyph: "◔" },
 ];

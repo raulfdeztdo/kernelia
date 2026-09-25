@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { isLocale, routing } from "@/i18n/routing";
+import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { SkipLink } from "@/components/skip-link";
@@ -97,6 +98,7 @@ export default async function LocaleLayout({
             {children}
           </main>
           <Footer />
+          <AnalyticsBeacon />
         </NextIntlClientProvider>
       </body>
     </html>

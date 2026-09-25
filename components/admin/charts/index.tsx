@@ -45,3 +45,13 @@ export const BroadcastsStackedBarChart = dynamic(
   () => import("./broadcasts-stacked-bar").then((m) => m.BroadcastsStackedBarChart),
   { ssr: false, loading: SkeletonH64 },
 );
+
+export const TrafficLineChart = dynamic(
+  () => import("./traffic-line").then((m) => m.TrafficLineChart),
+  { ssr: false, loading: SkeletonH64 },
+);
+
+export const AudienceLineChart = dynamic(
+  () => import("./audience-line").then((m) => m.AudienceLineChart),
+  { ssr: false, loading: SkeletonH64 },
+);

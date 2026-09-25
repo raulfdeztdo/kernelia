@@ -55,6 +55,23 @@ export function getMadridHour(now: Date): number {
   return Number.parseInt(hourPart.value, 10);
 }
 
+/** `en-CA` formats as `YYYY-MM-DD`, which is exactly what we want. */
+const _madridDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BROADCAST_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/**
+ * Calendar day (`YYYY-MM-DD`) in Europe/Madrid for the given instant.
+ * Used wherever "today" must match what the operator sees on the wall
+ * clock (audience snapshots, digest slots) rather than the UTC date.
+ */
+export function getMadridDate(now: Date): string {
+  return _madridDateFormatter.format(now);
+}
+
 /**
  * `true` when the current local hour is one of the publishing windows.
  * The minute is intentionally ignored — GitHub Actions cron jitter can
