@@ -32,6 +32,6 @@ export const CRON_SCHEDULE = {
   cleanup: {
     cron: "0 4 * * *",
     description:
-      "Diario a las 04:00 UTC (06:00 Madrid CEST). Hard-delete de articulos failed/hidden ingestados hace mas de 7 dias.",
+      "Diario a las 04:00 UTC (06:00 Madrid CEST). Hard-delete de articulos failed/hidden ingestados hace mas de 7 dias, retencion de analitica (400 dias) y snapshot diario de audiencia por canal.",
   },
 } as const;

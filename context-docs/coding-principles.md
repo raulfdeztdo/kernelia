@@ -37,6 +37,11 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
     common (`run.ts`) que llama a `db/queries/article-broadcasts.ts`
     para idempotencia. **Server-only**.
   - `lib/email/` — wrapper minimo sobre Resend (`sendPasswordReset`).
+  - `lib/analytics/` — analitica propia sin cookies (Fase 9.A): parseo
+    del payload del beacon, filtro de bots, hash diario de visitante y
+    lectura de seguidores por canal. **Server-only**. El unico cliente es
+    `components/analytics-beacon.tsx`, que solo hace `sendBeacon` a
+    `/api/track`. Nunca se persisten IP ni User-Agent.
   - `db/` — schema Drizzle, migraciones, queries.
   - `db/queries/` — unico punto de acceso a la DB. Incluye
     `users.ts`, `cron-runs.ts` y (en sub-fases siguientes)

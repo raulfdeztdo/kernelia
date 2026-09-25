@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  * any future PR that edits the copy can bump it in one place. ISO so
  * the rendered string can be formatted per-locale below.
  */
-export const PRIVACY_LAST_UPDATED = "2026-05-19";
+export const PRIVACY_LAST_UPDATED = "2026-09-25";
 
 interface Props {
   params: Promise<{ locale: string }>;
@@ -39,6 +39,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 const SECTIONS = [
   "newsletter",
+  "analytics",
   "tracking",
   "retention",
   "thirdParties",

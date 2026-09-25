@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "title": "Kernelia — Noticias de IA, filtradas para ti",
-    "description": "Agregador de noticias sobre Inteligencia Artificial, clasificadas y resumidas automáticamente. Filtra por categoría o busca por palabras clave."
+    "title": "Kernelia — Noticias de IA en español, resumidas cada día",
+    "description": "Las noticias de inteligencia artificial que importan, en español: seleccionadas de los principales medios, clasificadas y resumidas en dos líneas. Gratis y sin registro, en la web, en Telegram y por email."
   },
   "a11y": {
     "skipToContent": "Saltar al contenido"
@@ -18,8 +18,8 @@
     }
   },
   "home": {
-    "heading": "Últimas noticias",
-    "subheading": "Las publicaciones más recientes del mundo de la IA, clasificadas y resumidas por nuestro agente.",
+    "heading": "Lo importante de la IA, en español",
+    "subheading": "Cada día leemos los principales medios de inteligencia artificial, descartamos el ruido y te dejamos lo que importa resumido en dos líneas. Aquí, en Telegram o en tu correo.",
     "allCategories": "Todas",
     "filteringBy": "Filtrando por",
     "clearFilters": "Quitar filtros",
@@ -28,6 +28,10 @@
     "loadMore": "Cargar más",
     "loadingMore": "Cargando…",
     "loadMoreError": "No pudimos cargar más noticias. Inténtalo de nuevo.",
+    "telegramCallout": {
+      "cta": "Únete al canal de Telegram",
+      "hint": "Gratis · sin registro"
+    },
     "newsletterCallout": {
       "title": "¡Recibe tu newsletter semanal!",
       "body": "Cada domingo, los 10 artículos más relevantes de la semana en tu bandeja. Confirmación por email y baja en un clic.",
@@ -191,12 +195,16 @@
   },
   "privacy": {
     "title": "Aviso de privacidad",
-    "intro": "Kernelia recoge la cantidad mínima de datos posible. No usamos analytics de terceros, no compartimos información con anunciantes y solo guardamos lo imprescindible para que la newsletter funcione.",
+    "intro": "Kernelia recoge la cantidad mínima de datos posible. No usamos analítica de terceros ni cookies de seguimiento, no compartimos información con anunciantes y solo guardamos lo imprescindible para que la web y la newsletter funcionen.",
     "lastUpdated": "Última actualización: {date}",
     "sections": {
       "newsletter": {
         "title": "Newsletter semanal",
         "body": "Si te suscribes a la newsletter guardamos tu email, el idioma elegido y la lista de categorías que quieres recibir. También un token aleatorio para que puedas darte de baja o cambiar tus preferencias con un clic, sin contraseña. Nada más."
+      },
+      "analytics": {
+        "title": "Estadísticas de visitas",
+        "body": "Contamos visitas con un sistema propio, sin cookies y sin servicios de terceros. Por cada página vista guardamos la ruta (sin parámetros de búsqueda), el idioma, el país aproximado, el tipo de dispositivo, el sitio desde el que llegaste y, si el enlace los traía, sus parámetros utm. También registramos los clics que llevan a la fuente original y a nuestros canales. No guardamos tu IP ni tu navegador: con ellos calculamos un identificador anónimo que cambia cada día, así que no podemos saber si eres la misma persona que ayer. Estos datos se borran a los 400 días."
       },
       "tracking": {
         "title": "Pixel de seguimiento",

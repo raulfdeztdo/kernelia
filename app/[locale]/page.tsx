@@ -5,6 +5,7 @@ import { ArticleList } from "@/components/article-list";
 import type { ArticleCardView } from "@/components/news-card";
 import { CategoryFilter } from "@/components/category-filter";
 import { NewsletterForm } from "@/components/newsletter-form";
+import { TelegramIcon, brandColor } from "@/components/social-icons";
 import {
   countClassifiedArticles,
   getCategoryFacets,
@@ -12,6 +13,7 @@ import {
   PUBLIC_HIDDEN_CATEGORY_SLUG,
   type ListedArticle,
 } from "@/db/queries/articles";
+import { getTelegramChannel } from "@/lib/broadcast-channels";
 import { CATEGORY_SLUGS, parseCategoryParam } from "@/lib/categories";
 import { createLogger } from "@/lib/logger";
 import { isLocale } from "@/i18n/routing";
@@ -150,6 +152,11 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
   const categoryLabels = Object.fromEntries(
     CATEGORY_SLUGS.map((slug) => [slug, tCategories(slug)]),
   );
+  // Phase 9.A: Telegram is the channel we most want readers to join, so
+  // it gets a first-class CTA under the pitch instead of only the small
+  // header icon. `null` when the channel isn't public (numeric chat id)
+  // — the CTA then simply doesn't render.
+  const telegram = getTelegramChannel();
 
   return (
     <section className="space-y-8">
@@ -163,6 +170,24 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
           <p className="max-w-2xl text-[color:var(--color-muted-foreground)]">
             {t("subheading")}
           </p>
+          {telegram && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
+              <a
+                href={telegram.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-track="cta:telegram"
+                style={{ "--brand": brandColor("telegram") } as React.CSSProperties}
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--color-background)]"
+              >
+                <TelegramIcon className="size-4" />
+                {t("telegramCallout.cta")}
+              </a>
+              <span className="text-xs text-[color:var(--color-muted-foreground)]">
+                {t("telegramCallout.hint")}
+              </span>
+            </div>
+          )}
         </div>
 
         {/*
@@ -175,6 +200,7 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
         <div className="lg:hidden text-center">
         <a
           href={`/${locale === "es" ? "" : locale + "/"}about#subscribe`}
+          data-track="cta:newsletter"
           className="inline-flex items-center gap-2 rounded-full border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 px-4 py-2 text-sm font-medium text-[color:var(--color-accent)] transition hover:bg-[color:var(--color-accent)]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/40"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

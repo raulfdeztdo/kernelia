@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -474,3 +475,93 @@ export const newsletterSends = pgTable(
 
 export type NewsletterSend = typeof newsletterSends.$inferSelect;
 export type NewNewsletterSend = typeof newsletterSends.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// First-party analytics (Phase 9.A)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a row in `analytics_events` records:
+ *   - `pageview`: a public page was rendered in a real browser (the beacon
+ *     only runs client-side, which filters out most crawlers for free).
+ *   - `outbound`: a click on a link that leaves kernelia.dev — in practice
+ *     "the reader went to the original source", our core value metric.
+ *   - `cta`: a click on one of our own calls to action (Telegram,
+ *     newsletter…), identified by `target`.
+ */
+export const analyticsEventEnum = pgEnum("analytics_event", ["pageview", "outbound", "cta"]);
+
+/**
+ * Cookieless, Plausible-style event log. Deliberately stores NO IP and NO
+ * User-Agent: the only per-visitor datum is `visitor_hash`, a truncated
+ * sha256 over (daily salt ‖ ip ‖ ua) where the salt is derived from
+ * `SESSION_SECRET` + the UTC date and is never persisted. The same person
+ * gets a different hash tomorrow, so the table cannot be used to follow
+ * anyone across days — "unique visitors" is only meaningful per day.
+ *
+ * Retention: `lib/cleanup/run.ts` deletes rows older than 400 days.
+ */
+export const analyticsEvents = pgTable(
+  "analytics_events",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    event: analyticsEventEnum("event").notNull(),
+    /** Pathname only, never the query string (it can carry search terms). */
+    path: text("path").notNull(),
+    locale: languageEnum("locale"),
+    /** Set when the event happened on (or points at) a specific article. */
+    articleId: uuid("article_id").references(() => articles.id, { onDelete: "set null" }),
+    /** `cta` → CTA id ("telegram", "newsletter"…); `outbound` → destination host. */
+    target: text("target"),
+    /** Host of `document.referrer` when it is not our own origin. */
+    referrerHost: text("referrer_host"),
+    utmSource: text("utm_source"),
+    utmMedium: text("utm_medium"),
+    utmCampaign: text("utm_campaign"),
+    /** ISO-3166 alpha-2 from Vercel's `x-vercel-ip-country` header. */
+    country: text("country"),
+    device: text("device"),
+    visitorHash: text("visitor_hash").notNull(),
+  },
+  (t) => [
+    index("analytics_events_occurred_at_idx").on(t.occurredAt.desc()),
+    index("analytics_events_event_occurred_at_idx").on(t.event, t.occurredAt.desc()),
+    index("analytics_events_article_id_idx").on(t.articleId),
+  ],
+);
+
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+export type NewAnalyticsEvent = typeof analyticsEvents.$inferInsert;
+export type AnalyticsEventKind = (typeof analyticsEventEnum.enumValues)[number];
+
+/** Channels whose audience size we track day by day. */
+export const audienceChannelEnum = pgEnum("audience_channel", [
+  "telegram",
+  "mastodon",
+  "bluesky",
+  "newsletter",
+]);
+
+/**
+ * One row per (day, channel): how many followers/subscribers the channel
+ * had that day. Written by the daily `cleanup` cron and, as a fallback,
+ * the first time `/admin/analytics` is opened on a day without a row.
+ * The unique index makes both writers idempotent (last write of the day
+ * wins via upsert).
+ */
+export const audienceSnapshots = pgTable(
+  "audience_snapshots",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    /** Calendar day in Europe/Madrid, `YYYY-MM-DD`. */
+    snapshotDate: date("snapshot_date", { mode: "string" }).notNull(),
+    channel: audienceChannelEnum("channel").notNull(),
+    followers: integer("followers").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("audience_snapshots_date_channel_unique").on(t.snapshotDate, t.channel)],
+);
+
+export type AudienceSnapshot = typeof audienceSnapshots.$inferSelect;
+export type AudienceChannel = (typeof audienceChannelEnum.enumValues)[number];

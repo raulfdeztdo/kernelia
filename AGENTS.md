@@ -104,7 +104,7 @@ backend-agent  ⟂  frontend-agent     ← parallel where possible
 |---|---|
 | `app/[locale]/` | Public pages with locale segment (home, about). Server components by default. |
 | `app/admin/` | Admin backoffice (Fase 7). No locale segment, ES copy, `noindex,nofollow`. Requires session. |
-| `app/api/` | Route handlers: `cron/{ingest,classify}`, `articles`, `health`, `rss.xml`. |
+| `app/api/` | Route handlers: `cron/{ingest,classify}`, `articles`, `health`, `rss.xml`, `pulse` (analitica propia, Fase 9.A). |
 | `app/api/admin/` | Admin endpoints: `login`, `logout`, `forgot-password`, `reset-password`, `articles/*`, `users/*`. |
 | `app/api/cron/` | Cron endpoints: `ingest`, `classify`, `broadcast`. Bearer-auth via `CRON_SECRET`. |
 | `components/` | UI; `components/ui/` is shadcn primitives. |
@@ -113,6 +113,7 @@ backend-agent  ⟂  frontend-agent     ← parallel where possible
 | `lib/broadcast/` | Auto-publication to Mastodon + Bluesky + Telegram. Per-platform clients + orchestrator + text formatter. Server-only. |
 | `lib/auth/` | Password hashing (bcrypt), password-reset tokens, HMAC-signed session cookie, in-memory rate-limit. Server-only. |
 | `lib/email/` | Minimal Resend wrapper (`sendPasswordReset`). |
+| `lib/analytics/` | Cookieless first-party analytics: beacon payload policy, visitor hash, audience (followers per channel). Server-only. |
 | `db/` | Drizzle schema, migrations, queries. `db/queries/*` is the only DB surface. |
 | `db/queries/` | All SQL-touching code. UI imports from here, never from `db/index.ts`. |
 | `messages/` | `es.json`, `en.json` — every UI string of the public site. |
