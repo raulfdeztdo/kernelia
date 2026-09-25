@@ -1150,19 +1150,42 @@ Notas de cierre 9.A:
 - Sin env vars nuevas: la sal del hash de visitante se deriva de
   `SESSION_SECRET`.
 
-### Sub-fase 9.B · Pagina propia por noticia
+### Sub-fase 9.B · Pagina propia por noticia · `done` (2026-09-25)
 
-- [ ] `lib/permalink.ts`: `slugify`, `articlePath`, `parseArticleSlug`.
-- [ ] `db/queries/articles.ts`: `getPublicArticleByShortId`,
+- [x] `lib/permalink.ts`: `slugify`, `articlePath/Href/Url`, `parseArticleSegment`,
+  `shortIdRange`, `withUtm`, `articleOgImageUrl`.
+- [x] `db/queries/articles.ts`: `getPublicArticleByIdRange`,
   `listRelatedArticles`, `listArticlesForSitemap` (mismos filtros que la
-  home: classified, score >= 0.5, sin `other`).
-- [ ] `app/[locale]/n/[slug]/page.tsx` (ISR 24h): titulo, resumen,
-  fuente, fecha, imagen, CTA a la fuente, compartir, CTA Telegram +
-  newsletter, relacionadas. JSON-LD `NewsArticle` con `isBasedOn`.
-- [ ] `opengraph-image.tsx` por noticia (titulo + categoria + marca).
-- [ ] Sitemap con todas las noticias publicas y alternates ES/EN.
-- [ ] Tarjetas + `/api/articles` exponen `href`; titulo → permalink.
-- [ ] Mastodon/Bluesky y newsletter enlazan al permalink con UTM.
+  home: classified, score >= 0.5, sin `other`; SIN el tope por fuente, que
+  es solo de la home).
+- [x] `app/[locale]/n/[slug]/page.tsx` (ISR 24h): titulo, resumen completo,
+  fuente, fecha, imagen, CTA a la fuente, compartir, nota de autoria,
+  CTA Telegram + newsletter y 3 relacionadas (tarjeta compacta: imagen +
+  titulo). JSON-LD `NewsArticle` con `isBasedOn`. Slug viejo → 308.
+- [x] Imagen social por noticia en `/api/og/<locale>/<shortId>` (no con
+  `opengraph-image.tsx`: para ES Next emitia la URL con `/es` y el
+  middleware la redirigia rompiendo el parametro de cache).
+- [x] Sitemap con todas las noticias publicas (6.900 URLs el 2026-09-25) y
+  hreflang por noticia; revalida cada hora.
+- [x] Tarjetas + `/api/articles` exponen `href` y `shareUrl`; el titulo lleva
+  al permalink y compartir comparte Kernelia. Resumen de la home cortado
+  a 3 lineas (el completo vive en la pagina).
+- [x] Mastodon/Bluesky/Telegram y newsletter enlazan al permalink con UTM.
+  Bluesky manda ademas su tarjeta (`app.bsky.embed.external`) con la
+  imagen social: por API Bluesky no genera tarjetas y los posts salian
+  como texto plano.
+- [x] Home con auto-actualizacion cada 5 min (peticion del operador): trae
+  solo lo nuevo via `/api/articles`, lo inserta en orden sin mover lo que
+  se esta leyendo (anclaje de scroll manual, Safari no lo soporta) y
+  muestra "N noticias nuevas" si caen por encima. No consulta con la
+  pestana oculta.
+
+Nota de cierre 9.B: las paginas son ISR (24h), pero en ES el middleware de
+next-intl llega a ellas por rewrite (`/n/…` → `/es/n/…`) y esas peticiones
+se renderizan bajo demanda (medido en `next start`; en EN si cachea). Por eso
+`lib/article-page.ts` cachea ademas los datos con `unstable_cache` (24h la
+noticia, 1h las relacionadas): 1a visita ~640ms, siguientes ~20ms, y los
+rastreadores no multiplican consultas a Supabase.
 
 ### Sub-fase 9.C · Digest de Telegram (08:00 y 17:00)
 

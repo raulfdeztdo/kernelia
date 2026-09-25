@@ -53,7 +53,48 @@ export interface BlueskyPostParams {
    * MUST be a substring of `text`.
    */
   link?: string;
+  /**
+   * Link card (`app.bsky.embed.external`). Bluesky does NOT generate cards
+   * for posts created through the API — without this the post is plain
+   * text. The thumbnail is fetched from `thumbUrl` and uploaded as a blob;
+   * if that fails the card goes out without an image rather than the post
+   * failing.
+   */
+  card?: { uri: string; title: string; description: string; thumbUrl?: string };
   fetchImpl?: typeof fetch;
+}
+
+/** Bluesky rejects blobs over ~1 MB; our OG PNGs are ~50-150 KB. */
+const MAX_THUMB_BYTES = 950_000;
+const THUMB_TIMEOUT_MS = 10_000;
+
+/**
+ * Downloads `thumbUrl` and uploads it as a blob. Returns the blob ref to
+ * embed, or `null` on any problem (the card is still worth sending).
+ */
+async function uploadThumb(
+  fetchImpl: typeof fetch,
+  session: CachedSession,
+  thumbUrl: string,
+): Promise<unknown> {
+  try {
+    const img = await fetchImpl(thumbUrl, { signal: AbortSignal.timeout(THUMB_TIMEOUT_MS) });
+    const type = img.headers.get("content-type") ?? "";
+    if (!img.ok || !type.startsWith("image/")) return null;
+    const bytes = new Uint8Array(await img.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_THUMB_BYTES) return null;
+    const res = await fetchImpl(`${PDS_URL}/xrpc/com.atproto.repo.uploadBlob`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.accessJwt}`, "Content-Type": type },
+      body: bytes,
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { blob?: unknown };
+    return json.blob ?? null;
+  } catch (err) {
+    log.warn("thumb_upload_failed", { reason: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
 }
 
 function requiredEnv(name: string): string {
@@ -128,6 +169,22 @@ export async function postBluesky(params: BlueskyPostParams): Promise<BlueskyPos
         },
       ];
     }
+  }
+
+  if (params.card) {
+    const thumb = params.card.thumbUrl
+      ? await uploadThumb(fetchImpl, session, params.card.thumbUrl)
+      : null;
+    record.embed = {
+      $type: "app.bsky.embed.external",
+      external: {
+        uri: params.card.uri,
+        title: params.card.title,
+        // The lexicon caps nothing here, but clients show ~2 lines.
+        description: params.card.description.slice(0, 300),
+        ...(thumb ? { thumb } : {}),
+      },
+    };
   }
 
   const res = await fetchImpl(`${PDS_URL}/xrpc/com.atproto.repo.createRecord`, {

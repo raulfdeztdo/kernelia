@@ -5,8 +5,9 @@ import { useTranslations } from "next-intl";
 import { MastodonIcon } from "@/components/social-icons";
 
 interface Props {
-  /** Absolute URL of the article (NOT the kernelia.dev permalink — we want
-   *  shares to point at the source so the original publisher gets credit). */
+  /** Absolute kernelia.dev permalink of the article (Phase 9.B). The page
+   *  credits and links the original publisher prominently, and sharing our
+   *  URL is what lets new readers discover Kernelia. */
   url: string;
   /** Article title, used as the subject / status text in share intents. */
   title: string;

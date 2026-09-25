@@ -28,6 +28,7 @@
     "loadMore": "Load more",
     "loadingMore": "Loading…",
     "loadMoreError": "We couldn't load more articles. Try again.",
+    "newArticles": "{count, plural, one {# new article} other {# new articles}}",
     "telegramCallout": {
       "cta": "Join the Telegram channel",
       "hint": "Posts in Spanish"
@@ -47,9 +48,22 @@
     }
   },
   "card": {
-    "readOriginal": "Read on {source}",
     "openInNewTab": "Opens in a new tab",
     "noImage": "No image"
+  },
+  "article": {
+    "back": "All news",
+    "readFull": "Read the full story on {source}",
+    "aiNote": "Summary written by Kernelia from the original article by {source}. The story and its rights belong to its author.",
+    "share": "Share",
+    "related": "More on {category}",
+    "follow": {
+      "title": "Don't miss what matters",
+      "body": "Get the most relevant AI news every day, summarised in two lines.",
+      "telegram": "Telegram channel",
+      "newsletter": "Weekly newsletter"
+    },
+    "via": "Via {source}"
   },
   "share": {
     "copy": "Copy link",

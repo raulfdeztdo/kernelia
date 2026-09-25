@@ -670,6 +670,150 @@ export async function listLatestForFeed(
     .limit(limit);
 }
 
+// ---------------------------------------------------------------------------
+// Article pages (Phase 9.B)
+// ---------------------------------------------------------------------------
+
+/**
+ * Same eligibility as the home feed (classified, relevance >= 0.5, not the
+ * hidden `other` category) but WITHOUT the per-source display cap: the cap
+ * exists to keep the home diverse, not to decide which articles deserve a
+ * page. Every article that could ever appear on the feed gets a permalink.
+ */
+function publicArticleConds() {
+  return [
+    eq(articles.status, "classified"),
+    ne(categories.slug, PUBLIC_HIDDEN_CATEGORY_SLUG),
+    isNotNull(articles.relevanceScore),
+    gte(articles.relevanceScore, PUBLIC_FEED_MIN_RELEVANCE_SCORE),
+  ];
+}
+
+export interface PublicArticle {
+  id: string;
+  /** Title in the requested locale (falls back to the original title). */
+  title: string;
+  summary: string | null;
+  /** Both localized titles, to build the per-locale slugs for hreflang. */
+  titleEs: string | null;
+  titleEn: string | null;
+  originalTitle: string;
+  url: string;
+  imageUrl: string | null;
+  publishedAt: Date;
+  sourceName: string;
+  categorySlug: string | null;
+}
+
+/**
+ * Resolves a permalink short id (first 12 hex digits of the UUID) to a
+ * public article. `lo`/`hi` come from `lib/permalink#shortIdRange` and turn
+ * the lookup into a primary-key range scan. With 48 bits a collision is
+ * vanishingly unlikely at our scale; if one ever happens the lowest id
+ * wins deterministically.
+ */
+export async function getPublicArticleByIdRange(
+  range: { lo: string; hi: string },
+  locale: "es" | "en",
+): Promise<PublicArticle | null> {
+  const titleCol = locale === "es" ? articles.titleEs : articles.titleEn;
+  const summaryCol = locale === "es" ? articles.summaryEs : articles.summaryEn;
+  const [row] = await db
+    .select({
+      id: articles.id,
+      title: sql<string>`coalesce(${titleCol}, ${articles.title})`,
+      summary: summaryCol,
+      titleEs: articles.titleEs,
+      titleEn: articles.titleEn,
+      originalTitle: articles.title,
+      url: articles.url,
+      imageUrl: articles.imageUrl,
+      publishedAt: articles.publishedAt,
+      sourceName: sources.name,
+      categorySlug: categories.slug,
+    })
+    .from(articles)
+    .innerJoin(sources, eq(sources.id, articles.sourceId))
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(
+      and(
+        gte(articles.id, range.lo),
+        lte(articles.id, range.hi),
+        ...publicArticleConds(),
+      ),
+    )
+    .orderBy(asc(articles.id))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Latest public articles of the same category, excluding the current one.
+ * Reuses `ListedArticle` so the article page can render them with the
+ * same `NewsCard` as the home.
+ */
+export async function listRelatedArticles(params: {
+  locale: "es" | "en";
+  categorySlug: string;
+  excludeId: string;
+  limit: number;
+}): Promise<ListedArticle[]> {
+  const titleCol = params.locale === "es" ? articles.titleEs : articles.titleEn;
+  const summaryCol = params.locale === "es" ? articles.summaryEs : articles.summaryEn;
+  return db
+    .select({
+      id: articles.id,
+      title: sql<string>`coalesce(${titleCol}, ${articles.title})`,
+      url: articles.url,
+      summary: summaryCol,
+      imageUrl: articles.imageUrl,
+      sourceLanguage: articles.language,
+      publishedAt: articles.publishedAt,
+      sourceName: sources.name,
+      categorySlug: categories.slug,
+    })
+    .from(articles)
+    .innerJoin(sources, eq(sources.id, articles.sourceId))
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(
+      and(
+        ...publicArticleConds(),
+        eq(categories.slug, params.categorySlug),
+        ne(articles.id, params.excludeId),
+      ),
+    )
+    .orderBy(desc(articles.publishedAt), desc(articles.id))
+    .limit(params.limit);
+}
+
+export interface SitemapArticle {
+  id: string;
+  titleEs: string | null;
+  titleEn: string | null;
+  originalTitle: string;
+  publishedAt: Date;
+}
+
+/**
+ * Every public article, newest first, for `app/sitemap.ts`. Capped well
+ * below the 50k-URLs-per-sitemap limit (two URLs per article).
+ */
+export async function listArticlesForSitemap(limit = 20_000): Promise<SitemapArticle[]> {
+  return db
+    .select({
+      id: articles.id,
+      titleEs: articles.titleEs,
+      titleEn: articles.titleEn,
+      originalTitle: articles.title,
+      publishedAt: articles.publishedAt,
+    })
+    .from(articles)
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(and(...publicArticleConds()))
+    .orderBy(desc(articles.publishedAt))
+    .limit(limit);
+}
+
 export interface CategoryFacet {
   slug: string;
   count: number;

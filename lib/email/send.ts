@@ -1,4 +1,5 @@
 import { createLogger } from "@/lib/logger";
+import { articleUrl, withUtm } from "@/lib/permalink";
 import { getSiteUrl } from "@/lib/site";
 import type { DigestArticle } from "@/lib/newsletter/digest";
 import type { Locale } from "@/db/schema";
@@ -314,7 +315,13 @@ export async function sendWeeklyDigest(
       siteUrl,
       trackingPixelUrl: params.trackingPixelUrl,
     }),
-    text: digestText(params.articles, params.unsubscribeUrl, params.preferencesUrl, copy),
+    text: digestText(
+      params.articles,
+      params.unsubscribeUrl,
+      params.preferencesUrl,
+      copy,
+      params.locale,
+    ),
   };
 
   const res = await fetchImpl(RESEND_ENDPOINT, {
@@ -401,7 +408,21 @@ ${cards}`;
  * category chip, title, summary and source on a meta line. Falls back
  * to a text-only card if `imageUrl` is null.
  */
+/**
+ * Phase 9.B: digest links open the article's page on Kernelia (which
+ * credits and links the publisher), tagged so `/admin/analytics` can
+ * count newsletter-driven visits.
+ */
+function digestLink(article: DigestArticle, locale: Locale): string {
+  return withUtm(articleUrl(locale, article.id, article.title), {
+    source: "newsletter",
+    medium: "email",
+    campaign: "weekly",
+  });
+}
+
 function articleCard(article: DigestArticle, copy: NewsletterCopy, locale: Locale): string {
+  const link = digestLink(article, locale);
   const cat = categoryLabel(article.categorySlug, locale);
   const chip = cat
     ? `<div style="font-size:11px;font-weight:600;color:${BRAND.accent};letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">${escapeHtml(cat)}</div>`
@@ -416,7 +437,7 @@ function articleCard(article: DigestArticle, copy: NewsletterCopy, locale: Local
   // inline `max-width:100%` keeps it responsive on narrow mobile widths.
   const imageCell = article.imageUrl
     ? `<tr><td>
-  <a href="${escapeHtml(article.url)}" style="display:block;">
+  <a href="${escapeHtml(link)}" style="display:block;">
     <img src="${escapeHtml(article.imageUrl)}" alt="" width="544" style="display:block;width:100%;max-width:544px;height:auto;border:0;outline:none;border-top-left-radius:10px;border-top-right-radius:10px;">
   </a>
 </td></tr>`
@@ -426,7 +447,7 @@ function articleCard(article: DigestArticle, copy: NewsletterCopy, locale: Local
 ${imageCell}
 <tr><td style="padding:18px 20px;">
 ${chip}
-<a href="${escapeHtml(article.url)}" style="color:${BRAND.foreground};text-decoration:none;font-weight:600;font-size:16px;line-height:1.35;display:block;">${escapeHtml(article.title)}</a>
+<a href="${escapeHtml(link)}" style="color:${BRAND.foreground};text-decoration:none;font-weight:600;font-size:16px;line-height:1.35;display:block;">${escapeHtml(article.title)}</a>
 ${summary}
 ${meta}
 </td></tr>
@@ -438,13 +459,14 @@ function digestText(
   unsubscribeUrl: string,
   preferencesUrl: string | undefined,
   copy: NewsletterCopy,
+  locale: Locale,
 ): string {
   const lines: string[] = ["Kernelia", "", copy.digestIntro, ""];
   for (const [i, a] of articles.entries()) {
     lines.push(`${i + 1}. ${a.title}`);
     if (a.summary) lines.push(`   ${a.summary}`);
     lines.push(`   ${copy.digestSourcePrefix}: ${a.sourceName}`);
-    lines.push(`   ${a.url}`);
+    lines.push(`   ${digestLink(a, locale)}`);
     lines.push("");
   }
   lines.push("---");
