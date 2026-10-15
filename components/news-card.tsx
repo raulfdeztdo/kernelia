@@ -1,12 +1,13 @@
 "use client";
 
 import type { Route } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { categoryColorVar, isCategorySlug } from "@/lib/categories";
 import { formatRelative } from "@/lib/format";
+import { ArticleImage } from "@/components/article-image";
 import { ShareButtons } from "@/components/share-buttons";
+import { SourceCover } from "@/components/source-cover";
 
 /**
  * Wire-shape of an article as consumed by the card. Mirrors
@@ -52,6 +53,9 @@ export function NewsCard({ article, locale, variant = "full" }: NewsCardProps) {
     : null;
   const accent = slug ? categoryColorVar(slug) : "var(--color-cat-other)";
   const categoryLabel = slug ? tCategories(slug) : null;
+  const cover = (
+    <SourceCover accent={accent} sourceName={article.sourceName} categoryLabel={categoryLabel} />
+  );
 
   return (
     <article
@@ -67,26 +71,13 @@ export function NewsCard({ article, locale, variant = "full" }: NewsCardProps) {
 
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-[color:var(--color-surface-2)]">
         {article.imageUrl ? (
-          // `next/image` with `fill` lets us keep the existing aspect-ratio
-          // wrapper. `sizes` tells the optimiser to generate srcset for the
-          // three breakpoints the grid actually uses (1 / 2 / 3 columns).
-          // `unoptimized` is intentionally NOT set — the proxy strips
-          // Set-Cookie and blocks SVG XSS, both of which matter when the
-          // host is arbitrary.
-          <Image
+          <ArticleImage
             src={article.imageUrl}
-            alt=""
-            fill
-            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-            referrerPolicy="no-referrer"
             className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            fallback={cover}
           />
         ) : (
-          <SourceCover
-            accent={accent}
-            sourceName={article.sourceName}
-            categoryLabel={categoryLabel}
-          />
+          cover
         )}
       </div>
 
@@ -162,62 +153,5 @@ export function NewsCard({ article, locale, variant = "full" }: NewsCardProps) {
         )}
       </div>
     </article>
-  );
-}
-
-/**
- * Designed cover for articles that ship without an image. Instead of looking
- * like a missing-asset placeholder (the old radial-gradient + sparkles), it
- * shows the publication name in large typography over the category accent,
- * so every card reads as intentional.
- */
-function SourceCover({
-  accent,
-  sourceName,
-  categoryLabel,
-}: {
-  accent: string;
-  sourceName: string;
-  categoryLabel: string | null;
-}) {
-  return (
-    <div
-      aria-hidden
-      className="relative flex h-full w-full flex-col justify-between p-5"
-      style={{
-        background: [
-          // Top-left accent wash.
-          `radial-gradient(circle at 15% 0%, color-mix(in oklch, ${accent} 55%, transparent) 0%, transparent 60%)`,
-          // Bottom-right depth.
-          `radial-gradient(circle at 100% 100%, color-mix(in oklch, ${accent} 22%, transparent) 0%, transparent 50%)`,
-          // Base.
-          `linear-gradient(135deg, var(--color-surface-2), var(--color-surface))`,
-        ].join(", "),
-      }}
-    >
-      {/* Subtle inner border so the card edge stays crisp. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-none ring-1 ring-inset ring-white/5"
-      />
-
-      {categoryLabel && (
-        <span
-          className="z-10 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--color-foreground)]/70"
-          style={{ color: accent }}
-        >
-          {categoryLabel}
-        </span>
-      )}
-
-      <span
-        className="z-10 mt-auto text-2xl font-bold leading-tight tracking-tight text-[color:var(--color-foreground)]/90 sm:text-[1.7rem]"
-        style={{
-          fontFeatureSettings: '"ss01"',
-        }}
-      >
-        {sourceName}
-      </span>
-    </div>
   );
 }

@@ -1187,6 +1187,14 @@ se renderizan bajo demanda (medido en `next start`; en EN si cachea). Por eso
 noticia, 1h las relacionadas): 1a visita ~640ms, siguientes ~20ms, y los
 rastreadores no multiplican consultas a Supabase.
 
+Fix posterior (2026-10-15): el optimizador de imagenes de Vercel agoto el
+cupo Hobby y devolvia 402 (`OPTIMIZED_IMAGE_REQUEST_PAYMENT_REQUIRED`) en
+toda imagen no cacheada, que salia como icono roto. Las imagenes de noticia
+pasan a `components/article-image.tsx`: `next/image` con `unoptimized`
+(directas del CDN del medio) y, si la carga falla, `SourceCover` (ahora en
+`components/source-cover.tsx`). Se quita `images.remotePatterns: **` de
+`next.config.ts`, que ademas dejaba `/_next/image` como proxy abierto.
+
 ### Sub-fase 9.C · Digest de Telegram (08:00 y 17:00) · `done` (2026-09-25)
 
 - [x] Migracion `0015`: `channel_digests` (platform, digest_date, slot

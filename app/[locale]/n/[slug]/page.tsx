@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { ArticleImage } from "@/components/article-image";
 import { FollowCta } from "@/components/follow-cta";
 import { NewsCard } from "@/components/news-card";
 import { ShareButtons } from "@/components/share-buttons";
+import { SourceCover } from "@/components/source-cover";
 import type { ListedArticle } from "@/db/queries/articles";
 import { Link } from "@/i18n/navigation";
 import { isLocale, type Locale } from "@/i18n/routing";
@@ -188,14 +189,17 @@ export default async function ArticlePage({ params }: Props) {
 
         {article.imageUrl && (
           <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface-2)]">
-            <Image
+            <ArticleImage
               src={article.imageUrl}
-              alt=""
-              fill
               priority
-              sizes="(min-width: 768px) 768px, 100vw"
-              referrerPolicy="no-referrer"
               className="object-cover"
+              fallback={
+                <SourceCover
+                  accent={accent}
+                  sourceName={article.sourceName}
+                  categoryLabel={categoryLabel}
+                />
+              }
             />
           </div>
         )}
