@@ -4,7 +4,7 @@ import { getPublicArticleByIdRange } from "@/db/queries/articles";
 import { isLocale } from "@/i18n/routing";
 import { isCategorySlug } from "@/lib/categories";
 import { createLogger } from "@/lib/logger";
-import { shortIdRange } from "@/lib/permalink";
+import { defaultOgImageUrl, hasOwnOgCard, shortIdRange } from "@/lib/permalink";
 
 /**
  * Per-article social card (Phase 9.B). This is what Telegram, Mastodon,
@@ -77,17 +77,33 @@ export async function GET(
     }
   }
 
-  const [tCategories, tArticle, tHome] = await Promise.all([
+  // Only fresh articles get a rendered card (see `OG_CARD_MAX_AGE_DAYS`).
+  // Anything else — old articles still linked from cached pages, unknown
+  // ids from crawlers — goes to the static brand card, which costs no
+  // render. A missing article keeps a short TTL so a late classification
+  // gets its own card the same day.
+  if (!article || !hasOwnOgCard(article.publishedAt)) {
+    return new Response(null, {
+      status: 308,
+      headers: {
+        Location: defaultOgImageUrl(locale),
+        "Cache-Control": article
+          ? "public, max-age=86400, s-maxage=2592000"
+          : "public, max-age=300, s-maxage=3600",
+      },
+    });
+  }
+
+  const [tCategories, tArticle] = await Promise.all([
     getTranslations({ locale, namespace: "categories" }),
     getTranslations({ locale, namespace: "article" }),
-    getTranslations({ locale, namespace: "home" }),
   ]);
   const categorySlug =
-    article?.categorySlug && isCategorySlug(article.categorySlug) ? article.categorySlug : null;
+    article.categorySlug && isCategorySlug(article.categorySlug) ? article.categorySlug : null;
   const accent = (categorySlug && CATEGORY_HEX[categorySlug]) || BRAND;
   const category = categorySlug ? tCategories(categorySlug) : null;
-  const { text, fontSize } = fitTitle(article?.title ?? tHome("heading"));
-  const via = article ? tArticle("via", { source: article.sourceName }) : "";
+  const { text, fontSize } = fitTitle(article.title);
+  const via = tArticle("via", { source: article.sourceName });
 
   return new ImageResponse(
     (
@@ -180,11 +196,7 @@ export async function GET(
       ...SIZE,
       headers: {
         // Social scrapers re-fetch aggressively; let Vercel's CDN absorb it.
-        // A missing article gets a short TTL so a late classification
-        // shows up the same day.
-        "Cache-Control": article
-          ? "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400"
-          : "public, max-age=300, s-maxage=3600",
+        "Cache-Control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400",
       },
     },
   );

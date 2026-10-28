@@ -11,7 +11,7 @@ import { Link } from "@/i18n/navigation";
 import { isLocale, type Locale } from "@/i18n/routing";
 import { articleAlternates, getRelatedArticles, resolveArticle } from "@/lib/article-page";
 import { toCardView } from "@/lib/article-view";
-import { articleOgImageUrl } from "@/lib/permalink";
+import { articleShareImageUrl } from "@/lib/permalink";
 import { categoryColorVar, isCategorySlug } from "@/lib/categories";
 import { createLogger } from "@/lib/logger";
 import { SITE_NAME, getSiteUrl } from "@/lib/site";
@@ -60,7 +60,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (resolved.kind !== "ok") return {};
   const { article, canonical } = resolved;
   const description = metaDescription(article.summary, article.title);
-  const ogImage = articleOgImageUrl(locale, article.id);
+  const ogImage = articleShareImageUrl(locale, article);
   return {
     title: article.title,
     description,
@@ -134,7 +134,7 @@ export default async function ArticlePage({ params }: Props) {
     datePublished: article.publishedAt.toISOString(),
     inLanguage: locale,
     mainEntityOfPage: canonical,
-    image: [articleOgImageUrl(locale, article.id)],
+    image: [articleShareImageUrl(locale, article)],
     isBasedOn: article.url,
     publisher: { "@type": "Organization", name: SITE_NAME, url: getSiteUrl() },
   };

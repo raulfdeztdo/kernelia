@@ -1219,6 +1219,28 @@ pasan a `components/article-image.tsx`: `next/image` con `unoptimized`
 Primer digest real: tarde del 2026-09-25 (mensaje 1202 en @kernelia_news),
 enviado a mano desde local a peticion del operador para revisarlo en movil.
 
+### Sub-fase 9.D · Cuota de Vercel: OG y bots · `in-progress` (2026-10-28)
+
+El 2026-10-28 Vercel pauso la cuenta Hobby, que comparten kernelia y
+padelstats. Medido por ruta (28-sep → 28-oct), kernelia gasto 3,3 h de CPU
+y 622K escrituras ISR. La ruta que mas consumia era `/api/og` (43 % de la
+CPU, ~0,7 s por tarjeta). Despues venia `/[locale]/n/[slug]` (61K renders,
+3,7 GB). Casi todo era trafico de bots SEO: los humanos son ~5 paginas
+vistas al dia. Se contrato Pro solo un mes; el objetivo es volver a Hobby
+con todo ≤ 50 % de cada limite.
+
+- [x] K1: tarjeta OG propia solo para noticias de ≤ 7 dias
+  (`OG_CARD_MAX_AGE_DAYS`, `articleShareImageUrl`). Las anteriores
+  anuncian la tarjeta estatica `public/og/default-<locale>.png`, y
+  `/api/og` responde 308 hacia ella sin renderizar.
+- [x] K4: `robots.txt` cierra el sitio a los bots SEO y scrapers de
+  `lib/robots.ts`.
+- [ ] K4: regla de Vercel Firewall (deny por user-agent) en kernelia y
+  padelstats, para los bots que ignoran `robots.txt`.
+- [ ] K2: pagina de articulo sin caducidad + rewrite de `/n/…` cacheable.
+- [ ] K3: sitemap solo de los ultimos 90 dias.
+- [ ] Medir 7 dias con Pro y bajar a Hobby solo si todo queda ≤ 50 %.
+
 ### Criterio de cierre Fase 9
 
 1. La home comunica el posicionamiento y ofrece Telegram y newsletter

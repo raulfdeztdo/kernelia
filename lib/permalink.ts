@@ -68,6 +68,35 @@ export function articleOgImageUrl(locale: Locale, articleId: string): string {
 }
 
 /**
+ * How long an article keeps its own rendered social card. A card costs
+ * ~0.7 s of function CPU (Satori + resvg) and was 43 % of the project's
+ * CPU in Oct-2026: crawlers fetch the `og:image` of every one of the
+ * ~10K article pages, while people only share the news of the last few
+ * days. Older articles point at the static brand card instead.
+ */
+export const OG_CARD_MAX_AGE_DAYS = 7;
+
+export function hasOwnOgCard(publishedAt: Date, now: Date = new Date()): boolean {
+  return now.getTime() - publishedAt.getTime() <= OG_CARD_MAX_AGE_DAYS * 86_400_000;
+}
+
+/** Static brand card (`public/og/`), served by the CDN with no function. */
+export function defaultOgImageUrl(locale: Locale): string {
+  return `${getSiteUrl()}/og/default-${locale}.png`;
+}
+
+/** The social image an article page advertises: its own card while fresh. */
+export function articleShareImageUrl(
+  locale: Locale,
+  article: { id: string; publishedAt: Date },
+  now: Date = new Date(),
+): string {
+  return hasOwnOgCard(article.publishedAt, now)
+    ? articleOgImageUrl(locale, article.id)
+    : defaultOgImageUrl(locale);
+}
+
+/**
  * Appends UTM parameters so `/admin/analytics` can attribute visits to
  * the channel that sent them (our own broadcasts and emails).
  */

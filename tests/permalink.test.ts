@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  OG_CARD_MAX_AGE_DAYS,
   articleHref,
+  articleShareImageUrl,
   articlePath,
   articleSegment,
+  defaultOgImageUrl,
+  hasOwnOgCard,
   parseArticleSegment,
   shortIdOf,
   shortIdRange,
@@ -83,5 +87,26 @@ describe("withUtm", () => {
     expect(url.searchParams.get("utm_source")).toBe("bluesky");
     expect(url.searchParams.get("utm_medium")).toBe("social");
     expect(url.searchParams.has("utm_campaign")).toBe(false);
+  });
+});
+
+describe("social image", () => {
+  const NOW = new Date("2026-10-28T12:00:00Z");
+  const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000);
+
+  it("keeps the rendered card only while the article is fresh", () => {
+    expect(hasOwnOgCard(daysAgo(0), NOW)).toBe(true);
+    expect(hasOwnOgCard(daysAgo(OG_CARD_MAX_AGE_DAYS), NOW)).toBe(true);
+    expect(hasOwnOgCard(daysAgo(OG_CARD_MAX_AGE_DAYS + 0.01), NOW)).toBe(false);
+  });
+
+  it("points fresh articles at their card and older ones at the static one", () => {
+    expect(articleShareImageUrl("en", { id: ID, publishedAt: daysAgo(1) }, NOW)).toMatch(
+      /\/api\/og\/en\/9fa234db12e2$/,
+    );
+    expect(articleShareImageUrl("es", { id: ID, publishedAt: daysAgo(30) }, NOW)).toBe(
+      defaultOgImageUrl("es"),
+    );
+    expect(defaultOgImageUrl("en")).toMatch(/\/og\/default-en\.png$/);
   });
 });

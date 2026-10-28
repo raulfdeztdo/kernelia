@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { BLOCKED_BOTS } from "@/lib/robots";
 import { getSiteUrl } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
@@ -13,6 +14,7 @@ export default function robots(): MetadataRoute.Robots {
         // crawlers from fetching it at all.
         disallow: ["/api/", "/admin/"],
       },
+      { userAgent: [...BLOCKED_BOTS], disallow: "/" },
     ],
     sitemap: `${origin}/sitemap.xml`,
     host: origin,
