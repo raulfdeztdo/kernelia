@@ -1243,9 +1243,7 @@ con todo ≤ 50 % de cada limite.
   ClaudeBot, meta-externalagent, AionBot, Amazonbot, ElevenlabsCrawler,
   Barkrowler). Los de busqueda con IA (OAI-SearchBot, ChatGPT-User,
   PerplexityBot, Claude-SearchBot) siguen permitidos.
-- [ ] K2 (tras el merge, verificar en produccion que la purga por tag
-  funciona: ocultar un articulo con la pagina en `HIT` debe dar 404): la
-  pagina de articulo se renderizaba **cada hora**, no cada dia.
+- [x] K2: la pagina de articulo se renderizaba **cada hora**, no cada dia.
   Next aplica el `revalidate` mas corto de todo lo que lee la pagina, y
   el `unstable_cache` de relacionados usaba 1 h. Ahora pagina, datos y
   relacionados comparten `ARTICLE_PAGE_TTL_S` (7 dias). El tag
@@ -1254,9 +1252,17 @@ con todo ≤ 50 % de cada limite.
   articulo (hook `onArticleChanged`). El rewrite de `/n/…` ya se sirve
   desde la cache ISR en Vercel (`x-vercel-cache: HIT`, medido el
   2026-10-28); el problema solo existia en `next start`.
+  Purga verificada en produccion el 2026-10-28 con un articulo pendiente.
+  Su 404 se cacheo (`HIT`) en ES y EN. Al clasificarlo el cron, la
+  siguiente peticion dio `REVALIDATED` y 308 a su slug canonico. Hubo una
+  unica respuesta `STALE` con el 404 antiguo; a los pocos segundos todo
+  era `HIT` con el 308.
 - [x] K3: el sitemap solo anuncia los ultimos 90 dias
   (`SITEMAP_WINDOW_DAYS`). Las noticias anteriores siguen accesibles.
 - [ ] Medir 7 dias con Pro y bajar a Hobby solo si todo queda ≤ 50 %.
+  Programado para el 2026-11-04 (tarea local
+  `kernelia-padelstats-medicion-cuota`; informe en
+  `informe-cuota-2026-11-04.md`).
 
 ### Criterio de cierre Fase 9
 
