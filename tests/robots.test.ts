@@ -18,4 +18,13 @@ describe("robots", () => {
     expect(BLOCKED_BOTS).not.toContain("Googlebot");
     expect(BLOCKED_BOTS).not.toContain("bingbot");
   });
+
+  it("blocks AI training crawlers but not AI search agents", () => {
+    for (const bot of ["GPTBot", "CCBot", "ClaudeBot", "meta-externalagent"]) {
+      expect(BLOCKED_BOTS).toContain(bot);
+    }
+    for (const bot of ["OAI-SearchBot", "ChatGPT-User", "PerplexityBot", "Claude-SearchBot"]) {
+      expect(BLOCKED_BOTS).not.toContain(bot);
+    }
+  });
 });

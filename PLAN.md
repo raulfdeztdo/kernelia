@@ -1238,7 +1238,11 @@ con todo ≤ 50 % de cada limite.
 - [x] K4: regla de Vercel Firewall "Block SEO and scraper bots" (deny,
   regex de user-agent con la misma lista que `lib/robots.ts`) publicada
   el 2026-10-28 en kernelia y padelstats. Comprobado en produccion:
-  AhrefsBot recibe 403; Googlebot y navegadores, 200.
+  AhrefsBot recibe 403; Googlebot y navegadores, 200. Ampliada el
+  2026-10-28 a los crawlers de IA de entrenamiento (GPTBot, CCBot,
+  ClaudeBot, meta-externalagent, AionBot, Amazonbot, ElevenlabsCrawler,
+  Barkrowler). Los de busqueda con IA (OAI-SearchBot, ChatGPT-User,
+  PerplexityBot, Claude-SearchBot) siguen permitidos.
 - [ ] K2 (tras el merge, verificar en produccion que la purga por tag
   funciona: ocultar un articulo con la pagina en `HIT` debe dar 404): la
   pagina de articulo se renderizaba **cada hora**, no cada dia.
