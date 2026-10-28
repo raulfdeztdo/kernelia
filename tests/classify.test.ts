@@ -215,6 +215,7 @@ describe("runClassify", () => {
 
     const onClassified = vi.fn(async () => {});
     const onFailed = vi.fn(async () => {});
+    const onArticleChanged = vi.fn();
 
     const summary = await runClassify({
       client,
@@ -222,6 +223,7 @@ describe("runClassify", () => {
       fetchPending: async () => pending,
       onClassified,
       onFailed,
+      onArticleChanged,
       resolveCategoryId: async () => "cat-id",
       // These tests exercise the classify pipeline, not dedupe — bypass
       // the recents fetch so we don't hit the (mocked-out) DB layer.
@@ -244,6 +246,8 @@ describe("runClassify", () => {
       }),
     );
     expect(onFailed).not.toHaveBeenCalled();
+    // Phase 9.D: every published article's page gets purged.
+    expect(onArticleChanged.mock.calls).toEqual([["a1"], ["a2"]]);
   });
 
   it("marks article failed on invalid LLM output", async () => {
@@ -880,11 +884,13 @@ describe("runClassify · prefer near-duplicates that carry an image", () => {
     const onClassified = vi.fn(async () => {});
     const onHiddenAsDuplicate = vi.fn(async () => {});
     const onClassifiedReplacingDuplicate = vi.fn(async () => {});
+    const onArticleChanged = vi.fn();
 
     const summary = await runClassify({
       client: makeClient(candidateLlmPayload),
       fetchPending: async () => buildPendingCandidate("https://cdn.example/cover.jpg"),
       onClassified,
+      onArticleChanged,
       onFailed: vi.fn(async () => {}),
       resolveCategoryId: async () => "cat-id",
       fetchRecentForDedupe: async () => [
@@ -906,6 +912,8 @@ describe("runClassify · prefer near-duplicates that carry an image", () => {
       expect.objectContaining({ titleEs: candidateLlmPayload.title_es }),
       expect.objectContaining({ matchedId: "ars" }),
     );
+    // Both pages change: the new winner appears, the old one is hidden.
+    expect(onArticleChanged.mock.calls).toEqual([["wired"], ["ars"]]);
   });
 
   it("HIDE: original has image, candidate doesn't → existing FIFO path", async () => {

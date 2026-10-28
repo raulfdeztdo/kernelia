@@ -8,6 +8,7 @@ import {
 } from "@/db/queries/admin-articles";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { auditAdminAction } from "@/lib/admin-audit";
+import { revalidateArticlePage } from "@/lib/article-page";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,8 @@ export async function POST(
     }
     throw err;
   }
+  // The public page caches for a week; hiding/unhiding must show now.
+  revalidateArticlePage(id);
 
   auditAdminAction({
     adminEmail: auth.user.email,

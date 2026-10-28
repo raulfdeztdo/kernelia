@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { listArticlesForSitemap, type SitemapArticle } from "@/db/queries/articles";
 import { routing } from "@/i18n/routing";
 import { createLogger } from "@/lib/logger";
-import { articleEntries } from "@/lib/sitemap";
+import { articleEntries, sitemapSince } from "@/lib/sitemap";
 import { localeAlternates, localizedUrl } from "@/lib/site";
 
 /**
@@ -34,7 +34,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   let articles: SitemapArticle[] = [];
   try {
-    articles = await listArticlesForSitemap();
+    articles = await listArticlesForSitemap(sitemapSince(now));
   } catch (err) {
     // No DB at build time (CI) or a transient outage: still serve the
     // static routes rather than a 500 that search engines would cache.

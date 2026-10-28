@@ -1239,8 +1239,17 @@ con todo ≤ 50 % de cada limite.
   regex de user-agent con la misma lista que `lib/robots.ts`) publicada
   el 2026-10-28 en kernelia y padelstats. Comprobado en produccion:
   AhrefsBot recibe 403; Googlebot y navegadores, 200.
-- [ ] K2: pagina de articulo sin caducidad + rewrite de `/n/…` cacheable.
-- [ ] K3: sitemap solo de los ultimos 90 dias.
+- [x] K2: la pagina de articulo se renderizaba **cada hora**, no cada dia.
+  Next aplica el `revalidate` mas corto de todo lo que lee la pagina, y
+  el `unstable_cache` de relacionados usaba 1 h. Ahora pagina, datos y
+  relacionados comparten `ARTICLE_PAGE_TTL_S` (7 dias). El tag
+  `article:<shortId>` purga la pagina al ocultar, cambiar la categoria o
+  reclasificar desde el admin, y cuando el cron classify reescribe un
+  articulo (hook `onArticleChanged`). El rewrite de `/n/…` ya se sirve
+  desde la cache ISR en Vercel (`x-vercel-cache: HIT`, medido el
+  2026-10-28); el problema solo existia en `next start`.
+- [x] K3: el sitemap solo anuncia los ultimos 90 dias
+  (`SITEMAP_WINDOW_DAYS`). Las noticias anteriores siguen accesibles.
 - [ ] Medir 7 dias con Pro y bajar a Hobby solo si todo queda ≤ 50 %.
 
 ### Criterio de cierre Fase 9

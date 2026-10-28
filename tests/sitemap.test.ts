@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { articleEntries } from "@/lib/sitemap";
+import { SITEMAP_WINDOW_DAYS, articleEntries, sitemapSince } from "@/lib/sitemap";
 
 describe("articleEntries", () => {
   it("emits one entry per locale with per-locale slugs and hreflang", () => {
@@ -19,5 +19,13 @@ describe("articleEntries", () => {
     expect(en?.url).toMatch(/\/en\/n\/hello-world-9fa234db12e2$/);
     expect(es?.alternates?.languages).toEqual(en?.alternates?.languages);
     expect(es?.alternates?.languages?.["x-default"]).toBe(es?.url);
+  });
+});
+
+describe("sitemapSince", () => {
+  it("only advertises the last SITEMAP_WINDOW_DAYS days", () => {
+    const now = new Date("2026-10-28T12:00:00Z");
+    expect(SITEMAP_WINDOW_DAYS).toBe(90);
+    expect(sitemapSince(now).toISOString()).toBe("2026-07-30T12:00:00.000Z");
   });
 });

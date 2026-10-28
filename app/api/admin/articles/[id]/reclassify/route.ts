@@ -5,6 +5,7 @@ import {
 } from "@/db/queries/admin-articles";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { auditAdminAction } from "@/lib/admin-audit";
+import { revalidateArticlePage } from "@/lib/article-page";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,9 @@ export async function POST(
   }
 
   await adminReclassifyArticle(id);
+  // Back to `pending` = no longer public. The classify tick that
+  // re-publishes it purges the page again with the new content.
+  revalidateArticlePage(id);
 
   auditAdminAction({
     adminEmail: auth.user.email,

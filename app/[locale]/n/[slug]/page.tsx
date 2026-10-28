@@ -25,12 +25,14 @@ import { SITE_NAME, getSiteUrl } from "@/lib/site";
  * summary, credits and links the source prominently, and turns the visit
  * into a follow (Telegram / newsletter) or another read (related news).
  *
- * Rendering: ISR. Pages are built on first request and cached for a day —
+ * Rendering: ISR. Pages are built on first request and cached for a week —
  * the content of a classified article doesn't change, and crawlers
- * walking thousands of sitemap URLs must not each cost a DB round-trip.
+ * walking thousands of sitemap URLs must not each cost a render. Admin
+ * edits and classify ticks purge a page early (`revalidateArticlePage`).
  */
 
-export const revalidate = 86_400;
+/** Must equal `ARTICLE_PAGE_TTL_S` (`lib/article-page.ts`); Next needs a literal. */
+export const revalidate = 604_800;
 
 /**
  * No page is prebuilt at deploy time (thousands of articles, and CI has no

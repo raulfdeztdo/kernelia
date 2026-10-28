@@ -7,6 +7,7 @@ import {
 import { getCategoryMap } from "@/db/queries/categories";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { auditAdminAction } from "@/lib/admin-audit";
+import { revalidateArticlePage } from "@/lib/article-page";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,8 @@ export async function POST(
   }
 
   await adminSetArticleCategory(id, parsed.data.categoryId);
+  // The public page caches for a week and shows the category.
+  revalidateArticlePage(id);
 
   auditAdminAction({
     adminEmail: auth.user.email,

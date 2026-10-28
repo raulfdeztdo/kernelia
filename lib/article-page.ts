@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { cache } from "react";
 import {
   getPublicArticleByIdRange,
@@ -8,7 +8,13 @@ import {
 } from "@/db/queries/articles";
 import type { Locale } from "@/i18n/routing";
 import { routing } from "@/i18n/routing";
-import { articlePath, articleSegment, parseArticleSegment, shortIdRange } from "@/lib/permalink";
+import {
+  articlePath,
+  articleSegment,
+  parseArticleSegment,
+  shortIdOf,
+  shortIdRange,
+} from "@/lib/permalink";
 import { localizedUrl } from "@/lib/site";
 
 /**
@@ -18,34 +24,71 @@ import { localizedUrl } from "@/lib/site";
  * `cache()` dedupes the DB hit: `generateMetadata` and the page body run
  * in the same request and would otherwise query twice.
  *
- * `unstable_cache` (Next data cache, 24h) is the second layer. The page is
- * ISR, but for the default locale the next-intl middleware reaches it via
- * a rewrite (`/n/…` → `/es/n/…`), and rewritten requests are rendered on
- * demand instead of served from the ISR cache (measured on `next start`:
- * `/en/n/…` is cached, `/n/…` is not). Caching the data keeps crawlers
- * walking thousands of Spanish permalinks from turning into thousands of
- * Supabase queries. JSON round-trips turn `Date` into strings, hence the
- * revivers below.
+ * `unstable_cache` (Next data cache) is the second layer. On `next start`
+ * the default-locale permalinks (`/n/…`, reached via a next-intl rewrite
+ * to `/es/n/…`) are rendered on demand instead of served from the ISR
+ * cache; on Vercel they are cached like `/en/n/…` (measured 2026-10-28:
+ * `x-vercel-cache: HIT` on both). Caching the data still keeps a render
+ * from costing a Supabase query. JSON round-trips turn `Date` into
+ * strings, hence the revivers below.
+ *
+ * TTL (phase 9.D): Next renders an ISR page again after the SHORTEST
+ * `revalidate` among the segment config and every `unstable_cache` it
+ * reads. The related list used to cache for 1 h, so ~10K article pages
+ * re-rendered hourly for crawlers: 622K ISR writes in Oct-2026, 3x the
+ * Hobby quota. Everything here now shares `ARTICLE_PAGE_TTL_S`, and the
+ * changes that matter purge one page early via `revalidateArticlePage`.
  */
 
-const DATA_TTL_S = 86_400;
+/**
+ * Lifetime of an article page and of every data cache it reads. Keep the
+ * page's `export const revalidate` equal to this (Next needs a literal
+ * there). The content of a classified article doesn't change; the TTL
+ * only bounds how long a change nobody purges (a cron dedupe hiding an
+ * old winner, a cleanup delete) can stay visible.
+ */
+export const ARTICLE_PAGE_TTL_S = 7 * 86_400;
+
+/**
+ * Cache tag of an article page, keyed like the URL: by short id. Takes
+ * the full article id or the short id itself.
+ */
+export function articleCacheTag(articleId: string): string {
+  return `article:${shortIdOf(articleId)}`;
+}
+
+/**
+ * Drops an article page (both locales) and its data from the cache, so
+ * the next request renders it again: after the admin hides it, changes
+ * its category, or a classify tick rewrites it.
+ */
+export function revalidateArticlePage(articleId: string): void {
+  revalidateTag(articleCacheTag(articleId));
+}
 
 function revivePublic(a: PublicArticle | null): PublicArticle | null {
   return a ? { ...a, publishedAt: new Date(a.publishedAt) } : null;
 }
 
-const cachedArticleByRange = unstable_cache(
-  async (lo: string, hi: string, locale: Locale) => getPublicArticleByIdRange({ lo, hi }, locale),
-  ["article-page:by-range"],
-  { revalidate: DATA_TTL_S },
-);
+// Built per call so the entry carries this article's tag: the tags of the
+// data a page reads become the page's tags, which is what lets
+// `revalidateArticlePage` purge the rendered page too.
+function cachedArticleByRange(shortId: string, locale: Locale): Promise<PublicArticle | null> {
+  const { lo, hi } = shortIdRange(shortId);
+  return unstable_cache(
+    async () => getPublicArticleByIdRange({ lo, hi }, locale),
+    ["article-page:by-range", lo, hi, locale],
+    { revalidate: ARTICLE_PAGE_TTL_S, tags: [articleCacheTag(shortId)] },
+  )();
+}
 
 const cachedRelated = unstable_cache(
   async (locale: Locale, categorySlug: string, excludeId: string, limit: number) =>
     listRelatedArticles({ locale, categorySlug, excludeId, limit }),
   ["article-page:related"],
-  // Shorter: "related" should pick up today's news.
-  { revalidate: 3_600 },
+  // Same TTL as the page on purpose: a shorter one would make the page
+  // re-render that often (see the TTL note above).
+  { revalidate: ARTICLE_PAGE_TTL_S },
 );
 
 export async function getRelatedArticles(params: {
@@ -72,8 +115,7 @@ export const resolveArticle = cache(
   async (locale: Locale, segment: string): Promise<ResolvedArticle> => {
     const parsed = parseArticleSegment(segment);
     if (!parsed) return { kind: "not_found" };
-    const range = shortIdRange(parsed.shortId);
-    const article = revivePublic(await cachedArticleByRange(range.lo, range.hi, locale));
+    const article = revivePublic(await cachedArticleByRange(parsed.shortId, locale));
     if (!article) return { kind: "not_found" };
 
     const expected = articleSegment(article.id, article.title);
