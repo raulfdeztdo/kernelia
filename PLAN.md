@@ -1235,8 +1235,10 @@ con todo ≤ 50 % de cada limite.
   `/api/og` responde 308 hacia ella sin renderizar.
 - [x] K4: `robots.txt` cierra el sitio a los bots SEO y scrapers de
   `lib/robots.ts`.
-- [ ] K4: regla de Vercel Firewall (deny por user-agent) en kernelia y
-  padelstats, para los bots que ignoran `robots.txt`.
+- [x] K4: regla de Vercel Firewall "Block SEO and scraper bots" (deny,
+  regex de user-agent con la misma lista que `lib/robots.ts`) publicada
+  el 2026-10-28 en kernelia y padelstats. Comprobado en produccion:
+  AhrefsBot recibe 403; Googlebot y navegadores, 200.
 - [ ] K2: pagina de articulo sin caducidad + rewrite de `/n/…` cacheable.
 - [ ] K3: sitemap solo de los ultimos 90 dias.
 - [ ] Medir 7 dias con Pro y bajar a Hobby solo si todo queda ≤ 50 %.

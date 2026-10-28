@@ -80,11 +80,12 @@ export async function GET(
   // Only fresh articles get a rendered card (see `OG_CARD_MAX_AGE_DAYS`).
   // Anything else — old articles still linked from cached pages, unknown
   // ids from crawlers — goes to the static brand card, which costs no
-  // render. A missing article keeps a short TTL so a late classification
-  // gets its own card the same day.
+  // render. A missing article (or a transient DB error) gets a temporary
+  // redirect with a short TTL, so a late classification gets its own
+  // card the same day.
   if (!article || !hasOwnOgCard(article.publishedAt)) {
     return new Response(null, {
-      status: 308,
+      status: article ? 308 : 307,
       headers: {
         Location: defaultOgImageUrl(locale),
         "Cache-Control": article

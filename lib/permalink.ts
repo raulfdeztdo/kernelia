@@ -80,7 +80,12 @@ export function hasOwnOgCard(publishedAt: Date, now: Date = new Date()): boolean
   return now.getTime() - publishedAt.getTime() <= OG_CARD_MAX_AGE_DAYS * 86_400_000;
 }
 
-/** Static brand card (`public/og/`), served by the CDN with no function. */
+/**
+ * Static brand card (`public/og/`), served by the CDN with no function.
+ * The PNGs are the route's old generic card (`home.heading` as title):
+ * to regenerate them after a brand or tagline change, check out `f9c1fed`,
+ * run `pnpm dev` and save `/api/og/<locale>/zzzzzzzzzzzz` per locale.
+ */
 export function defaultOgImageUrl(locale: Locale): string {
   return `${getSiteUrl()}/og/default-${locale}.png`;
 }
