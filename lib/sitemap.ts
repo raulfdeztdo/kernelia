@@ -5,6 +5,18 @@ import { articlePath } from "@/lib/permalink";
 import { localizedUrl } from "@/lib/site";
 
 /**
+ * Phase 9.D: only the last 90 days of news go in the sitemap. Bots read
+ * it as "crawl all of this", and walking the whole archive (~10K pages,
+ * two locales) was most of what exhausted the Vercel Hobby quota in
+ * Oct-2026. Older pages stay up and linked; they just aren't advertised.
+ */
+export const SITEMAP_WINDOW_DAYS = 90;
+
+export function sitemapSince(now: Date = new Date()): Date {
+  return new Date(now.getTime() - SITEMAP_WINDOW_DAYS * 86_400_000);
+}
+
+/**
  * Phase 9.B: one entry per (article, locale). Each locale has its own
  * slug, so the hreflang map is built per article rather than with
  * `localeAlternates`.

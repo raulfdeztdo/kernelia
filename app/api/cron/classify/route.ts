@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/auth/cron";
 import { runClassify, DEFAULT_BATCH_SIZE } from "@/lib/ai/run";
+import { revalidateArticlePage } from "@/lib/article-page";
 import { beginCronRun, classifyStatus, endCronRun } from "@/lib/cron-logging";
 
 // Groq free tier on gpt-oss-120b: 30 RPM, 8K TPM, 1K RPD, 200K TPD
@@ -63,6 +64,9 @@ export async function GET(request: Request) {
       delayBetweenMs: DEFAULT_DELAY_BETWEEN_MS,
       maxWallTimeMs: WALL_TIME_BUDGET_MS,
       cronRunId,
+      // Phase 9.D: article pages cache for a week; purge the ones this
+      // tick rewrote (a reclassified article, a replaced duplicate).
+      onArticleChanged: revalidateArticlePage,
     });
     await endCronRun(
       {

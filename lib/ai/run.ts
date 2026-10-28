@@ -169,6 +169,14 @@ export interface RunClassifyOptions extends ClassifyOptions {
    * NULL — the run still works, just without per-tick attribution.
    */
   cronRunId?: string | null;
+  /**
+   * Phase 9.D: called with the id of every article whose public state
+   * this tick may have changed (classified, hidden, failed, or the old
+   * winner a duplicate replaced). The cron route purges those article
+   * pages from the ISR cache; kept as a hook so `lib/ai` stays free of
+   * Next.js. Default: no-op.
+   */
+  onArticleChanged?: (id: string) => void;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -255,6 +263,19 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
   const onHiddenAsNonAi =
     options.onHiddenAsNonAi ??
     ((id, update) => markArticleHiddenAsNonAi({ id, update: { ...update, id }, cronRunId }));
+
+  // A failed cache purge must never change how the article is counted:
+  // it is already written by the time this runs.
+  const onArticleChanged = (id: string): void => {
+    try {
+      options.onArticleChanged?.(id);
+    } catch (err) {
+      log.warn("article_changed_hook_failed", {
+        articleId: id,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   const pending = await fetchPending(limit);
   // Snapshot of recent classified/hidden articles for content-level dedupe.
@@ -383,6 +404,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         titleEnTrim.length < MIN_PUBLISHABLE_TITLE_LENGTH;
       if (result.classification.is_ai_related === false || titleTooShort) {
         await onHiddenAsNonAi(article.id, payload);
+        onArticleChanged(article.id);
         hiddenNonAi++;
         log.info("article_hidden_non_ai", {
           articleId: article.id,
@@ -431,6 +453,8 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
 
         if (shouldReplace) {
           await onClassifiedReplacingDuplicate(article.id, payload, match);
+          onArticleChanged(article.id);
+          onArticleChanged(match.matchedId);
           // Swap winner in the in-memory `recentsById`: the new row takes
           // the classified slot, the old one is hidden but kept (its
           // title still needs to be visible to subsequent candidates in
@@ -460,6 +484,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
           });
         } else {
           await onHiddenAsDuplicate(article.id, payload, match);
+          onArticleChanged(article.id);
           // Push the hidden article into `recentsById` too: a third
           // source arriving in the same tick can dedupe against this
           // one even though it's hidden. The dedupe query already
@@ -481,6 +506,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
         }
       } else {
         await onClassified(article.id, payload);
+        onArticleChanged(article.id);
         recentsById.set(article.id, {
           id: article.id,
           titleEs: payload.titleEs,
@@ -547,6 +573,7 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
       log.warn("article_failed", { articleId: article.id, reason: message });
       try {
         await onFailed(article.id, message);
+        onArticleChanged(article.id);
       } catch (writeErr) {
         const writeMessage = writeErr instanceof Error ? writeErr.message : String(writeErr);
         log.error("mark_failed_error", { articleId: article.id, reason: writeMessage });

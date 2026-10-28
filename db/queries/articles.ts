@@ -795,10 +795,14 @@ export interface SitemapArticle {
 }
 
 /**
- * Every public article, newest first, for `app/sitemap.ts`. Capped well
- * below the 50k-URLs-per-sitemap limit (two URLs per article).
+ * Public articles published since `since`, newest first, for
+ * `app/sitemap.ts`. Capped well below the 50k-URLs-per-sitemap limit
+ * (two URLs per article).
  */
-export async function listArticlesForSitemap(limit = 20_000): Promise<SitemapArticle[]> {
+export async function listArticlesForSitemap(
+  since: Date,
+  limit = 20_000,
+): Promise<SitemapArticle[]> {
   return db
     .select({
       id: articles.id,
@@ -809,7 +813,7 @@ export async function listArticlesForSitemap(limit = 20_000): Promise<SitemapArt
     })
     .from(articles)
     .leftJoin(categories, eq(categories.id, articles.categoryId))
-    .where(and(...publicArticleConds()))
+    .where(and(...publicArticleConds(), gte(articles.publishedAt, since)))
     .orderBy(desc(articles.publishedAt))
     .limit(limit);
 }
