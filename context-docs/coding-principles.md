@@ -132,6 +132,18 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
     Las respuestas constantes — tanto el endpoint de forgot-password como
     el de login no revelan si el email existe (anti-enumeracion).
 - Rate limit en endpoints de busqueda si llegan a publico (no urgente).
+- **Coste en Vercel Hobby (Fase 9.D):** la cuota (CPU activa, escrituras
+  ISR, transferencia) es de la cuenta y la comparte padelstats; si se
+  agota, Vercel pausa los dos proyectos. Casi todo el trafico es de bots.
+  - Las tarjetas OG renderizadas (`/api/og`) solo existen para noticias de
+    ≤ `OG_CARD_MAX_AGE_DAYS`; el resto usa `public/og/default-<locale>.png`.
+  - Los bots SEO y scrapers sin retorno se listan en `lib/robots.ts`
+    (`robots.txt`). Los que lo ignoran se cortan con una regla de Vercel
+    Firewall por user-agent, que se gestiona en el panel y no esta en el
+    repo. Mantener ambas listas sincronizadas.
+  - Antes de abrir una ruta publica indexable, estimar su coste:
+    URLs × renders al mes × CPU por render, y escrituras ISR ≈ KB por
+    render / 8.
 
 ## 9. CI/CD
 
