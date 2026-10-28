@@ -267,12 +267,14 @@ describe("runClassify", () => {
     const client = makeClient("garbage");
     const onClassified = vi.fn(async () => {});
     const onFailed = vi.fn(async () => {});
+    const onArticleChanged = vi.fn();
 
     const summary = await runClassify({
       client,
       fetchPending: async () => pending,
       onClassified,
       onFailed,
+      onArticleChanged,
       resolveCategoryId: async () => "cat-id",
       // These tests exercise the classify pipeline, not dedupe — bypass
       // the recents fetch so we don't hit the (mocked-out) DB layer.
@@ -281,6 +283,7 @@ describe("runClassify", () => {
 
     expect(summary.classified).toBe(0);
     expect(summary.failed).toBe(1);
+    expect(onArticleChanged).toHaveBeenCalledWith("a1");
     expect(onClassified).not.toHaveBeenCalled();
     expect(onFailed).toHaveBeenCalledWith("a1", expect.stringMatching(/non-JSON/i));
   });
@@ -920,11 +923,13 @@ describe("runClassify · prefer near-duplicates that carry an image", () => {
     const onClassified = vi.fn(async () => {});
     const onHiddenAsDuplicate = vi.fn(async () => {});
     const onClassifiedReplacingDuplicate = vi.fn(async () => {});
+    const onArticleChanged = vi.fn();
 
     const summary = await runClassify({
       client: makeClient(candidateLlmPayload),
       fetchPending: async () => buildPendingCandidate(null),
       onClassified,
+      onArticleChanged,
       onFailed: vi.fn(async () => {}),
       resolveCategoryId: async () => "cat-id",
       fetchRecentForDedupe: async () => [
@@ -939,6 +944,8 @@ describe("runClassify · prefer near-duplicates that carry an image", () => {
     expect(summary.classified).toBe(0);
     expect(onHiddenAsDuplicate).toHaveBeenCalledOnce();
     expect(onClassifiedReplacingDuplicate).not.toHaveBeenCalled();
+    // Only the hidden candidate changes; the original keeps its page.
+    expect(onArticleChanged.mock.calls).toEqual([["wired"]]);
   });
 
   it("HIDE: both have images → FIFO (original wins)", async () => {
@@ -1050,11 +1057,13 @@ describe("runClassify · is_ai_related gate (Phase 8.B)", () => {
     const onClassified = vi.fn(async () => {});
     const onHiddenAsDuplicate = vi.fn(async () => {});
     const onHiddenAsNonAi = vi.fn(async () => {});
+    const onArticleChanged = vi.fn();
 
     const summary = await runClassify({
       client: makeClient(nonAiPayload),
       fetchPending: async () => samplePending,
       onClassified,
+      onArticleChanged,
       onFailed: vi.fn(async () => {}),
       resolveCategoryId: async () => "cat-id",
       // Provide a recent that WOULD trip dedupe if the orchestrator
@@ -1075,6 +1084,7 @@ describe("runClassify · is_ai_related gate (Phase 8.B)", () => {
     expect(onClassified).not.toHaveBeenCalled();
     expect(onHiddenAsDuplicate).not.toHaveBeenCalled();
     expect(onHiddenAsNonAi).toHaveBeenCalledOnce();
+    expect(onArticleChanged).toHaveBeenCalledWith("noise");
     expect(onHiddenAsNonAi).toHaveBeenCalledWith(
       "noise",
       expect.objectContaining({

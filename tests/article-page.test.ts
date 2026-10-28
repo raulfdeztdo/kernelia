@@ -12,10 +12,7 @@ describe("article page cache", () => {
   it("keeps the page's literal `revalidate` equal to ARTICLE_PAGE_TTL_S", () => {
     // Next needs a literal in the segment config, so the two can drift
     // apart; a shorter data TTL would silently shrink the page's.
-    const source = readFileSync(
-      join(process.cwd(), "app/[locale]/n/[slug]/page.tsx"),
-      "utf8",
-    );
+    const source = readFileSync(join(process.cwd(), "app/[locale]/n/[slug]/page.tsx"), "utf8");
     const match = /export const revalidate = ([\d_]+);/.exec(source);
     expect(Number(match?.[1]?.replace(/_/g, ""))).toBe(ARTICLE_PAGE_TTL_S);
   });

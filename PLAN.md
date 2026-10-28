@@ -1239,7 +1239,9 @@ con todo ≤ 50 % de cada limite.
   regex de user-agent con la misma lista que `lib/robots.ts`) publicada
   el 2026-10-28 en kernelia y padelstats. Comprobado en produccion:
   AhrefsBot recibe 403; Googlebot y navegadores, 200.
-- [x] K2: la pagina de articulo se renderizaba **cada hora**, no cada dia.
+- [ ] K2 (tras el merge, verificar en produccion que la purga por tag
+  funciona: ocultar un articulo con la pagina en `HIT` debe dar 404): la
+  pagina de articulo se renderizaba **cada hora**, no cada dia.
   Next aplica el `revalidate` mas corto de todo lo que lee la pagina, y
   el `unstable_cache` de relacionados usaba 1 h. Ahora pagina, datos y
   relacionados comparten `ARTICLE_PAGE_TTL_S` (7 dias). El tag

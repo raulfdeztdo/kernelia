@@ -145,7 +145,9 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
     corto entre el segment config y cada `unstable_cache` que leen. Un
     cache de datos con TTL corto acorta la pagina entera. Las paginas
     de articulo usan `ARTICLE_PAGE_TTL_S` en todo y se purgan por tag
-    (`revalidateArticlePage`).
+    (`revalidateArticlePage`). Toda mutacion de visibilidad fuera de
+    `runClassify` y de las rutas admin (scripts manuales, borrados del
+    cleanup) debe llamarla o aceptar hasta 7 dias de pagina desfasada.
   - El sitemap solo lista los ultimos `SITEMAP_WINDOW_DAYS` (90) dias.
   - Antes de abrir una ruta publica indexable, estimar su coste:
     URLs × renders al mes × CPU por render, y escrituras ISR ≈ KB por

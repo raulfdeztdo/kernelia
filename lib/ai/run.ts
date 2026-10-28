@@ -264,7 +264,18 @@ export async function runClassify(options: RunClassifyOptions = {}): Promise<Cla
     options.onHiddenAsNonAi ??
     ((id, update) => markArticleHiddenAsNonAi({ id, update: { ...update, id }, cronRunId }));
 
-  const onArticleChanged = options.onArticleChanged ?? (() => {});
+  // A failed cache purge must never change how the article is counted:
+  // it is already written by the time this runs.
+  const onArticleChanged = (id: string): void => {
+    try {
+      options.onArticleChanged?.(id);
+    } catch (err) {
+      log.warn("article_changed_hook_failed", {
+        articleId: id,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   const pending = await fetchPending(limit);
   // Snapshot of recent classified/hidden articles for content-level dedupe.
