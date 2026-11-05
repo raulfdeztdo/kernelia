@@ -1,0 +1,9 @@
+# Kernelia worker en Hepha (fase 9.D). Añadir al crontab de raulfdeztdo y
+# QUITAR la linea antigua `0 */3 * * * .../kernelia-cron.sh ingest`.
+#
+# ingest: cada 3 h en punto, como antes.
+0 */3 * * * /home/raulfdeztdo/kernelia-worker/scripts/hepha/kernelia-worker.sh ingest
+# og-cards: 2 min despues de cada classify (:00/:30) y antes del broadcast (:05).
+2,32 * * * * /home/raulfdeztdo/kernelia-worker/scripts/hepha/kernelia-worker.sh og-cards
+# deploy: pone el checkout al dia con origin/main una vez al dia.
+40 4 * * * /home/raulfdeztdo/kernelia-worker/scripts/hepha/kernelia-worker.sh deploy

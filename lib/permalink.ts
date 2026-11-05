@@ -90,15 +90,39 @@ export function defaultOgImageUrl(locale: Locale): string {
   return `${getSiteUrl()}/og/default-${locale}.png`;
 }
 
-/** The social image an article page advertises: its own card while fresh. */
+/**
+ * Supabase Storage bucket with the cards the Hepha worker pre-renders
+ * (phase 9.D, `scripts/worker.ts og-cards`). Rendering on Vercel kept
+ * costing ~1.2 h of CPU a month even for fresh news only: Mastodon
+ * instances, link previewers and every CDN region fetch each card again.
+ */
+export const OG_CARDS_BUCKET = "og-cards";
+
+/** Object path of a card inside `OG_CARDS_BUCKET`: `<locale>/<shortId>.png`. */
+export function ogCardObjectPath(locale: Locale, articleId: string): string {
+  return `${locale}/${shortIdOf(articleId)}.png`;
+}
+
+/** Public URL of the pre-rendered card, or null without Supabase configured (tests, CI). */
+export function ogCardStorageUrl(locale: Locale, articleId: string): string | null {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return null;
+  const path = ogCardObjectPath(locale, articleId);
+  return `${base.replace(/\/+$/, "")}/storage/v1/object/public/${OG_CARDS_BUCKET}/${path}`;
+}
+
+/**
+ * The social image an article page advertises: its own card while fresh
+ * (the pre-rendered copy in Storage, or the `/api/og` route when Supabase
+ * isn't configured), the static brand card afterwards.
+ */
 export function articleShareImageUrl(
   locale: Locale,
   article: { id: string; publishedAt: Date },
   now: Date = new Date(),
 ): string {
-  return hasOwnOgCard(article.publishedAt, now)
-    ? articleOgImageUrl(locale, article.id)
-    : defaultOgImageUrl(locale);
+  if (!hasOwnOgCard(article.publishedAt, now)) return defaultOgImageUrl(locale);
+  return ogCardStorageUrl(locale, article.id) ?? articleOgImageUrl(locale, article.id);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   OG_CARD_MAX_AGE_DAYS,
   articleHref,
@@ -7,6 +7,8 @@ import {
   articleSegment,
   defaultOgImageUrl,
   hasOwnOgCard,
+  ogCardObjectPath,
+  ogCardStorageUrl,
   parseArticleSegment,
   shortIdOf,
   shortIdRange,
@@ -100,10 +102,27 @@ describe("social image", () => {
     expect(hasOwnOgCard(daysAgo(OG_CARD_MAX_AGE_DAYS + 0.01), NOW)).toBe(false);
   });
 
-  it("points fresh articles at their card and older ones at the static one", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("points fresh articles at the card pre-rendered in Storage", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://ref.supabase.co/");
+    expect(ogCardObjectPath("en", ID)).toBe("en/9fa234db12e2.png");
+    expect(articleShareImageUrl("en", { id: ID, publishedAt: daysAgo(1) }, NOW)).toBe(
+      "https://ref.supabase.co/storage/v1/object/public/og-cards/en/9fa234db12e2.png",
+    );
+  });
+
+  it("falls back to the /api/og route without Supabase configured", () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    expect(ogCardStorageUrl("en", ID)).toBeNull();
     expect(articleShareImageUrl("en", { id: ID, publishedAt: daysAgo(1) }, NOW)).toMatch(
       /\/api\/og\/en\/9fa234db12e2$/,
     );
+  });
+
+  it("points older articles at the static brand card", () => {
     expect(articleShareImageUrl("es", { id: ID, publishedAt: daysAgo(30) }, NOW)).toBe(
       defaultOgImageUrl("es"),
     );

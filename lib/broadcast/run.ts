@@ -7,7 +7,8 @@ import {
 } from "@/db/queries/article-broadcasts";
 import type { BroadcastPlatform } from "@/db/schema";
 import { createLogger } from "@/lib/logger";
-import { articleOgImageUrl, articleUrl, withUtm } from "@/lib/permalink";
+import { resolveOgCardUrl } from "@/lib/og/storage";
+import { articleUrl, withUtm } from "@/lib/permalink";
 import { formatPost } from "./format";
 import { postMastodon } from "./mastodon";
 import { postBluesky } from "./bluesky";
@@ -226,7 +227,8 @@ function defaultPosters(): Record<BroadcastPlatform, PlatformPostFn> {
       const text = formatPost({ ...article, url: link }, "bluesky");
       // Bluesky never builds link cards server-side for API posts: the
       // client must send the card itself. The thumbnail is our own OG
-      // image, so the post shows the Kernelia-branded card.
+      // image, so the post shows the Kernelia-branded card: the copy the
+      // Hepha worker pre-rendered, or the `/api/og` route if it's missing.
       const res = await postBluesky({
         text,
         link,
@@ -234,7 +236,7 @@ function defaultPosters(): Record<BroadcastPlatform, PlatformPostFn> {
           uri: link,
           title: article.titleEs,
           description: article.summaryEs ?? "",
-          thumbUrl: articleOgImageUrl("es", article.id),
+          thumbUrl: await resolveOgCardUrl("es", article.id),
         },
       });
       return { externalId: res.uri };
