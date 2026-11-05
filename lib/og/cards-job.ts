@@ -98,9 +98,9 @@ export async function runOgCardsJob(deps: OgCardsDeps): Promise<OgCardsSummary> 
   for (const { locale, article, path } of plan.render) {
     try {
       const t = deps.labels(locale);
-      const slug = article.categorySlug && isCategorySlug(article.categorySlug) ? article.categorySlug : null;
-      const title =
-        (locale === "es" ? article.titleEs : article.titleEn) ?? article.originalTitle;
+      const slug =
+        article.categorySlug && isCategorySlug(article.categorySlug) ? article.categorySlug : null;
+      const title = (locale === "es" ? article.titleEs : article.titleEn) ?? article.originalTitle;
       const png = await deps.renderCard({
         title,
         categorySlug: slug,

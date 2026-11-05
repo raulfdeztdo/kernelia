@@ -5,5 +5,7 @@
 0 */3 * * * /home/raulfdeztdo/kernelia-worker/scripts/hepha/kernelia-worker.sh ingest
 # og-cards: 2 min despues de cada classify (:00/:30) y antes del broadcast (:05).
 2,32 * * * * /home/raulfdeztdo/kernelia-worker/scripts/hepha/kernelia-worker.sh og-cards
-# deploy: pone el checkout al dia con origin/main una vez al dia.
+# deploy: pone el checkout al dia con origin/main una vez al dia. Anadir
+# SOLO despues del merge: antes, `main` no tiene scripts/hepha/ y el deploy
+# dejaria las lineas de arriba apuntando a un fichero que no existe.
 40 4 * * * /home/raulfdeztdo/kernelia-worker/scripts/hepha/kernelia-worker.sh deploy

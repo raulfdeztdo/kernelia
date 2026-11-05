@@ -6,7 +6,7 @@ import {
   planOgCards,
   runOgCardsJob,
 } from "@/lib/og/cards-job";
-import { resolveOgCardUrl } from "@/lib/og/storage";
+import { StorageClient, resolveOgCardUrl } from "@/lib/og/storage";
 
 const NOW = new Date("2026-11-05T12:00:00Z");
 const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000);
@@ -64,8 +64,15 @@ describe("runOgCardsJob", () => {
     const upload = vi.fn(async () => {});
     const remove = vi.fn(async () => {});
     const summary = await runOgCardsJob({
-      listArticles: async () => [article("eeeeeeee", 1), { ...article("ffffffff", 1), titleEs: null }],
-      listExisting: async () => ["es/eeeeeeee0000.png", "en/ffffffff0000.png", "es/old00000000.png"],
+      listArticles: async () => [
+        article("eeeeeeee", 1),
+        { ...article("ffffffff", 1), titleEs: null },
+      ],
+      listExisting: async () => [
+        "es/eeeeeeee0000.png",
+        "en/ffffffff0000.png",
+        "es/old00000000.png",
+      ],
       renderCard,
       upload,
       remove,
@@ -102,11 +109,82 @@ describe("resolveOgCardUrl", () => {
   it("falls back to the /api/og route when the copy is missing or unreachable", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://ref.supabase.co");
     const missing = vi.fn(async () => new Response(null, { status: 400 }));
-    await expect(resolveOgCardUrl("es", ID, missing)).resolves.toMatch(/\/api\/og\/es\/9fa234db12e2$/);
+    await expect(resolveOgCardUrl("es", ID, missing)).resolves.toMatch(
+      /\/api\/og\/es\/9fa234db12e2$/,
+    );
     const down = vi.fn(async () => {
       throw new Error("network");
     });
     await expect(resolveOgCardUrl("es", ID, down)).resolves.toMatch(/\/api\/og\/es\/9fa234db12e2$/);
     vi.unstubAllEnvs();
+  });
+});
+
+describe("StorageClient", () => {
+  function fakeFetch(responses: Response[]) {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const impl: typeof fetch = async (url, init) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      return responses.shift() ?? new Response("[]");
+    };
+    return { impl, calls };
+  }
+
+  it("uploads with upsert, content type and a week of cache", async () => {
+    const { impl, calls } = fakeFetch([new Response("{}")]);
+    const client = new StorageClient({
+      supabaseUrl: "https://ref.supabase.co/",
+      serviceKey: "k",
+      fetchImpl: impl,
+    });
+    await client.upload("es/abc.png", new Uint8Array([1]));
+    expect(calls[0]?.url).toBe("https://ref.supabase.co/storage/v1/object/og-cards/es/abc.png");
+    expect(calls[0]?.init.headers).toMatchObject({
+      Authorization: "Bearer k",
+      "Content-Type": "image/png",
+      "Cache-Control": "max-age=604800",
+      "x-upsert": "true",
+    });
+  });
+
+  it("pages through list until a short page", async () => {
+    const full = Array.from({ length: 1000 }, (_, i) => ({ name: `${i}.png` }));
+    const { impl, calls } = fakeFetch([
+      new Response(JSON.stringify(full)),
+      new Response(JSON.stringify([{ name: "last.png" }])),
+    ]);
+    const client = new StorageClient({
+      supabaseUrl: "https://ref.supabase.co",
+      serviceKey: "k",
+      fetchImpl: impl,
+    });
+    const names = await client.list("es/");
+    expect(names).toHaveLength(1001);
+    expect(calls.map((c) => JSON.parse(String(c.init.body)).offset)).toEqual([0, 1000]);
+  });
+
+  it("removes in batches of 1000 and does nothing for an empty list", async () => {
+    const { impl, calls } = fakeFetch([]);
+    const client = new StorageClient({
+      supabaseUrl: "https://ref.supabase.co",
+      serviceKey: "k",
+      fetchImpl: impl,
+    });
+    await client.remove([]);
+    expect(calls).toHaveLength(0);
+    await client.remove(Array.from({ length: 1500 }, (_, i) => `es/${i}.png`));
+    expect(calls.map((c) => JSON.parse(String(c.init.body)).prefixes.length)).toEqual([1000, 500]);
+  });
+
+  it("throws with the status, never the key, on an error response", async () => {
+    const { impl } = fakeFetch([new Response("bad", { status: 403 })]);
+    const client = new StorageClient({
+      supabaseUrl: "https://ref.supabase.co",
+      serviceKey: "secret",
+      fetchImpl: impl,
+    });
+    const err = await client.upload("es/a.png", new Uint8Array()).catch((e: Error) => e);
+    expect(String(err)).toContain("HTTP 403");
+    expect(String(err)).not.toContain("secret");
   });
 });

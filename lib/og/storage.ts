@@ -57,22 +57,28 @@ export class StorageClient {
         headers: { ...this.headers, "Content-Type": "application/json" },
         body: JSON.stringify({ prefix, limit: LIST_PAGE_SIZE, offset }),
       });
-      if (!res.ok) throw new Error(`storage list ${prefix}: HTTP ${res.status} ${await res.text()}`);
+      if (!res.ok)
+        throw new Error(`storage list ${prefix}: HTTP ${res.status} ${await res.text()}`);
       const page = (await res.json()) as { name: string }[];
       names.push(...page.map((o) => o.name));
       if (page.length < LIST_PAGE_SIZE) return names;
     }
   }
 
-  /** Deletes the given object paths (no-op for an empty list). */
+  /**
+   * Deletes the given object paths (no-op for an empty list), in batches:
+   * Storage caps a DELETE at ~1000 paths, which a long outage could exceed.
+   */
   async remove(paths: readonly string[]): Promise<void> {
-    if (paths.length === 0) return;
-    const res = await this.fetchImpl(`${this.base}/object/${OG_CARDS_BUCKET}`, {
-      method: "DELETE",
-      headers: { ...this.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ prefixes: paths }),
-    });
-    if (!res.ok) throw new Error(`storage remove: HTTP ${res.status} ${await res.text()}`);
+    for (let i = 0; i < paths.length; i += LIST_PAGE_SIZE) {
+      const batch = paths.slice(i, i + LIST_PAGE_SIZE);
+      const res = await this.fetchImpl(`${this.base}/object/${OG_CARDS_BUCKET}`, {
+        method: "DELETE",
+        headers: { ...this.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ prefixes: batch }),
+      });
+      if (!res.ok) throw new Error(`storage remove: HTTP ${res.status} ${await res.text()}`);
+    }
   }
 }
 

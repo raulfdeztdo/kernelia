@@ -38,13 +38,23 @@ rotate_log() {
 }
 
 push_kuma() {
-  # Opcional: KUMA_PUSH_URL en el .env. Nunca debe hacer fallar el tick.
-  [ -n "${KUMA_PUSH_URL:-}" ] || return 0
+  # Opcional: un push monitor POR JOB (KUMA_PUSH_URL_INGEST,
+  # KUMA_PUSH_URL_OG_CARDS) en el .env, para que un job sano no tape a uno
+  # caido. Nunca debe hacer fallar el tick.
+  local var url
+  var="KUMA_PUSH_URL_$(printf '%s' "${JOB}" | tr 'a-z-' 'A-Z_')"
+  url="${!var:-}"
+  [ -n "${url}" ] || return 0
   curl --silent --max-time 10 --get --data-urlencode "status=$1" \
-    --data-urlencode "msg=$2" "${KUMA_PUSH_URL}" >/dev/null 2>&1 || true
+    --data-urlencode "msg=$2" "${url}" >/dev/null 2>&1 || true
 }
 
-mkdir -p "${LOCK_DIR}"
+mkdir -p "${LOCK_DIR}" "$(dirname "${LOG}")"
+
+# Cron no tiene MTA en la Pi: cualquier fallo del propio wrapper (env que
+# falta, `cd`, `git fetch`, `pnpm install`, cerrojo que no llega) tiene que
+# quedar en el log y en Kuma, no perderse por stderr.
+trap 'rc=$?; log "ERROR wrapper linea ${LINENO} (rc=${rc})"; push_kuma down "${JOB}: wrapper linea ${LINENO}"' ERR
 
 if [ "${JOB}" = "deploy" ]; then
   exec 8>"${LOCK_DIR}/kernelia-worker.ingest.lock"; flock --wait 600 8
@@ -57,8 +67,11 @@ if [ "${JOB}" = "deploy" ]; then
   git fetch --quiet origin "${BRANCH}"
   git reset --quiet --hard FETCH_HEAD
   after="$(git rev-parse --short HEAD)"
-  if [ "${before}" != "${after}" ] || [ ! -d node_modules ]; then
+  # Marca del ultimo install correcto: si uno falla, el siguiente deploy lo
+  # repite aunque el commit no haya cambiado.
+  if [ "$(cat .worker-installed 2>/dev/null)" != "${after}" ] || [ ! -d node_modules ]; then
     CI=true pnpm install --frozen-lockfile --silent
+    printf '%s\n' "${after}" > .worker-installed
   fi
   log "OK ${BRANCH} ${before} -> ${after}"
   rotate_log
@@ -81,14 +94,14 @@ set -a; . "${ENV_FILE}"; set +a
 
 cd "${APP_DIR}"
 started=$(date +%s)
-# timeout: ingest tarda ~5-10 s en la Pi y og-cards < 1 min con un tick
-# normal; 300 s solo corta un cuelgue de red.
-set +e
-out=$(KERNELIA_ENV_FILE=/dev/null timeout 300 \
-  pnpm --silent exec tsx --tsconfig tsconfig.worker.json scripts/worker.ts "${JOB}" 2>&1)
-code=$?
-set -e
-summary=$(printf '%s\n' "${out}" | grep '^{"job"' | tail -1)
+# timeout: ingest tarda ~8 s en la Pi y og-cards < 1 min con un tick
+# normal; 300 s solo corta un cuelgue de red (y --kill-after, uno sordo a TERM).
+code=0
+out=$(KERNELIA_ENV_FILE=/dev/null timeout --kill-after=30 300 \
+  pnpm --silent exec tsx --tsconfig tsconfig.worker.json scripts/worker.ts "${JOB}" 2>&1) || code=$?
+# Sin JSON de resumen (timeout, OOM, modulo que falta) se registra la ultima
+# linea de la salida: `|| true` evita que set -e/pipefail corte aqui.
+summary=$(printf '%s\n' "${out}" | grep '^{"job"' | tail -1 || true)
 [ -n "${summary}" ] || summary=$(printf '%s\n' "${out}" | tail -1)
 elapsed=$(( $(date +%s) - started ))
 

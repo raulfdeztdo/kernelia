@@ -69,8 +69,16 @@ async function ogCards(): Promise<boolean> {
     upload: (path, png) => storage.upload(path, png),
     remove: (paths) => storage.remove(paths),
     labels: (locale) => {
-      const categories = createTranslator({ locale, messages: messages[locale], namespace: "categories" });
-      const article = createTranslator({ locale, messages: messages[locale], namespace: "article" });
+      const categories = createTranslator({
+        locale,
+        messages: messages[locale],
+        namespace: "categories",
+      });
+      const article = createTranslator({
+        locale,
+        messages: messages[locale],
+        namespace: "article",
+      });
       return {
         category: (slug) => categories(slug as Parameters<typeof categories>[0]),
         via: (source) => article("via", { source }),
@@ -91,7 +99,9 @@ async function main(): Promise<void> {
   try {
     ok = job === "ingest" ? await ingest() : await ogCards();
   } catch (err) {
-    console.log(JSON.stringify({ job, ok: false, error: err instanceof Error ? err.message : String(err) }));
+    console.log(
+      JSON.stringify({ job, ok: false, error: err instanceof Error ? err.message : String(err) }),
+    );
   }
   // The postgres pool keeps the event loop alive; exit explicitly.
   process.exit(ok ? 0 : 1);

@@ -32,6 +32,9 @@ Production: <https://kernelia.dev>
 - **LLM:** Groq `openai/gpt-oss-120b` via the OpenAI-compatible SDK. Provider is env-driven
   (`LLM_BASE_URL` / `LLM_MODEL`); swapping vendors needs no code change.
 - **UI:** Tailwind v4 + shadcn/ui + Lucide icons.
+- **Hepha worker:** since phase 9.D, `ingest` and the social cards (`og-cards`) run on the
+  operator's Raspberry Pi (`scripts/worker.ts`, scheduled by `scripts/hepha/`), not on
+  Vercel. Cards are pre-rendered into the public Supabase Storage bucket `og-cards`.
 - **Cron:** GitHub Actions hits `/api/cron/{ingest,classify,broadcast,newsletter,cleanup}`
   with `CRON_SECRET`. The `schedule:` entries are a request, not a guarantee — GitHub
   deprioritises low-activity repos and served only ~13% of the classify ticks through
@@ -110,6 +113,8 @@ backend-agent  ⟂  frontend-agent     ← parallel where possible
 | `components/` | UI; `components/ui/` is shadcn primitives. |
 | `lib/ai/` | LLM client (provider-agnostic), prompts, Zod schemas, `classifyArticle`, `runClassify`. |
 | `lib/ingest/` | RSS parser, dedupe, normalisation. |
+| `lib/og/` | Social card (`card.tsx`, shared by `/api/og` and the Hepha worker), Supabase Storage client and the `og-cards` job. |
+| `scripts/worker.ts`, `scripts/hepha/` | Hepha worker (`ingest`, `og-cards`) and its cron wrapper, crontab and env example. Runs with `tsx --tsconfig tsconfig.worker.json`. |
 | `lib/broadcast/` | Auto-publication to Mastodon + Bluesky + Telegram. Per-platform clients + orchestrator + text formatter. Server-only. |
 | `lib/auth/` | Password hashing (bcrypt), password-reset tokens, HMAC-signed session cookie, in-memory rate-limit. Server-only. |
 | `lib/email/` | Minimal Resend wrapper (`sendPasswordReset`). |
