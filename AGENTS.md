@@ -35,7 +35,7 @@ Production: <https://kernelia.dev>
 - **Hepha worker:** since phase 9.D, `ingest` and the social cards (`og-cards`) run on the
   operator's Raspberry Pi (`scripts/worker.ts`, scheduled by `scripts/hepha/`), not on
   Vercel. Cards are pre-rendered into the public Supabase Storage bucket `og-cards`.
-- **Cron:** GitHub Actions hits `/api/cron/{ingest,classify,broadcast,newsletter,cleanup}`
+- **Cron:** GitHub Actions hits `/api/cron/{classify,broadcast,newsletter,cleanup}` (`ingest` only on manual dispatch)
   with `CRON_SECRET`. The `schedule:` entries are a request, not a guarantee — GitHub
   deprioritises low-activity repos and served only ~13% of the classify ticks through
   Sep-2026. Each delivered run therefore LOOPS over its endpoint
