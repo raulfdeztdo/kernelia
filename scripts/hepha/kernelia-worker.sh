@@ -109,6 +109,7 @@ out=$(KERNELIA_ENV_FILE=/dev/null timeout --kill-after=30 300 \
 # linea de la salida: `|| true` evita que set -e/pipefail corte aqui.
 summary=$(printf '%s\n' "${out}" | grep '^{"job"' | tail -1 || true)
 [ -n "${summary}" ] || summary=$(printf '%s\n' "${out}" | grep -v '^[[:space:]]*$' | tail -1 || true)
+[ -n "${summary}" ] || summary="(sin salida)"
 elapsed=$(( $(date +%s) - started ))
 
 if [ "${code}" -eq 0 ]; then
