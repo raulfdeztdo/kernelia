@@ -38,6 +38,9 @@ name: Cron
 # La cadencia real de `ingest`, `classify` y `broadcast` la lleva ahora un
 # cron nativo en Hepha (Raspberry Pi propia, 24/7):
 #   ~/scripts/kernelia-cron.sh  +  crontab del usuario raulfdeztdo
+# Desde la fase 9.D `ingest` ni siquiera pasa por Vercel: lo ejecuta el
+# worker de Hepha (scripts/hepha/kernelia-worker.sh) contra la DB, y aqui
+# ya no tiene schedule.
 # Ese cron SI dispara puntual, asi que alli estan los */30, el horario y
 # el volumen. Aqui quedan los mismos jobs con ITERATIONS bajo, para que
 # el pipeline siga vivo —degradado— si Hepha se cae.
@@ -55,8 +58,9 @@ name: Cron
 
 on:
   schedule:
-    # Ingesta cada 3 horas en punto. Cada run cubre 2h mas via bucle.
-    - cron: "0 */3 * * *"
+    # Ingesta: SIN schedule desde la fase 9.D (2026-11). La ejecuta el
+    # worker de Hepha directamente contra la DB (scripts/worker.ts ingest),
+    # sin pasar por Vercel; aqui solo queda el disparo manual.
     # Classify cada 30 minutos en `:00` y `:30`. `limit=3` es un techo
     # marcado por el TPM del free tier de Groq (8K tokens/min): medido
     # sobre articulos reales, gpt-oss-120b cuesta ~1.6K tokens (noticias
@@ -148,8 +152,10 @@ concurrency:
 jobs:
   ingest:
     name: Ingest RSS feeds
-    # Solo en el schedule de cada 3h, o si el dispatch lo pide explicitamente.
-    if: github.event.schedule == '0 */3 * * *' || inputs.job == 'ingest'
+    # Solo manual (fase 9.D): el reloj es el worker de Hepha, que no pasa
+    # por Vercel. Este job llama a /api/cron/ingest, que se mantiene como
+    # respaldo si Hepha se cae.
+    if: inputs.job == 'ingest'
     runs-on: ubuntu-latest
     # Respaldo: 1 llamada. Un dispatch manual con -f iterations puede
     # alargarlo, de ahi el margen.

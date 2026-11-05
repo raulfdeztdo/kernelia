@@ -1,0 +1,7 @@
+{
+  "//": "Hepha worker (scripts/worker.ts) runs under tsx, outside Next.js: same config, but JSX compiled with the automatic runtime instead of Next's `preserve`.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  }
+}

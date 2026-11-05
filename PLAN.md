@@ -1262,7 +1262,32 @@ con todo ≤ 50 % de cada limite.
 - [ ] Medir 7 dias con Pro y bajar a Hobby solo si todo queda ≤ 50 %.
   Programado para el 2026-11-04 (tarea local
   `kernelia-padelstats-medicion-cuota`; informe en
-  `informe-cuota-2026-11-04.md`).
+  `informe-cuota-2026-11-04.md`). Resultado del 4-nov y del seguimiento del
+  5-nov: la CPU sigue en ~4,6 h/mes (114 %); el resto cumple. Quedan cuatro
+  consumidores, que se atacan en la segunda ronda de abajo.
+
+Segunda ronda (2026-11-05), con los recortes 1-4 del informe del 4-nov:
+- [x] Firewall de padelstats, regla "Block Amazon crawlers": deny a
+  `Amzn-SearchBot` y a Chrome en Linux desde el AS14618 de Amazon, el
+  rastreo que empezo el 30-oct (~1 h de CPU al mes). Probado en
+  produccion: esos UA reciben 403; Chrome en Linux desde otras redes, 200.
+- [x] Firewall de ambos proyectos, regla "Block Meta polling on home":
+  deny a `facebookexternalhit` solo en `/` y `/en` (~312 peticiones al
+  dia por web, ~0,9 h/mes). Las paginas de noticia y de partido siguen
+  sirviendo a Meta.
+- [x] Tarjetas OG fuera de Vercel. El worker de Hepha
+  (`scripts/worker.ts og-cards`, `:02`/`:32`, tras cada classify) las
+  renderiza con `lib/og/card.tsx` y las sube al bucket publico `og-cards`
+  de Supabase Storage. Las paginas de noticias de ≤ 7 dias apuntan alli
+  (`articleShareImageUrl`) y Bluesky usa esa copia con respaldo en
+  `/api/og` (`resolveOgCardUrl`). Las tarjetas se conservan 15 dias
+  (`OG_CARD_KEEP_DAYS`: 7 de frescura + 7 de TTL de pagina + 1).
+  `/api/og` queda para enlaces antiguos. Eran 1,2 h de CPU al mes.
+- [x] `ingest` fuera de Vercel: el worker de Hepha
+  (`scripts/worker.ts ingest`, cada 3 h) llama a `runIngestJob` contra la
+  DB. `/api/cron/ingest` y su job de GitHub quedan solo para disparo manual.
+- [ ] Instalar el worker en Hepha (`scripts/hepha/`) y medir otra semana
+  antes de decidir la bajada a Hobby (renovacion ~28-nov).
 
 ### Criterio de cierre Fase 9
 

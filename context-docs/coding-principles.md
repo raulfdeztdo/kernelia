@@ -149,6 +149,15 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
     `runClassify` y de las rutas admin (scripts manuales, borrados del
     cleanup) debe llamarla o aceptar hasta 7 dias de pagina desfasada.
   - El sitemap solo lista los ultimos `SITEMAP_WINDOW_DAYS` (90) dias.
+  - Trabajo programado que no necesita Vercel va al worker de Hepha
+    (`scripts/worker.ts`, lanzado por `scripts/hepha/kernelia-worker.sh`,
+    corre con `tsx --tsconfig tsconfig.worker.json`): hoy `ingest` y
+    `og-cards`. El codigo que comparte con Vercel vive en `lib/`, recibe
+    strings ya traducidos y no importa `next/*`, salvo `next/og`, que
+    funciona en Node puro.
+  - Las tarjetas OG de noticias de ≤ 7 dias se sirven desde el bucket
+    publico `og-cards` de Supabase Storage. Solo el worker escribe en el,
+    con `SUPABASE_SERVICE_ROLE`.
   - Antes de abrir una ruta publica indexable, estimar su coste:
     URLs × renders al mes × CPU por render, y escrituras ISR ≈ KB por
     render / 8.
@@ -163,7 +172,7 @@ Refleja el proyecto real. Si una decision cambia en codigo, este documento se ac
   - `pnpm build`
 - CI: GitHub Actions sobre cada PR (lint + typecheck + test + build).
 - Deploy: Vercel auto-deploy de `main`. Previews por PR.
-- Cron: `vercel.json` con jobs apuntando a `/api/cron/*` y header con `CRON_SECRET`.
+- Cron: el reloj es Hepha. `~/scripts/kernelia-cron.sh` llama a `/api/cron/*` con `CRON_SECRET` (classify, broadcast, digest), y el worker de Hepha ejecuta `ingest` y `og-cards` sin pasar por Vercel. GitHub Actions (`cron.yml`) es la red de seguridad.
 - Release: tag `vX.Y.Z` cuando se promueva una version notable (ver `PLAN.md`).
 
 ## 10. Regla de calidad

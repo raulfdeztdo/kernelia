@@ -818,6 +818,38 @@ export async function listArticlesForSitemap(
     .limit(limit);
 }
 
+export interface OgCardArticle {
+  id: string;
+  titleEs: string | null;
+  titleEn: string | null;
+  originalTitle: string;
+  sourceName: string;
+  categorySlug: string | null;
+  publishedAt: Date;
+}
+
+/**
+ * Public articles published since `since`, for the Hepha worker that
+ * pre-renders their social cards into Supabase Storage (phase 9.D).
+ */
+export async function listArticlesForOgCards(since: Date): Promise<OgCardArticle[]> {
+  return db
+    .select({
+      id: articles.id,
+      titleEs: articles.titleEs,
+      titleEn: articles.titleEn,
+      originalTitle: articles.title,
+      sourceName: sources.name,
+      categorySlug: categories.slug,
+      publishedAt: articles.publishedAt,
+    })
+    .from(articles)
+    .innerJoin(sources, eq(sources.id, articles.sourceId))
+    .leftJoin(categories, eq(categories.id, articles.categoryId))
+    .where(and(...publicArticleConds(), gte(articles.publishedAt, since)))
+    .orderBy(desc(articles.publishedAt));
+}
+
 export interface CategoryFacet {
   slug: string;
   count: number;
