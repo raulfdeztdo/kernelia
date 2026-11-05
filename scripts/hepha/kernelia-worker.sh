@@ -89,6 +89,12 @@ if ! flock --nonblock 9; then
   exit 0
 fi
 
+# Un `.` sobre un fichero que no existe termina el shell sin pasar por el
+# trap ERR, asi que se comprueba antes.
+if [ ! -r "${ENV_FILE}" ]; then
+  log "ERROR falta ${ENV_FILE}"
+  exit 1
+fi
 # shellcheck source=/dev/null
 set -a; . "${ENV_FILE}"; set +a
 
@@ -102,7 +108,7 @@ out=$(KERNELIA_ENV_FILE=/dev/null timeout --kill-after=30 300 \
 # Sin JSON de resumen (timeout, OOM, modulo que falta) se registra la ultima
 # linea de la salida: `|| true` evita que set -e/pipefail corte aqui.
 summary=$(printf '%s\n' "${out}" | grep '^{"job"' | tail -1 || true)
-[ -n "${summary}" ] || summary=$(printf '%s\n' "${out}" | tail -1)
+[ -n "${summary}" ] || summary=$(printf '%s\n' "${out}" | grep -v '^[[:space:]]*$' | tail -1 || true)
 elapsed=$(( $(date +%s) - started ))
 
 if [ "${code}" -eq 0 ]; then
